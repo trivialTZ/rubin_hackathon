@@ -14,8 +14,16 @@
 
 set -euo pipefail
 
-module load python3/3.13.8
-source "$HOME/debass_env/bin/activate"
+DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.11.4}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+: "${DEBASS_ROOT:?DEBASS_ROOT must be set before running this job}"
+
+module load "$DEBASS_PYTHON_MODULE"
+if [ ! -f "$DEBASS_VENV/bin/activate" ]; then
+    echo "ERROR: virtualenv not found at $DEBASS_VENV"
+    exit 1
+fi
+source "$DEBASS_VENV/bin/activate"
 
 cd "$DEBASS_ROOT"
 

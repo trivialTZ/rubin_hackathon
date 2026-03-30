@@ -70,15 +70,17 @@ See [README_scc.md](README_scc.md) for environment setup.
 
 ```bash
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
-bash jobs/submit_all.sh --limit 2000 --gpu
+
+# 1. CPU prep from a login node
+bash jobs/submit_cpu_prep.sh --limit 2000
+
+# 2. After CPU prep finishes, resume from your GPU session/node
+bash -l jobs/run_gpu_resume.sh
 ```
 
-This submits a 5-job SGE chain:
-1. `download_training` — 2000 labelled objects + lightcurves (~15 min)
-2. `build_epochs` — broker scores + no-leakage epoch table (~30 min)
-3. `local_infer_gpu` — SuperNNova + ParSNIP per (object, n_det) [A40 GPU]
-4. `train_early` — LightGBM on full epoch table (~30 min)
-5. `score_all` — scores at n_det=3,5,10 + follow-up reports
+Recommended split:
+1. `submit_cpu_prep.sh` runs `download_training → build_epochs`
+2. `run_gpu_resume.sh` runs `local_infer_gpu → train_early → score_all`
 
 ## Output
 

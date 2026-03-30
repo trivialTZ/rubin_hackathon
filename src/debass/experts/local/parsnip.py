@@ -77,6 +77,7 @@ class ParSNIPExpert(LocalExpert):
             "classes": self.CLASSES,
             "model_dir": str(self.model_dir),
             "available": self._parsnip_available,
+            "model_loaded": self._model is not None,
             "requires": "parsnip>=0.4, multi-band photometry",
             "epoch_aware": True,
             "calibration": "generative — well-calibrated by design",

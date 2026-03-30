@@ -6,23 +6,34 @@
 # SSH into SCC
 ssh scc1.bu.edu
 
-# Load Python module
-module load python3/3.11.4
-
-# Create virtualenv in your home directory
-python3 -m venv ~/debass_env
-source ~/debass_env/bin/activate
+# Pick one Python module version that actually exists on SCC
+module avail python3
+export DEBASS_PYTHON_MODULE=python3/3.11.4   # replace if your SCC module list differs
+module load $DEBASS_PYTHON_MODULE
 
 # Clone / copy the repo
 cd /projectnb/<yourproject>
 git clone <repo-url> rubin_hackathon
 cd rubin_hackathon
 
+# Create the virtualenv in project space, not $HOME
+python3 -m venv /projectnb/<yourproject>/venvs/debass_env
+source /projectnb/<yourproject>/venvs/debass_env/bin/activate
+
 # Install dependencies
 pip install -r env/requirements.txt
 
+# Optional but required for the GPU expert stage:
+# install a GPU-enabled PyTorch build plus the expert packages you plan to use.
+# BU recommends installing PyTorch into your own virtualenv rather than relying
+# on old module builds. See the BU PyTorch page for the current pip command.
+# Example expert installs:
+pip install parsnip
+# pip install supernnova
+
 # Set the repo root env var (add to ~/.bashrc for persistence)
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
+export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
 ```
 
 ## 2. Credentials
@@ -41,65 +52,107 @@ ALeRCE and Fink require no credentials — they use public REST APIs.
 mkdir -p $DEBASS_ROOT/logs
 ```
 
-## 4. Submit the full early-epoch pipeline (one command)
+## 4. Recommended two-command workflow
+
+Run the CPU-safe stages first from a login node:
 
 ```bash
 cd $DEBASS_ROOT
 
-# Submit everything — jobs chain automatically via hold_jid
-bash jobs/submit_all.sh
-
-# With GPU local experts (SuperNNova / ParSNIP on SCC GPU node):
-bash jobs/submit_all.sh --gpu
-
-# Smaller run for testing:
-bash jobs/submit_all.sh --limit 200
+# Submit only CPU prep: download + broker backfill + no-leakage epoch table
+bash jobs/submit_cpu_prep.sh --limit 2000
 ```
 
-This submits 4-5 chained jobs:
+That submits:
 ```
-download_training  →  build_epochs  →  [local_infer_gpu]  →  train_early  →  score_all
+download_training  →  build_epochs
 ```
 
-To submit individual stages manually:
+After those finish, request an interactive GPU session and resume from the prepared checkpoint:
+
 ```bash
-qsub jobs/download_training.sh   # fetch ALeRCE objects + lightcurves
-qsub jobs/build_epochs.sh        # build (object_id, n_det) epoch table
-qsub jobs/local_infer_gpu.sh     # GPU: run SuperNNova/ParSNIP (optional)
-qsub jobs/train_early.sh         # train LightGBM meta-classifier
-qsub jobs/score_all.sh           # score objects, write follow-up priorities
+# Check currently available GPU queues
+qgpus -v -s
+
+# Request an interactive GPU shell
+# Example matching your current SCC usage:
+qrsh -l gpus=1 -q l40s
+
+# Once the qrsh session starts:
+cd $DEBASS_ROOT
+
+# Default GPU expert list is ParSNIP
+bash -l jobs/run_gpu_resume.sh
+
+# If you later enable more experts, override the list explicitly
+bash -l jobs/run_gpu_resume.sh --experts=parsnip,supernnova
 ```
 
-## 5. Monitor jobs
+That GPU resume command runs:
+```
+local_infer_gpu  →  train_early  →  score_all
+```
+
+The default expert list is `parsnip` because the current repo can load
+ParSNIP weights, while SuperNNova is still a stub path unless you complete
+its model loader. The GPU stage now fails fast if a requested expert only has
+stub mode available or its weights are missing.
+
+Note: on SCC, `nvidia-smi` may show all physical GPUs on the node even when your
+job only owns one GPU. The DEBASS resume script now checks `torch.cuda.is_available()`
+and `torch.cuda.device_count()` instead of trusting the raw `nvidia-smi` count.
+
+If you still want the old single-submit batch flow, it remains available:
+
+```bash
+bash jobs/submit_all.sh --gpu --limit 2000
+```
+
+## 5. Manual stage control
+
+Use `-V` so SCC jobs inherit `DEBASS_ROOT`, `DEBASS_PYTHON_MODULE`, and related env vars:
+
+```bash
+qsub -V jobs/download_training.sh   # fetch ALeRCE objects + lightcurves
+qsub -V jobs/build_epochs.sh        # build (object_id, n_det) epoch table
+qsub -V jobs/local_infer_gpu.sh     # GPU: run configured local experts
+qsub -V jobs/train_early.sh         # train LightGBM meta-classifier
+qsub -V jobs/score_all.sh           # score objects, write follow-up priorities
+```
+
+## 6. Monitor jobs
 
 ```bash
 qstat -u $USER
 qstat -j <job_id>        # detailed status
-tail -f logs/train.<job_id>.log
+tail -f logs/build_epochs.<job_id>.log
 ```
 
-## 6. Tuning job resources
+## 7. Tuning job resources
 
 Edit the `#$ -l` directives in `jobs/*.sh` to match your queue limits.
 Key variables you can override at submission time:
 
 ```bash
 export DEBASS_LIMIT=2000     # number of objects to backfill
-export DEBASS_METHOD=lgbm    # meta-classifier method (lgbm or logistic)
-export DEBASS_LABELS=/path/to/labels.csv  # ground-truth label CSV
+export DEBASS_MAX_N_DET=20   # truncate training rows at this detection count
+export DEBASS_N_EST=500      # LightGBM tree count
+export DEBASS_GPU_EXPERTS="parsnip"   # or "parsnip supernnova"
+export DEBASS_PYTHON_MODULE=python3/3.11.4
+export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
 ```
 
-## 7. Output locations
+## 8. Output locations
 
 | Stage | Output |
 |-------|--------|
 | backfill | `data/bronze/<broker>_<ts>.parquet` |
-| normalize | `data/silver/broker_outputs.parquet`, `data/gold/snapshots.parquet` |
+| normalize | `data/silver/broker_outputs.parquet` |
 | local_infer | `data/silver/local_expert_outputs.json` |
-| train | `models/baselines/*.pkl`, `models/meta/` |
-| report | `reports/metrics/evaluation.json` |
+| train | `models/early_meta/early_meta.pkl` |
+| report | `reports/metrics/early_meta_metrics.json`, `reports/scores/scores_ndet{3,5,10}.txt` |
 
-## 8. Pipeline architecture summary
+## 9. Pipeline architecture summary
 
 ```
 Remote brokers          Local experts
@@ -128,10 +181,10 @@ Remote brokers          Local experts
   Calibration  (temperature scaling)
      |
      v
-  reports/metrics/evaluation.json
+  reports/metrics/early_meta_metrics.json
 ```
 
-## 9. Semantic type contract
+## 10. Semantic type contract
 
 The pipeline enforces that broker outputs are **never treated as
 interchangeable probability vectors**:

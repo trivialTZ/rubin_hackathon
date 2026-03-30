@@ -12,9 +12,9 @@ Usage (local smoke test — weights not required, returns stub probs):
 
 Usage (SCC GPU, called by local_infer_gpu.sh):
     python scripts/local_infer.py --expert supernnova --lc-dir data/lightcurves \\
-        --from-labels data/labels.csv --max-n-det 20
+        --from-labels data/labels.csv --max-n-det 20 --require-live-model
     python scripts/local_infer.py --expert parsnip --lc-dir data/lightcurves \\
-        --from-labels data/labels.csv --max-n-det 20
+        --from-labels data/labels.csv --max-n-det 20 --require-live-model
 """
 from __future__ import annotations
 
@@ -90,6 +90,8 @@ def main() -> None:
                         help="Maximum detection epoch to score")
     parser.add_argument("--limit", type=int, default=100000,
                         help="Max objects (for smoke tests)")
+    parser.add_argument("--require-live-model", action="store_true",
+                        help="Fail if the requested expert is only available in stub mode")
     args = parser.parse_args()
 
     lc_dir = Path(args.lc_dir)
@@ -118,11 +120,19 @@ def main() -> None:
 
     for expert in experts:
         meta = expert.metadata()
-        print(f"[{expert.name}] available={meta['available']}")
+        model_loaded = bool(meta.get("model_loaded"))
+        print(f"[{expert.name}] available={meta['available']} model_loaded={model_loaded}")
+        if args.require_live_model and (not meta.get("available") or not model_loaded):
+            print(
+                f"[{expert.name}] live model unavailable. "
+                f"Install the package, place model weights in {meta.get('model_dir')}, "
+                "and re-run."
+            )
+            sys.exit(2)
 
     # Per-(object, n_det) inference
     results = []
-    for oid in object_ids:
+    for idx, oid in enumerate(object_ids, start=1):
         dets = _load_lightcurve(lc_dir, oid)
         if not dets:
             print(f"  {oid}: no lightcurve — skipping")
@@ -151,8 +161,8 @@ def main() -> None:
                 except Exception as exc:
                     print(f"  {oid} n_det={n_det} [{expert.name}]: ERROR — {exc}")
 
-        if (object_ids.index(oid) + 1) % 100 == 0:
-            print(f"  Processed {object_ids.index(oid)+1}/{len(object_ids)} objects...")
+        if idx % 100 == 0:
+            print(f"  Processed {idx}/{len(object_ids)} objects...")
 
     out_path = silver_dir / "local_expert_outputs.json"
     silver_dir.mkdir(parents=True, exist_ok=True)
