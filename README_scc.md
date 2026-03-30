@@ -59,13 +59,21 @@ Run the CPU-safe stages first from a login node:
 ```bash
 cd $DEBASS_ROOT
 
-# Submit only CPU prep: download + broker backfill + no-leakage epoch table
-bash jobs/submit_cpu_prep.sh --limit 2000
+# One-command bootstrap: verify checkout, load Python, create venv,
+# install requirements, then submit CPU prep
+bash -l jobs/scc_bootstrap.sh --limit 2000
 ```
 
 That submits:
 ```
 download_training  →  build_epochs
+```
+
+If you already have the SCC environment set up and only want to resubmit the
+CPU stage, you can still run:
+
+```bash
+bash jobs/submit_cpu_prep.sh --limit 2000
 ```
 
 After those finish, request an interactive GPU session and resume from the prepared checkpoint:
