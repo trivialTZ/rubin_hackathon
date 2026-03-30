@@ -1,0 +1,375 @@
+{
+  "probabilities": [
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SNIa",
+      "probability": 0.674,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "SNIa",
+      "probability": 0.552,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "lc_classifier_periodic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "LPV",
+      "probability": 0.032,
+      "ranking": 6
+    },
+    {
+      "classifier_name": "lc_classifier_stochastic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "QSO",
+      "probability": 0.016,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier_top",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "Transient",
+      "probability": 1.0,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "lc_classifier_transient",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SNIa",
+      "probability": 0.674,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "SN",
+      "probability": 0.5759918,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SNIbc",
+      "probability": 0.194,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "SNIbc",
+      "probability": 0.238,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "lc_classifier_periodic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "E",
+      "probability": 0.062,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "lc_classifier_stochastic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "AGN",
+      "probability": 0.024,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "lc_classifier_top",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "Stochastic",
+      "probability": 0.0,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "lc_classifier_transient",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SNIbc",
+      "probability": 0.194,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "AGN",
+      "probability": 0.045698408,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SNII",
+      "probability": 0.09,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "SNII",
+      "probability": 0.138,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "lc_classifier_periodic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "DSCT",
+      "probability": 0.092,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "lc_classifier_stochastic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "Blazar",
+      "probability": 0.066,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "lc_classifier_top",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "Periodic",
+      "probability": 0.0,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "lc_classifier_transient",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SNII",
+      "probability": 0.09,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "VS",
+      "probability": 0.0547744,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SLSN",
+      "probability": 0.042,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "SLSN",
+      "probability": 0.072,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "lc_classifier_periodic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "RRL",
+      "probability": 0.47,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "lc_classifier_stochastic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "CV/Nova",
+      "probability": 0.858,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "lc_classifier_transient",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "SLSN",
+      "probability": 0.042,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "asteroid",
+      "probability": 0.030954415,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "QSO",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "QSO",
+      "probability": 0.0,
+      "ranking": 14
+    },
+    {
+      "classifier_name": "lc_classifier_periodic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "CEP",
+      "probability": 0.284,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "lc_classifier_stochastic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "YSO",
+      "probability": 0.036,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "bogus",
+      "probability": 0.292581,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "AGN",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "AGN",
+      "probability": 0.0,
+      "ranking": 11
+    },
+    {
+      "classifier_name": "lc_classifier_periodic",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "Periodic-Other",
+      "probability": 0.06,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "Blazar",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "Blazar",
+      "probability": 0.0,
+      "ranking": 12
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "CV/Nova",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "CV/Nova",
+      "probability": 0.0,
+      "ranking": 13
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "YSO",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "YSO",
+      "probability": 0.0,
+      "ranking": 15
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "LPV",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "LPV",
+      "probability": 0.0,
+      "ranking": 8
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "E",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "E",
+      "probability": 0.0,
+      "ranking": 7
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "DSCT",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "DSCT",
+      "probability": 0.0,
+      "ranking": 6
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "RRL",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "RRL",
+      "probability": 0.0,
+      "ranking": 10
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "CEP",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "CEP",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "hierarchical_rf_1.1.0",
+      "class_name": "Periodic-Other",
+      "probability": 0.0,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "lc_classifier",
+      "classifier_version": "lc_classifier_1.1.13",
+      "class_name": "Periodic-Other",
+      "probability": 0.0,
+      "ranking": 9
+    }
+  ]
+}

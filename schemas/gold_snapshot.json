@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Gold — object-by-epoch snapshot row",
+  "description": "One row per (object_id, epoch_index). Availability mask tracks which brokers/experts contributed.",
+  "type": "object",
+  "required": ["object_id", "epoch_index", "epoch_jd", "availability_mask"],
+  "properties": {
+    "object_id":         { "type": "string" },
+    "epoch_index":       { "type": "integer", "minimum": 0, "description": "Alert number (0 = first alert)" },
+    "epoch_jd":          { "type": "number", "description": "Julian date of this epoch" },
+    "survey":            { "type": "string", "default": "ZTF" },
+    "availability_mask": {
+      "type": "object",
+      "description": "broker/expert name → bool indicating whether output was available at this epoch"
+    },
+    "features": {
+      "type": "object",
+      "description": "Photometric and contextual features at this epoch"
+    },
+    "broker_scores": {
+      "type": "object",
+      "description": "Broker-field → canonical_projection (or null). Preserves semantic_type metadata."
+    },
+    "target_label": {
+      "type": ["string", "null"],
+      "enum": ["snia", "nonIa_snlike", "other", null],
+      "description": "Ternary ground truth label — null when unlabelled."
+    },
+    "label_source":  { "type": ["string", "null"], "description": "Provenance of target_label (e.g. TNS, ALeRCE-lc, manual)" }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,97 @@
+# Phase-1 remote broker inventory
+# semantic_type values: probability | binary_score | context_class | crossmatch_tag | heuristic_class
+
+brokers:
+
+  alerce:
+    phase: 1
+    access: remote
+    status: active
+    public: true
+    credentials_required: false
+    client: alerce
+    base_url: https://api.alerce.online/ztf/v1
+    semantic_type: probability
+    output_fields:
+      - classifier: ALeRCE stamp classifier
+        field: probabilities
+        type: probability
+        classes: [AGN, SN, VS, asteroid, bogus]
+      - classifier: ALeRCE light curve classifier
+        field: probabilities
+        type: probability
+        classes: [SNIa, SNIbc, SNII, SLSN, AGN, VS, asteroid, bogus]
+    notes: >
+      Explicit multiclass posteriors from both stamp and LC classifiers.
+      Safe to use as probability inputs to meta-classifier after calibration check.
+
+  fink:
+    phase: 1
+    access: remote
+    status: active
+    public: true
+    credentials_required: false  # public REST; livestream needs login
+    client: fink-client (REST mode)
+    base_url: https://fink-portal.org
+    semantic_type: mixed  # probability scores + heuristic class string
+    output_fields:
+      - field: rf_snia_vs_nonia
+        type: probability
+        description: P(SN Ia | not non-Ia SN)
+      - field: snn_snia_vs_nonia
+        type: probability
+        description: SuperNNova P(SN Ia)
+      - field: snn_sn_vs_all
+        type: probability
+        description: SuperNNova P(SN | all)
+      - field: rf_kn_vs_nonkn
+        type: probability
+        description: P(kilonova)
+      - field: mulens_class_1
+        type: binary_score
+        description: microlensing ML score
+      - field: nalerthist
+        type: heuristic_class
+        description: number of previous alerts (activity proxy)
+      - field: finkclass
+        type: heuristic_class
+        description: top-level Fink classification string (not a posterior)
+    notes: >
+      Richest score surface of phase-1 brokers. finkclass must NOT be treated
+      as a calibrated posterior — it is a heuristic routing label.
+
+  lasair:
+    phase: 1
+    access: remote
+    status: active_with_caveats
+    public: true
+    credentials_required: true  # token via lasair-ztf.lsst.ac.uk
+    client: lasair
+    base_url: https://lasair-ztf.lsst.ac.uk/api
+    semantic_type: context_class
+    output_fields:
+      - field: sherlock_classification
+        type: crossmatch_tag
+        description: >
+          Contextual host/environment label from Sherlock
+          (e.g. SN, NT, AGN, CV, BS, ORPHAN). Not a calibrated posterior.
+    fixture_fallback: fixtures/raw/lasair/sample_object.json
+    notes: >
+      Sherlock output is a crossmatch-based context label, not a classifier
+      posterior. Treat as a categorical feature, not a probability.
+
+  pitt_google:
+    phase: 2
+    access: remote
+    status: stubbed
+    public: true
+    credentials_required: true  # Google Cloud service account
+    notes: Useful but requires GCP setup. Deferred to phase 2.
+
+  antares:
+    phase: 2
+    access: remote
+    status: stubbed
+    public: partial
+    credentials_required: true
+    notes: Open client exists; stream access needs credentials. Deferred to phase 2.

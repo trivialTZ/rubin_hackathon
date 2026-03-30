@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Silver — broker_outputs table row",
+  "description": "Normalised broker output row. raw_label_or_score is always preserved verbatim.",
+  "type": "object",
+  "required": ["broker", "object_id", "query_time", "field", "raw_label_or_score", "semantic_type"],
+  "properties": {
+    "broker":               { "type": "string" },
+    "object_id":            { "type": "string" },
+    "query_time":           { "type": "number" },
+    "survey":               { "type": "string", "default": "ZTF" },
+    "field":                { "type": "string", "description": "Score/label field name within the broker" },
+    "raw_label_or_score":   { "description": "Verbatim value from broker — string, number, or null" },
+    "semantic_type": {
+      "type": "string",
+      "enum": ["probability", "binary_score", "context_class", "crossmatch_tag", "heuristic_class", "mixed"]
+    },
+    "canonical_projection": {
+      "type": ["number", "null"],
+      "description": "Normalised float in [0,1] where meaningful, else null. Never replaces raw_label_or_score."
+    },
+    "classifier":           { "type": ["string", "null"] },
+    "class":                { "type": ["string", "null"] },
+    "fixture_used":         { "type": "boolean" },
+    "payload_hash":         { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}

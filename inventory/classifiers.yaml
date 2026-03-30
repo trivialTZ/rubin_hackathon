@@ -1,0 +1,45 @@
+# Local expert classifier inventory
+# These can be rerun on archival data for reproducible historical training.
+
+classifiers:
+
+  supernnova:
+    type: local_expert
+    framework: SuperNNova
+    repo: https://github.com/supernnova/SuperNNova
+    semantic_type: probability
+    output_fields:
+      - field: prob_class0  # SN Ia
+        type: probability
+      - field: prob_class1  # non-Ia
+        type: probability
+    input: light curve photometry (g, r bands minimum)
+    epoch_aware: true  # can score at any photometric epoch
+    notes: >
+      Best local rerunnable SN classifier. Requires PyTorch.
+      Wrap in experts/local/supernnova.py.
+
+  parsnip:
+    type: local_expert
+    framework: ParSNIP
+    repo: https://github.com/LSSTDESC/parsnip
+    semantic_type: probability
+    output_fields:
+      - field: class_probabilities
+        type: probability
+        classes: [SN Ia, SN II, SN IIn, SN Ibc, SN IIb, SLSN-I]
+    input: light curve photometry (multi-band)
+    epoch_aware: true
+    notes: >
+      Generative model; produces well-calibrated class posteriors.
+      Slower than SuperNNova but richer taxonomy.
+
+  ampel:
+    type: local_framework
+    framework: AMPEL
+    repo: https://github.com/AmpelAstro/Ampel-HU-astro
+    semantic_type: probability  # depends on unit
+    notes: >
+      Framework, not a single classifier. Run specific AMPEL units
+      (e.g. T2SNcosmo, T2TabulatedRiseDeclineStat) as local experts.
+      Wrap in experts/local/ampel_runner.py.

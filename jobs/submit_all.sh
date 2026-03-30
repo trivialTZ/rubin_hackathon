@@ -1,0 +1,96 @@
+#!/bin/bash -l
+# submit_all.sh — Submit the full DEBASS early-epoch training pipeline to BU SCC.
+#
+# Usage:
+#   cd $DEBASS_ROOT
+#   bash jobs/submit_all.sh
+#   bash jobs/submit_all.sh --limit 500      # smaller run
+#   bash jobs/submit_all.sh --gpu            # include GPU local expert jobs
+#   bash jobs/submit_all.sh --limit 2000 --gpu
+#
+# Chain:
+#   download_training → build_epochs → [local_infer_gpu] → train_early → score_all
+#
+# Requirements:
+#   - DEBASS_ROOT must be set (e.g. export DEBASS_ROOT=/projectnb/myproject/rubin_hackathon)
+#   - virtualenv at $HOME/debass_env must exist (see README_scc.md)
+#   - logs/ directory will be created automatically
+
+set -euo pipefail
+
+# ------------------------------------------------------------------ #
+# Defaults                                                             #
+# ------------------------------------------------------------------ #
+DEBASS_LIMIT=${DEBASS_LIMIT:-2000}
+DEBASS_MAX_N_DET=${DEBASS_MAX_N_DET:-20}
+DEBASS_N_EST=${DEBASS_N_EST:-500}
+RUN_GPU=false
+
+for arg in "$@"; do
+    case $arg in
+        --limit=*)      DEBASS_LIMIT="${arg#*=}" ;;
+        --limit)        shift; DEBASS_LIMIT="$1" ;;
+        --gpu)          RUN_GPU=true ;;
+        --max-n-det=*)  DEBASS_MAX_N_DET="${arg#*=}" ;;
+        --n-est=*)      DEBASS_N_EST="${arg#*=}" ;;
+    esac
+done
+
+export DEBASS_ROOT DEBASS_LIMIT DEBASS_MAX_N_DET DEBASS_N_EST
+
+# Verify DEBASS_ROOT is set
+if [ -z "${DEBASS_ROOT:-}" ]; then
+    echo "ERROR: DEBASS_ROOT is not set."
+    echo "  export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon"
+    exit 1
+fi
+
+mkdir -p "$DEBASS_ROOT/logs"
+
+echo "======================================="
+echo " DEBASS SCC Pipeline Submission"
+echo "======================================="
+echo " DEBASS_ROOT:      $DEBASS_ROOT"
+echo " DEBASS_LIMIT:     $DEBASS_LIMIT objects"
+echo " DEBASS_MAX_N_DET: $DEBASS_MAX_N_DET"
+echo " DEBASS_N_EST:     $DEBASS_N_EST"
+echo " GPU experts:      $RUN_GPU"
+echo "======================================="
+
+cd "$DEBASS_ROOT"
+
+# Step 1: Download training data (network-bound, 1 core)
+JID_DL=$(qsub -terse jobs/download_training.sh)
+echo "[1] download_training   → job $JID_DL"
+
+# Step 2: Build epoch feature table (waits for download)
+JID_EP=$(qsub -terse -hold_jid "$JID_DL" jobs/build_epochs.sh)
+echo "[2] build_epochs        → job $JID_EP  (holds on $JID_DL)"
+
+# Step 3 (optional): GPU local expert inference
+if [ "$RUN_GPU" = true ]; then
+    JID_GPU=$(qsub -terse -hold_jid "$JID_EP" jobs/local_infer_gpu.sh)
+    echo "[3] local_infer_gpu     → job $JID_GPU (holds on $JID_EP)"
+    TRAIN_HOLD="$JID_GPU"
+else
+    echo "[3] GPU job skipped     (add --gpu to include SuperNNova/ParSNIP)"
+    TRAIN_HOLD="$JID_EP"
+fi
+
+# Step 4: Train early-epoch meta-classifier
+JID_TR=$(qsub -terse -hold_jid "$TRAIN_HOLD" jobs/train_early.sh)
+echo "[4] train_early         → job $JID_TR  (holds on $TRAIN_HOLD)"
+
+# Step 5: Score all objects + write follow-up reports
+JID_SC=$(qsub -terse -hold_jid "$JID_TR" jobs/score_all.sh)
+echo "[5] score_all           → job $JID_SC  (holds on $JID_TR)"
+
+echo ""
+echo "All jobs submitted. Monitor with:"
+echo "  qstat -u $USER"
+echo "  tail -f $DEBASS_ROOT/logs/download.*.log"
+echo ""
+echo "Final outputs:"
+echo "  $DEBASS_ROOT/models/early_meta/early_meta.pkl"
+echo "  $DEBASS_ROOT/reports/metrics/early_meta_metrics.json"
+echo "  $DEBASS_ROOT/reports/scores/scores_ndet{3,5,10}.txt"

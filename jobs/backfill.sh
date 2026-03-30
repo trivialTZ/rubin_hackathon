@@ -1,0 +1,25 @@
+#!/bin/bash -l
+#$ -N debass_backfill
+#$ -l h_rt=04:00:00
+#$ -l mem_per_core=8G
+#$ -pe omp 4
+#$ -j y
+#$ -o logs/backfill.$JOB_ID.log
+#$ -t 1-3
+# Uncomment and set your project if on Med Campus:
+##$ -P your_project_name
+
+# Job array: one task per phase-1 broker (alerce, fink, lasair)
+
+set -euo pipefail
+
+module load python3/3.13.8
+source "$HOME/debass_env/bin/activate"
+
+cd "$DEBASS_ROOT"
+
+BROKERS=(alerce fink lasair)
+BROKER=${BROKERS[$((SGE_TASK_ID - 1))]}
+
+echo "Backfilling broker: $BROKER"
+python scripts/backfill.py --broker "$BROKER" --limit "${DEBASS_LIMIT:-500}"

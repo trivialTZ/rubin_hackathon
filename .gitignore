@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Data (large files — use DVC or download scripts instead)
+data/bronze/
+data/silver/
+data/gold/
+data/epochs/
+data/lightcurves/
+
+# Models (large binaries)
+models/
+artifacts/
+
+# Reports (generated)
+reports/
+
+# Credentials
+.env
+
+# macOS
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/

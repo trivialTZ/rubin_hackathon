@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bronze",
+  "description": "Raw broker response envelope — verbatim, never modified after write.",
+  "type": "object",
+  "required": ["broker", "object_id", "query_time", "semantic_type", "raw_payload"],
+  "properties": {
+    "broker":        { "type": "string" },
+    "object_id":     { "type": "string" },
+    "query_time":    { "type": "number", "description": "Unix timestamp (UTC)" },
+    "survey":        { "type": "string", "default": "ZTF" },
+    "semantic_type": {
+      "type": "string",
+      "enum": ["probability", "binary_score", "context_class", "crossmatch_tag", "heuristic_class", "mixed"]
+    },
+    "availability":  { "type": "boolean" },
+    "fixture_used":  { "type": "boolean" },
+    "payload_hash":  { "type": "string", "description": "SHA-256 of raw_payload JSON" },
+    "raw_payload":   { "type": "object" }
+  },
+  "additionalProperties": false
+}

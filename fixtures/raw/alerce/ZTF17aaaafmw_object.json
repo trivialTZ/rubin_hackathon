@@ -1,0 +1,81 @@
+{
+  "probabilities": [
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "SN",
+      "probability": 0.052897252,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "stamp_classifier_2025_beta",
+      "classifier_version": "2.1.1_beta",
+      "class_name": "SN",
+      "probability": 0.0002970899,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "AGN",
+      "probability": 0.058515634,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "stamp_classifier_2025_beta",
+      "classifier_version": "2.1.1_beta",
+      "class_name": "AGN",
+      "probability": 0.019455,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "VS",
+      "probability": 0.09262561,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "stamp_classifier_2025_beta",
+      "classifier_version": "2.1.1_beta",
+      "class_name": "VS",
+      "probability": 0.75599146,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "asteroid",
+      "probability": 0.065011,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "stamp_classifier_2025_beta",
+      "classifier_version": "2.1.1_beta",
+      "class_name": "asteroid",
+      "probability": 2.5861142e-05,
+      "ranking": 6
+    },
+    {
+      "classifier_name": "stamp_classifier",
+      "classifier_version": "stamp_classifier_1.0.4",
+      "class_name": "bogus",
+      "probability": 0.7309504,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "stamp_classifier_2025_beta",
+      "classifier_version": "2.1.1_beta",
+      "class_name": "bogus",
+      "probability": 0.22136532,
+      "ranking": 2
+    },
+    {
+      "classifier_name": "stamp_classifier_2025_beta",
+      "classifier_version": "2.1.1_beta",
+      "class_name": "satellite",
+      "probability": 0.0028652865,
+      "ranking": 4
+    }
+  ]
+}
