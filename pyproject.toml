@@ -8,9 +8,9 @@ version = "0.1.0"
 description = "DEBASS meta-classifier: trust-aware fusion of Rubin broker outputs"
 requires-python = ">=3.10"
 dependencies = [
-    "alerce>=3.0",
+    "alerce>=2.3.0,<3",
     "fink-client>=7.0",
-    "lasair>=4.0",
+    "lasair>=0.1.0,<1",
     "lightgbm>=4.0",
     "scikit-learn>=1.4",
     "pandas>=2.0",
@@ -25,7 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 local-experts = [
     "supernnova>=2.0",
-    "parsnip>=0.4",
+    "astro-parsnip>=1.4.0",
 ]
 dev = [
     "pytest>=8.0",

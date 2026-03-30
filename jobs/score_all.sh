@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.11.4}
+DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
 DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
 : "${DEBASS_ROOT:?DEBASS_ROOT must be set before running this job}"
 

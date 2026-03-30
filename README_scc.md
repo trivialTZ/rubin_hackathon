@@ -8,7 +8,7 @@ ssh scc1.bu.edu
 
 # Pick one Python module version that actually exists on SCC
 module avail python3
-export DEBASS_PYTHON_MODULE=python3/3.11.4   # replace if your SCC module list differs
+export DEBASS_PYTHON_MODULE=python3/3.10.12   # replace if your SCC module list differs
 module load $DEBASS_PYTHON_MODULE
 
 # Clone / copy the repo
@@ -28,8 +28,9 @@ pip install -r env/requirements.txt
 # BU recommends installing PyTorch into your own virtualenv rather than relying
 # on old module builds. See the BU PyTorch page for the current pip command.
 # Example expert installs:
-pip install parsnip
-# pip install supernnova
+pip install astro-parsnip
+# supernnova requires Python 3.11+ on PyPI, so keep it separate from the
+# default SCC Python 3.10 environment unless you plan a dedicated 3.11 GPU env.
 
 # Set the repo root env var (add to ~/.bashrc for persistence)
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
@@ -146,7 +147,7 @@ export DEBASS_LIMIT=2000     # number of objects to backfill
 export DEBASS_MAX_N_DET=20   # truncate training rows at this detection count
 export DEBASS_N_EST=500      # LightGBM tree count
 export DEBASS_GPU_EXPERTS="parsnip"   # or "parsnip supernnova"
-export DEBASS_PYTHON_MODULE=python3/3.11.4
+export DEBASS_PYTHON_MODULE=python3/3.10.12
 export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
 ```
 

@@ -3,7 +3,7 @@
 Generative model producing well-calibrated multiclass posteriors.
 Slower than SuperNNova but richer taxonomy (6 SN classes).
 
-Requires: pip install parsnip
+Requires: pip install astro-parsnip
 """
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class ParSNIPExpert(LocalExpert):
             "model_dir": str(self.model_dir),
             "available": self._parsnip_available,
             "model_loaded": self._model is not None,
-            "requires": "parsnip>=0.4, multi-band photometry",
+            "requires": "astro-parsnip>=1.4.0, multi-band photometry",
             "epoch_aware": True,
             "calibration": "generative — well-calibrated by design",
         }

@@ -118,6 +118,17 @@ echo "======================================="
 
 module load "$DEBASS_PYTHON_MODULE"
 
+CURRENT_MM="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+
+if [ -x "$DEBASS_VENV/bin/python" ]; then
+    VENV_MM="$("$DEBASS_VENV/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    if [ "$VENV_MM" != "$CURRENT_MM" ]; then
+        echo "Existing virtualenv uses Python $VENV_MM, but module $DEBASS_PYTHON_MODULE provides Python $CURRENT_MM."
+        echo "Recreating $DEBASS_VENV to match the loaded SCC Python."
+        rm -rf "$DEBASS_VENV"
+    fi
+fi
+
 if [ ! -d "$DEBASS_VENV" ]; then
     python3 -m venv "$DEBASS_VENV"
 fi
