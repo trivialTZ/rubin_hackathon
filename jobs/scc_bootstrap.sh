@@ -96,6 +96,23 @@ if ! command -v module >/dev/null 2>&1; then
     exit 1
 fi
 
+# Ignore any pre-activated virtualenv from the parent shell so bootstrap uses
+# the requested SCC Python module deterministically.
+if [ -n "${VIRTUAL_ENV:-}" ]; then
+    case ":$PATH:" in
+        *":$VIRTUAL_ENV/bin:"*)
+            PATH="${PATH//:$VIRTUAL_ENV\/bin/}"
+            PATH="${PATH//$VIRTUAL_ENV\/bin:/}"
+            PATH="${PATH//$VIRTUAL_ENV\/bin/}"
+            export PATH
+            ;;
+    esac
+    unset VIRTUAL_ENV
+fi
+unset PYTHONHOME
+
+module purge
+
 if ! module -t avail "$DEBASS_PYTHON_MODULE" 2>&1 | grep -Fq "$DEBASS_PYTHON_MODULE"; then
     echo "ERROR: SCC Python module not found: $DEBASS_PYTHON_MODULE"
     echo "Available python3 modules:"
@@ -117,6 +134,7 @@ echo " Submit CPU prep:      $SUBMIT_CPU"
 echo "======================================="
 
 module load "$DEBASS_PYTHON_MODULE"
+hash -r
 
 CURRENT_MM="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 

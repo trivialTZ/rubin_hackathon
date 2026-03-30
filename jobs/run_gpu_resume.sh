@@ -46,6 +46,11 @@ if [ ! -f "$DEBASS_VENV/bin/activate" ]; then
     exit 1
 fi
 
+if command -v module >/dev/null 2>&1; then
+    module load "$DEBASS_PYTHON_MODULE"
+    hash -r
+fi
+
 cd "$DEBASS_ROOT"
 
 if [ ! -f data/labels.csv ]; then
@@ -78,7 +83,7 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
 fi
 
 echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-<unset>}"
-python - <<'PY'
+"$DEBASS_VENV/bin/python" - <<'PY'
 import os
 import sys
 

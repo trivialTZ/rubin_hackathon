@@ -139,6 +139,7 @@ def main() -> None:
 
     # --- Step 1: collect object IDs per class ---
     print(f"=== Collecting {args.limit} labelled objects from ALeRCE ===")
+    print(f"PROGRESS download phase=collect current=0 total={args.limit} ok=0 failed=0")
     seen_oids: set[str] = set()
     collected: list[tuple[str, str]] = []  # (oid, ternary_label)
 
@@ -149,6 +150,10 @@ def main() -> None:
         for oid in oids:
             collected.append((oid, ternary_label))
         print(f"    got {len(oids)} objects (total so far: {len(collected)})")
+        print(
+            f"PROGRESS download phase=collect current={len(collected)} "
+            f"total={args.limit} ok=0 failed=0"
+        )
 
     if not collected:
         print("No objects collected. Check ALeRCE connectivity.")
@@ -161,6 +166,7 @@ def main() -> None:
 
     # --- Step 2: fetch lightcurves ---
     print(f"\n=== Fetching {len(collected)} lightcurves → {lc_dir} ===")
+    print(f"PROGRESS download phase=fetch current=0 total={len(collected)} ok=0 failed=0")
     ok, failed = 0, 0
     for i, (oid, label) in enumerate(collected):
         cache = lc_dir / f"{oid}.json"
@@ -168,6 +174,10 @@ def main() -> None:
             ok += 1
             if (i + 1) % 50 == 0:
                 print(f"  [{i+1}/{len(collected)}] {ok} cached, {failed} failed")
+                print(
+                    f"PROGRESS download phase=fetch current={i+1} "
+                    f"total={len(collected)} ok={ok} failed={failed}"
+                )
             continue
         success = _fetch_lightcurve(client, oid, lc_dir)
         if success:
@@ -177,6 +187,10 @@ def main() -> None:
             print(f"  [{i+1}] {oid}: FAILED")
         if (i + 1) % 20 == 0:
             print(f"  [{i+1}/{len(collected)}] {ok} ok, {failed} failed")
+            print(
+                f"PROGRESS download phase=fetch current={i+1} "
+                f"total={len(collected)} ok={ok} failed={failed}"
+            )
         time.sleep(args.rate_limit)
 
     print(f"\nLightcurves: {ok} ok, {failed} failed")
@@ -193,6 +207,10 @@ def main() -> None:
                 written += 1
 
     print(f"Wrote {written} labels → {labels_out}")
+    print(
+        f"PROGRESS download phase=complete current={len(collected)} "
+        f"total={len(collected)} ok={ok} failed={failed} written={written}"
+    )
     print(f"\nNext: python scripts/build_epoch_table_from_lc.py")
 
 

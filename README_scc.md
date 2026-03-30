@@ -70,6 +70,12 @@ That submits:
 download_training  →  build_epochs
 ```
 
+To watch both jobs with live progress bars:
+
+```bash
+$DEBASS_VENV/bin/python scripts/watch_cpu_prep.py
+```
+
 If you already have the SCC environment set up and only want to resubmit the
 CPU stage, you can still run:
 

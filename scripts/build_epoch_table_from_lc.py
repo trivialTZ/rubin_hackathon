@@ -155,6 +155,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"Processing {len(lc_files)} lightcurves (max_n_det={args.max_n_det})...")
+    print(f"PROGRESS build phase=process current=0 total={len(lc_files)} rows=0 skipped=0")
 
     import pandas as pd
     import numpy as np
@@ -162,7 +163,7 @@ def main() -> None:
     all_rows = []
     skipped = 0
 
-    for lc_path in lc_files:
+    for idx, lc_path in enumerate(lc_files, start=1):
         oid = lc_path.stem
         try:
             with open(lc_path) as fh:
@@ -222,6 +223,12 @@ def main() -> None:
 
             all_rows.append(row)
 
+        if idx % 25 == 0 or idx == len(lc_files):
+            print(
+                f"PROGRESS build phase=process current={idx} total={len(lc_files)} "
+                f"rows={len(all_rows)} skipped={skipped}"
+            )
+
     if not all_rows:
         print("No epoch rows built. Check lightcurve files and labels.")
         sys.exit(1)
@@ -254,6 +261,10 @@ def main() -> None:
     out_path = epochs_dir / "epoch_features.parquet"
     df.to_parquet(out_path, index=False)
     print(f"\nWrote {out_path}")
+    print(
+        f"PROGRESS build phase=complete current={len(lc_files)} total={len(lc_files)} "
+        f"rows={len(df)} skipped={skipped}"
+    )
     print(f"Next: python scripts/train_early.py")
 
 

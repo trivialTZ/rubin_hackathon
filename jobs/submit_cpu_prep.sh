@@ -77,10 +77,22 @@ echo "[1] download_training   → job $JID_DL"
 JID_EP=$(qsub -terse -V -hold_jid "$JID_DL" jobs/build_epochs.sh)
 echo "[2] build_epochs        → job $JID_EP  (holds on $JID_DL)"
 
+cat > "$DEBASS_ROOT/logs/cpu_prep_latest.json" <<EOF
+{
+  "download_job_id": "$JID_DL",
+  "build_job_id": "$JID_EP",
+  "download_log": "$DEBASS_ROOT/logs/download.$JID_DL.log",
+  "build_log": "$DEBASS_ROOT/logs/build_epochs.$JID_EP.log",
+  "limit": $DEBASS_LIMIT,
+  "max_n_det": $DEBASS_MAX_N_DET
+}
+EOF
+
 echo ""
 echo "CPU prep submitted. Monitor with:"
 echo "  qstat -u $USER"
 echo "  tail -f $DEBASS_ROOT/logs/build_epochs.<job_id>.log"
+echo "  $DEBASS_VENV/bin/python scripts/watch_cpu_prep.py"
 echo ""
 echo "After build_epochs finishes and you are on a GPU node, resume with:"
 echo "  cd $DEBASS_ROOT"
