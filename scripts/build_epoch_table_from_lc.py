@@ -45,7 +45,7 @@ _BROKER_SCORE_COLS = [
     # local_infer.py. They are merged separately via _load_local_expert_json().
 ]
 
-_ALL_BROKERS = ["alerce", "fink", "lasair", "supernnova", "parsnip", "ampel"]
+_REMOTE_BROKERS = ["alerce", "fink", "lasair", "ampel"]
 
 
 def _load_labels(path: Path) -> dict[str, str]:
@@ -110,6 +110,16 @@ def _load_local_expert_json(
         return {}
 
 
+def _build_remote_broker_availability(
+    silver_lookup: dict[tuple[str, str, str], float | None],
+) -> dict[tuple[str, str], bool]:
+    availability: dict[tuple[str, str], bool] = {}
+    for (object_id, broker, _field), value in silver_lookup.items():
+        key = (object_id, broker)
+        availability[key] = availability.get(key, False) or value is not None
+    return availability
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build no-leakage epoch feature table from lightcurves"
@@ -139,6 +149,7 @@ def main() -> None:
     # Load silver broker scores for merging
     silver_lookup = _build_silver_lookup(silver_dir)
     print(f"Silver score lookup: {len(silver_lookup)} entries")
+    remote_broker_availability = _build_remote_broker_availability(silver_lookup)
 
     # Load local expert scores (written by local_infer.py on SCC GPU node)
     local_expert_lookup = _load_local_expert_json(silver_dir)
@@ -214,12 +225,14 @@ def main() -> None:
             row["snn_prob_ia"]     = expert_scores.get("snn_prob_ia")
             row["parsnip_prob_ia"] = expert_scores.get("parsnip_prob_ia")
 
-            # Availability flags
-            for b in _ALL_BROKERS:
-                b_keys = [k for k in silver_lookup if k[0] == oid and k[1] == b]
-                row[f"{b}_available"] = float(
-                    any(silver_lookup[k] is not None for k in b_keys)
-                ) if b_keys else 0.0
+            # Availability flags.
+            # Remote brokers are object-level features from the silver parquet.
+            # Local experts are per-(object_id, n_det), so the availability flag
+            # must reflect whether that epoch-specific score was actually written.
+            for b in _REMOTE_BROKERS:
+                row[f"{b}_available"] = float(remote_broker_availability.get((oid, b), False))
+            row["supernnova_available"] = float(expert_scores.get("snn_prob_ia") is not None)
+            row["parsnip_available"] = float(expert_scores.get("parsnip_prob_ia") is not None)
 
             all_rows.append(row)
 

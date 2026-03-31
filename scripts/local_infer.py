@@ -73,6 +73,40 @@ def _load_lightcurve(lc_dir: Path, oid: str) -> list[dict]:
         return []
 
 
+def _record_key(record: dict) -> tuple[str | None, str | None, int | None]:
+    n_det = record.get("n_det")
+    return (
+        record.get("expert"),
+        record.get("object_id"),
+        int(n_det) if n_det is not None else None,
+    )
+
+
+def _merge_records(existing: list[dict], new_records: list[dict]) -> tuple[list[dict], int, int]:
+    """Merge local expert outputs, replacing stale duplicates with the new record."""
+    combined: list[dict] = []
+    index: dict[tuple[str | None, str | None, int | None], int] = {}
+
+    for record in existing:
+        key = _record_key(record)
+        index[key] = len(combined)
+        combined.append(record)
+
+    refreshed = 0
+    appended = 0
+    for record in new_records:
+        key = _record_key(record)
+        if key in index:
+            combined[index[key]] = record
+            refreshed += 1
+        else:
+            index[key] = len(combined)
+            combined.append(record)
+            appended += 1
+
+    return combined, appended, refreshed
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run local expert inference per (object_id, n_det) epoch"
@@ -130,9 +164,13 @@ def main() -> None:
             )
             sys.exit(2)
         if args.require_live_model and (not meta.get("available") or not model_loaded):
+            classifier_path = meta.get("classifier_path")
+            model_path = meta.get("model_path") or meta.get("model_dir")
             print(
                 f"[{expert.name}] live model unavailable. "
-                f"Install the package, place model weights in {meta.get('model_dir')}, "
+                f"Install the package, place model weights at {model_path}"
+                + (f", classifier at {classifier_path}" if classifier_path else "")
+                + ", "
                 "and re-run."
             )
             sys.exit(2)
@@ -183,18 +221,14 @@ def main() -> None:
         except Exception:
             existing = []
 
-    # Build set of existing (expert, object_id, n_det) to avoid duplicates
-    seen = {
-        (r.get("expert"), r.get("object_id"), r.get("n_det"))
-        for r in existing
-    }
-    new_records = [r for r in results
-                   if (r.get("expert"), r.get("object_id"), r.get("n_det")) not in seen]
-    combined = existing + new_records
+    combined, appended, refreshed = _merge_records(existing, results)
 
     with open(out_path, "w") as fh:
         json.dump(combined, fh)
-    print(f"\nWrote {len(new_records)} new records ({len(combined)} total) → {out_path}")
+    print(
+        f"\nWrote {appended} new records and refreshed {refreshed} existing records "
+        f"({len(combined)} total) → {out_path}"
+    )
     print("Next: python scripts/build_epoch_table_from_lc.py")
 
 

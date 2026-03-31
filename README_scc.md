@@ -32,6 +32,12 @@ pip install astro-parsnip
 # supernnova requires Python 3.11+ on PyPI, so keep it separate from the
 # default SCC Python 3.10 environment unless you plan a dedicated 3.11 GPU env.
 
+# ParSNIP inference in this repo requires BOTH:
+#   artifacts/local_experts/parsnip/model.pt
+#   artifacts/local_experts/parsnip/classifier.pkl
+# The model alone is not enough because typed class probabilities come from the
+# trained ParSNIP LightGBM classifier.
+
 # Set the repo root env var (add to ~/.bashrc for persistence)
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
 export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
@@ -126,10 +132,11 @@ That GPU resume command runs:
 local_infer_gpu  →  train_early  →  score_all
 ```
 
-The default expert list is `parsnip` because the current repo can load
-ParSNIP weights, while SuperNNova is still a stub path unless you complete
-its model loader. The GPU stage now fails fast if a requested expert only has
-stub mode available or its weights are missing.
+The default expert list is `parsnip` because the repo now supports real
+ParSNIP inference when both `model.pt` and `classifier.pkl` are present in
+`artifacts/local_experts/parsnip/`. SuperNNova is still a stub path unless you
+complete its model loader. The GPU stage fails fast if a requested expert is
+missing its package, model, or classifier.
 
 Note: on SCC, `nvidia-smi` may show all physical GPUs on the node even when your
 job only owns one GPU. The DEBASS resume script now checks `torch.cuda.is_available()`

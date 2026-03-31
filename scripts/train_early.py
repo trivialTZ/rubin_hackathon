@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import numpy as np
 
+from debass.models.calibrate import TemperatureScaler
 from debass.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
 
 
@@ -35,7 +36,7 @@ def _load_epoch_table(path: Path):
     return pd.read_parquet(path)
 
 
-def _metrics(clf, df_val) -> dict:
+def _metrics(clf, df_val, *, calibrated: bool) -> dict:
     from sklearn.metrics import f1_score, balanced_accuracy_score
 
     labelled = df_val[df_val["target_label"].notna()]
@@ -43,7 +44,7 @@ def _metrics(clf, df_val) -> dict:
         return {}
 
     y_true = labelled["target_label"].map(LABEL_MAP).values
-    probs = clf.predict_proba(labelled)
+    probs = clf.predict_proba(labelled, calibrated=calibrated)
     y_pred = probs.argmax(axis=1)
 
     probs_clip = np.clip(probs, 1e-7, 1)
@@ -57,15 +58,48 @@ def _metrics(clf, df_val) -> dict:
         "bal_acc": round(balanced_accuracy_score(y_true, y_pred), 4),
         "nll": round(nll, 4),
         "brier": round(brier, 4),
+        "probabilities": "calibrated" if calibrated else "raw",
     }
 
 
-def _early_epoch_metrics(clf, df, max_early: int = 5) -> dict:
+def _early_epoch_metrics(clf, df, max_early: int = 5, *, calibrated: bool) -> dict:
     """Metrics restricted to n_det <= max_early (the critical window)."""
     early = df[df["n_det"] <= max_early]
-    m = _metrics(clf, early)
+    m = _metrics(clf, early, calibrated=calibrated)
     m["n_det_max"] = max_early
     return m
+
+
+def _stratified_object_split(df, val_frac: float, seed: int = 42) -> tuple[set[str], set[str]]:
+    """Split by object_id while approximately preserving class balance."""
+    object_labels = (
+        df[df["target_label"].notna()]
+        .groupby("object_id")["target_label"]
+        .first()
+    )
+    rng = np.random.default_rng(seed)
+    train_ids: set[str] = set()
+    val_ids: set[str] = set()
+
+    for label in sorted(object_labels.unique()):
+        label_ids = object_labels[object_labels == label].index.to_numpy(copy=True)
+        rng.shuffle(label_ids)
+        if len(label_ids) <= 1:
+            train_ids.update(label_ids.tolist())
+            continue
+        n_val = max(1, int(round(len(label_ids) * val_frac)))
+        n_val = min(n_val, len(label_ids) - 1)
+        val_ids.update(label_ids[:n_val].tolist())
+        train_ids.update(label_ids[n_val:].tolist())
+
+    if not val_ids:
+        object_ids = object_labels.index.to_numpy(copy=True)
+        rng.shuffle(object_ids)
+        n_val = max(1, int(len(object_ids) * val_frac))
+        val_ids = set(object_ids[:n_val].tolist())
+        train_ids = set(object_ids[n_val:].tolist())
+
+    return train_ids, val_ids
 
 
 def main() -> None:
@@ -95,28 +129,52 @@ def main() -> None:
         print("Not enough labelled data. Run fetch_training_data.py --limit 500 first.")
         sys.exit(1)
 
-    # Train/val split by object (not by row — prevents leakage)
-    object_ids = np.array(list(labelled["object_id"].unique()))
-    rng = np.random.default_rng(42)
-    rng.shuffle(object_ids)
-    n_val = max(1, int(len(object_ids) * args.val_frac))
-    val_ids = set(object_ids[:n_val])
-    train_ids = set(object_ids[n_val:])
+    # Train/val split by object (not by row — prevents leakage), stratified by label
+    train_ids, val_ids = _stratified_object_split(labelled, args.val_frac, seed=42)
 
     df_train = df[df["object_id"].isin(train_ids)]
     df_val   = df[df["object_id"].isin(val_ids)]
     print(f"  Train objects: {len(train_ids)} | Val objects: {len(val_ids)}")
+    print(
+        "  Val label dist (objects): "
+        f"{df_val[df_val['target_label'].notna()].groupby('target_label')['object_id'].nunique().to_dict()}"
+    )
 
     # Train
     clf = EarlyMetaClassifier(n_estimators=args.n_estimators)
     clf.fit(df_train)
 
-    # Evaluate
-    all_metrics = _metrics(clf, df_val)
-    early_metrics = _early_epoch_metrics(clf, df_val, max_early=5)
+    # Evaluate raw probabilities before any calibration is fitted.
+    raw_all_metrics = _metrics(clf, df_val, calibrated=False)
+    raw_early_metrics = _early_epoch_metrics(clf, df_val, max_early=5, calibrated=False)
 
-    print(f"\nAll epochs metrics:   {all_metrics}")
-    print(f"Early (n_det≤5) metrics: {early_metrics}")
+    calibration_report = {"enabled": False}
+    active_all_metrics = raw_all_metrics
+    active_early_metrics = raw_early_metrics
+
+    labelled_val = df_val[df_val["target_label"].notna()]
+    if len(labelled_val) > 0:
+        y_val = labelled_val["target_label"].map(LABEL_MAP).values
+        raw_val_probs = clf.predict_proba(labelled_val, calibrated=False)
+        calibrator = TemperatureScaler()
+        calibrator.fit(raw_val_probs, y_val)
+        clf.set_calibrator(calibrator)
+        calibration_report = {
+            "enabled": True,
+            "method": calibrator.name,
+            "temperature": round(float(calibrator.temperature), 6),
+            "fit_split": "validation",
+            "note": "Calibrator is fit on the held-out validation split used above; calibrated validation metrics are optimistic and should be refreshed on a new hold-out set for science reporting.",
+        }
+        active_all_metrics = _metrics(clf, df_val, calibrated=True)
+        active_early_metrics = _early_epoch_metrics(clf, df_val, max_early=5, calibrated=True)
+
+    print(f"\nAll epochs metrics (raw):         {raw_all_metrics}")
+    print(f"Early (n_det≤5) metrics (raw):   {raw_early_metrics}")
+    if calibration_report["enabled"]:
+        print(f"Calibration: {calibration_report}")
+        print(f"All epochs metrics (active):      {active_all_metrics}")
+        print(f"Early (n_det≤5) metrics (active): {active_early_metrics}")
 
     # Save
     model_dir = Path(args.model_dir)
@@ -124,7 +182,20 @@ def main() -> None:
     print(f"\nModel saved → {model_dir}/early_meta.pkl")
 
     # Save metrics
-    report = {"all_epochs": all_metrics, "early_epochs": early_metrics}
+    report = {
+        "all_epochs": active_all_metrics,
+        "early_epochs": active_early_metrics,
+        "raw_all_epochs": raw_all_metrics,
+        "raw_early_epochs": raw_early_metrics,
+        "calibration": calibration_report,
+        "training_weights": clf.training_weight_summary,
+        "train_val_split": {
+            "train_objects": len(train_ids),
+            "val_objects": len(val_ids),
+            "val_frac": args.val_frac,
+            "max_n_det": args.max_n_det,
+        },
+    }
     reports_dir = Path("reports/metrics")
     reports_dir.mkdir(parents=True, exist_ok=True)
     with open(reports_dir / "early_meta_metrics.json", "w") as fh:

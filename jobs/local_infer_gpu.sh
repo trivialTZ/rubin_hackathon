@@ -17,7 +17,8 @@
 #
 # Prerequisites:
 #   - data/lightcurves/*.json populated by download_training.sh
-#   - artifacts/local_experts/<expert>/ contains any required model weights
+#   - artifacts/local_experts/<expert>/ contains any required model artifacts
+#     (for ParSNIP: model.pt + classifier.pkl)
 #   - DEBASS_GPU_EXPERTS controls which experts are run (default: parsnip)
 #   - requested experts must be live-model ready; stub mode is treated as an error
 #
