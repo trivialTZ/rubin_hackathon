@@ -1,4 +1,7 @@
-"""scripts/score_early.py — Score a new object at any n_det and print follow-up priority.
+"""scripts/score_early.py — Score objects with the baseline early-epoch model.
+
+This script is kept for benchmark comparisons only.
+It is not the primary trust-aware scoring path.
 
 Usage:
     python scripts/score_early.py --object ZTF21abywdxt --n-det 4
@@ -17,7 +20,7 @@ _SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 sys.path.insert(0, str(_SRC_ROOT))
 
 try:
-    from debass.models.early_meta import EarlyMetaClassifier
+    from debass_meta_meta.models.early_meta import EarlyMetaClassifier
 except ModuleNotFoundError as exc:
     print(f"ERROR: failed to import DEBASS package modules from {_SRC_ROOT}: {exc}")
     print("This usually means the SCC checkout is incomplete or stale. Re-sync the repository and retry.")
@@ -33,7 +36,7 @@ except ImportError:
 
 def _print_results(results: list[dict], *, summary: dict | None = None) -> None:
     if console and results:
-        t = Table(title="Early-Epoch Classification")
+        t = Table(title="Baseline Early-Epoch Classification")
         for col in ["object_id", "n_det", "alert_mjd", "p_snia", "p_nonIa_snlike", "p_other", "predicted_class", "follow_up_priority"]:
             t.add_column(col, overflow="fold")
         for r in results:
@@ -45,7 +48,7 @@ def _print_results(results: list[dict], *, summary: dict | None = None) -> None:
                 t.add_row(
                     r["object_id"],
                     str(r["n_det"]),
-                    str(r.get("alert_mjd", ""  )),
+                    str(r.get("alert_mjd", "")),
                     str(r["p_snia"]),
                     str(r["p_nonIa_snlike"]),
                     str(r["p_other"]),
@@ -70,7 +73,7 @@ def _print_results(results: list[dict], *, summary: dict | None = None) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Score objects with early-epoch meta-classifier")
+    parser = argparse.ArgumentParser(description="Score objects with the baseline early-epoch meta-classifier")
     parser.add_argument("--object", default=None, help="Single ZTF object ID")
     parser.add_argument("--n-det", type=int, default=None, help="Score at this detection epoch only")
     parser.add_argument("--from-labels", default=None, help="CSV with object_id column")
@@ -81,15 +84,15 @@ def main() -> None:
 
     import pandas as pd
 
-    # Load epoch table
+    print("NOTE: score_early.py is the baseline benchmark scorer, not the primary trust-aware payload path.")
+
     epoch_path = Path(args.epochs_dir) / "epoch_features.parquet"
     if not epoch_path.exists():
         print(f"Epoch table not found: {epoch_path}")
-        print("Run: python scripts/fetch_lightcurves.py && python scripts/build_epoch_table.py")
+        print("Run: python scripts/build_epoch_table_from_lc.py")
         sys.exit(1)
     df = pd.read_parquet(epoch_path)
 
-    # Load model
     model_dir = Path(args.model_dir)
     if not (model_dir / "early_meta.pkl").exists():
         print(f"Model not found in {model_dir}")
@@ -97,7 +100,6 @@ def main() -> None:
         sys.exit(1)
     clf = EarlyMetaClassifier.load(model_dir)
 
-    # Determine which objects to score
     if args.object:
         oids = [args.object]
     elif args.from_labels:
@@ -126,7 +128,6 @@ def main() -> None:
             r = clf.score_object_at_n_det(oid, args.n_det, df)
             results.append(r)
         else:
-            # Score at all available epochs up to max_n_det
             n_dets = sorted(obj_df["n_det"].unique())
             for nd in n_dets[:args.max_n_det]:
                 r = clf.score_object_at_n_det(oid, nd, df)

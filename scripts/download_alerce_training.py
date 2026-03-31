@@ -1,6 +1,6 @@
 """scripts/download_alerce_training.py
 
-Download labelled ZTF objects + lightcurves from ALeRCE for training.
+Download weakly labelled ZTF seed objects + lightcurves from ALeRCE.
 
 Strategy:
   1. Query ALeRCE lc_classifier_transient for each SN class
@@ -9,8 +9,13 @@ Strategy:
   3. For each object fetch the full lightcurve.
   4. Write data/labels.csv and data/lightcurves/<oid>.json.
 
+IMPORTANT:
+- `data/labels.csv` produced here is a weak/self-labelled seed set.
+- It is useful for object discovery, smoke tests, and explicitly weak truth.
+- It is not canonical science truth.
+
 This script is designed to run on SCC (long-running, no GPU needed).
-For a full training set use --limit 2000.
+For a full seed set use --limit 2000.
 For a local smoke test use --limit 20.
 
 Usage:
@@ -79,9 +84,9 @@ def _query_class(
                 seen.add(oid)
                 results.append(oid)
         if len(oids) < min(needed * 3, 100):
-            break  # no more pages
+            break
         page += 1
-        time.sleep(0.1)  # polite rate limiting
+        time.sleep(0.1)
     return results
 
 
@@ -100,7 +105,6 @@ def _fetch_lightcurve(client, oid: str, lc_dir: Path) -> bool:
             records = df.to_dict(orient="records")
         if not records:
             return False
-        # Serialise — convert numpy types
         clean = []
         for r in records:
             clean.append({k: (float(v) if hasattr(v, 'item') else v)
@@ -114,10 +118,10 @@ def _fetch_lightcurve(client, oid: str, lc_dir: Path) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Download ALeRCE training data (objects + lightcurves)"
+        description="Download weakly labelled ALeRCE seed objects and lightcurves"
     )
     parser.add_argument("--limit",    type=int, default=100,
-                        help="Total number of labelled objects to download")
+                        help="Total number of weakly labelled seed objects to download")
     parser.add_argument("--lc-dir",   default="data/lightcurves")
     parser.add_argument("--labels-out", default="data/labels.csv")
     parser.add_argument("--resume",   action="store_true",
@@ -137,11 +141,10 @@ def main() -> None:
         print("alerce package not installed. Run: pip install alerce")
         sys.exit(1)
 
-    # --- Step 1: collect object IDs per class ---
-    print(f"=== Collecting {args.limit} labelled objects from ALeRCE ===")
+    print(f"=== Collecting {args.limit} weakly labelled seed objects from ALeRCE ===")
     print(f"PROGRESS download phase=collect current=0 total={args.limit} ok=0 failed=0")
     seen_oids: set[str] = set()
-    collected: list[tuple[str, str]] = []  # (oid, ternary_label)
+    collected: list[tuple[str, str]] = []
 
     for classifier, class_name, ternary_label, frac, min_prob in _CLASS_QUOTA:
         n = max(1, int(args.limit * frac))
@@ -161,14 +164,13 @@ def main() -> None:
 
     from collections import Counter
     dist = Counter(lbl for _, lbl in collected)
-    print(f"\nLabel distribution: {dict(dist)}")
-    print(f"Total objects: {len(collected)}")
+    print(f"\nWeak-label distribution: {dict(dist)}")
+    print(f"Total seed objects: {len(collected)}")
 
-    # --- Step 2: fetch lightcurves ---
     print(f"\n=== Fetching {len(collected)} lightcurves → {lc_dir} ===")
     print(f"PROGRESS download phase=fetch current=0 total={len(collected)} ok=0 failed=0")
     ok, failed = 0, 0
-    for i, (oid, label) in enumerate(collected):
+    for i, (oid, _label) in enumerate(collected):
         cache = lc_dir / f"{oid}.json"
         if args.resume and cache.exists():
             ok += 1
@@ -195,7 +197,6 @@ def main() -> None:
 
     print(f"\nLightcurves: {ok} ok, {failed} failed")
 
-    # --- Step 3: write labels.csv (only for objects with lightcurves) ---
     labels_out.parent.mkdir(parents=True, exist_ok=True)
     written = 0
     with open(labels_out, "w", newline="") as fh:
@@ -206,12 +207,19 @@ def main() -> None:
                 writer.writerow({"object_id": oid, "label": label})
                 written += 1
 
-    print(f"Wrote {written} labels → {labels_out}")
+    print(f"Wrote {written} weak labels → {labels_out}")
     print(
         f"PROGRESS download phase=complete current={len(collected)} "
         f"total={len(collected)} ok={ok} failed={failed} written={written}"
     )
-    print(f"\nNext: python scripts/build_epoch_table_from_lc.py")
+    print("\nWARNING: data/labels.csv contains weak ALeRCE self-labels, not canonical truth.")
+    print("Next trust-aware steps:")
+    print("  python scripts/backfill.py --broker all --from-labels data/labels.csv")
+    print("  python scripts/normalize.py")
+    print("  python scripts/build_truth_table.py --labels data/labels.csv")
+    print("  python scripts/build_object_epoch_snapshots.py")
+    print("\nBaseline benchmark only:")
+    print("  python scripts/build_epoch_table_from_lc.py")
 
 
 if __name__ == "__main__":

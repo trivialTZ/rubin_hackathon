@@ -8,17 +8,17 @@
 #        bash -l jobs/run_gpu_resume.sh
 #
 # CPU chain:
-#   download_training → build_epochs
+#   download_training → backfill(array) → build_epochs
 #
-# GPU resume picks up from the finished epoch table and runs:
-#   local_infer_gpu → train_early → score_all
+# GPU resume picks up from the finished trust-aware CPU artifacts and runs:
+#   local_infer_gpu → train_expert_trust → train_followup → score_all
 
 set -euo pipefail
 
 DEBASS_LIMIT=${DEBASS_LIMIT:-2000}
 DEBASS_MAX_N_DET=${DEBASS_MAX_N_DET:-20}
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_meta_env}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -74,14 +74,19 @@ cd "$DEBASS_ROOT"
 JID_DL=$(qsub -terse -V jobs/download_training.sh)
 echo "[1] download_training   → job $JID_DL"
 
-JID_EP=$(qsub -terse -V -hold_jid "$JID_DL" jobs/build_epochs.sh)
-echo "[2] build_epochs        → job $JID_EP  (holds on $JID_DL)"
+JID_BF=$(qsub -terse -V -hold_jid "$JID_DL" jobs/backfill.sh)
+echo "[2] backfill array      → job $JID_BF  (holds on $JID_DL)"
+
+JID_EP=$(qsub -terse -V -hold_jid "$JID_BF" jobs/build_epochs.sh)
+echo "[3] build_epochs        → job $JID_EP  (holds on $JID_BF)"
 
 cat > "$DEBASS_ROOT/logs/cpu_prep_latest.json" <<EOF
 {
   "download_job_id": "$JID_DL",
+  "backfill_job_id": "$JID_BF",
   "build_job_id": "$JID_EP",
   "download_log": "$DEBASS_ROOT/logs/download.$JID_DL.log",
+  "backfill_log": "$DEBASS_ROOT/logs/backfill.$JID_BF.log",
   "build_log": "$DEBASS_ROOT/logs/build_epochs.$JID_EP.log",
   "limit": $DEBASS_LIMIT,
   "max_n_det": $DEBASS_MAX_N_DET

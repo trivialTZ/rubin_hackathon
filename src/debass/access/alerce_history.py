@@ -1,14 +1,20 @@
-"""ALeRCE per-alert history fetcher.
+"""ALeRCE object-snapshot history fetcher.
 
-ALeRCE stores classifier probabilities at the object level (not per-alert),
-so we cannot get "what was the probability at detection 4" directly.
+ALeRCE stores classifier probabilities at the *object* level (not per-alert),
+so there is no way to recover "what was the probability at detection 4"
+from the historical API.
 
 Strategy:
-  1. Fetch the full lightcurve with detection count per alert (ndethist).
-  2. Fetch the object-level classifier probabilities (latest run).
-  3. Return a list of EpochScore records — one per detection epoch —
-     where the probability is the object-level value tagged with the
-     n_det at which we first observe the object reaching that epoch.
+  1. Fetch the full lightcurve to establish the per-epoch JD values.
+  2. Fetch the *current* object-level classifier probabilities (latest run).
+  3. Synthesise a list of EpochScore records — one per detection epoch —
+     where every epoch carries the *same* latest-snapshot probabilities.
+
+Semantic contract:
+  - ``event_scope = 'object_snapshot'``
+  - ``temporal_exactness = 'latest_object_unsafe'``
+  These are set on every emitted field so downstream consumers can
+  recognise and exclude these records from epoch-safe trust training.
 
 For the SCC GPU path, the lightcurve truncated to N detections is also
 returned so SuperNNova / ParSNIP can be re-run at each epoch.
@@ -23,6 +29,8 @@ _LC_DIR = Path("data/lightcurves")
 
 # Columns to fetch from ALeRCE lightcurve endpoint
 _LC_COLUMNS = "magpsf,sigmapsf,fid,mjd,jd,ra,dec,ndethist,isdiffpos"
+
+_MJD_TO_JD_OFFSET = 2400000.5  # standard conversion
 
 
 @dataclass
@@ -57,8 +65,9 @@ class AlerceHistoryFetcher:
         """Return EpochScore list for each detection epoch up to max_epochs.
 
         Since ALeRCE probabilities are object-level (not per-alert), the same
-        probability vector is attached to every epoch. The value of this is that
-        we can slice the lightcurve at each n_det for local re-scoring on SCC.
+        latest object snapshot is attached to every epoch. This is useful for
+        SCC lightcurve slicing, but the emitted fields remain explicitly marked
+        ``latest_object_unsafe`` so downstream trust training can exclude them.
         """
         lc = self._fetch_lightcurve(object_id)
         if not lc:
@@ -77,12 +86,20 @@ class AlerceHistoryFetcher:
         epochs: list[EpochScore] = []
         for i, det in enumerate(detections[:max_epochs]):
             n_det = i + 1
-            alert_jd = float(det.get("mjd") or det.get("jd") or 0)
+            alert_jd = self._alert_jd(det)
             lc_slice = detections[: n_det]
 
-            # Attach object-level probs, tagged with this epoch's n_det
+            # Attach the latest object snapshot to every epoch with explicit
+            # unsafe temporal semantics.
             epoch_fields = [
-                {**f, "n_det": n_det, "alert_jd": alert_jd}
+                {
+                    **f,
+                    "n_det": n_det,
+                    "alert_jd": alert_jd,
+                    "event_scope": "object_snapshot",
+                    "temporal_exactness": "latest_object_unsafe",
+                    "event_time_jd": None,
+                }
                 for f in probs
             ]
 
@@ -102,6 +119,13 @@ class AlerceHistoryFetcher:
     # ------------------------------------------------------------------ #
     # Internal helpers                                                     #
     # ------------------------------------------------------------------ #
+
+    def _alert_jd(self, record: dict[str, Any]) -> float:
+        if record.get("jd") is not None:
+            return float(record["jd"])
+        if record.get("mjd") is not None:
+            return float(record["mjd"]) + _MJD_TO_JD_OFFSET
+        return 0.0
 
     def _fetch_lightcurve(self, object_id: str) -> list[dict]:
         cache = self.lc_dir / f"{object_id}.json"
@@ -143,7 +167,11 @@ class AlerceHistoryFetcher:
                     "semantic_type": "probability",
                     "canonical_projection": float(prob_val) if prob_val is not None else None,
                     "classifier": classifier,
+                    "class_name": cls_name,
                     "class": cls_name,
+                    "event_scope": "object_snapshot",
+                    "temporal_exactness": "latest_object_unsafe",
+                    "event_time_jd": None,
                 })
             return fields
         except Exception:

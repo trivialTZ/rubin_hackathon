@@ -67,12 +67,12 @@ Core rules:
 ```bash
 python3.11 -m pip install -r env/requirements.txt
 
-# 1. Download seed objects + cached lightcurves
+# 1. Download weakly labelled seed objects + cached lightcurves
 python3.11 scripts/download_alerce_training.py --limit 20
 
 # 2. Fetch broker payloads and normalize to event-level silver
 python3.11 scripts/backfill.py --broker all --from-labels data/labels.csv
-python3.11 scripts/normalize.py --skip-gold
+python3.11 scripts/normalize.py
 
 # 3. Build truth and exact object-epoch snapshots
 python3.11 scripts/build_truth_table.py --labels data/labels.csv
@@ -92,6 +92,7 @@ python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
 The legacy fused baseline remains available:
 
 ```bash
+# NOTE: labels.csv is a weak/self-label seed set, not canonical science truth.
 python3.11 scripts/build_epoch_table_from_lc.py
 python3.11 scripts/train_early.py --n-estimators 100
 python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
@@ -114,7 +115,7 @@ bash -l jobs/run_gpu_resume.sh
 ```
 
 Recommended split:
-1. CPU prep: `download_training → backfill/normalize → build_truth_table → build_object_epoch_snapshots → build_expert_helpfulness`
+1. CPU prep: `download_training → backfill(array) → normalize → build_truth_table → build_object_epoch_snapshots → build_expert_helpfulness`
 2. GPU inference when enabled: `local_infer`
 3. CPU training: `train_expert_trust → train_followup → score_nightly`
 
@@ -153,7 +154,7 @@ Baseline outputs:
 ## Repository Structure
 
 ```
-src/debass/
+src/debass_meta_meta/
   access/           Broker adapters
   features/         No-leakage lightcurve feature extraction
   ingest/           Bronze / broker-events / gold snapshot builders

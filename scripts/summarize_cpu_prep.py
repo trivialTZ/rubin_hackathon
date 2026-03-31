@@ -18,7 +18,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.features.lightcurve import FEATURE_NAMES
+from debass_meta_meta.features.lightcurve import FEATURE_NAMES
 
 
 def _iso_mtime(path: Path) -> str | None:
@@ -461,7 +461,7 @@ def main() -> None:
     labels_path = data_root / "labels.csv"
     lc_dir = data_root / "lightcurves"
     bronze_dir = data_root / "bronze"
-    silver_path = data_root / "silver" / "broker_outputs.parquet"
+    silver_path = data_root / "silver" / "broker_events.parquet"
     local_expert_path = data_root / "silver" / "local_expert_outputs.json"
     epochs_path = data_root / "epochs" / "epoch_features.parquet"
 

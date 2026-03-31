@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.experts.local import ALL_LOCAL_EXPERTS
+from debass_meta_meta.experts.local import ALL_LOCAL_EXPERTS
 
 _SILVER_DIR = Path("data/silver")
 _LC_DIR = Path("data/lightcurves")
@@ -42,7 +42,7 @@ def _load_oids_from_labels(path: Path) -> list[str]:
 
 
 def _load_oids_from_silver(silver_dir: Path, limit: int) -> list[str]:
-    path = silver_dir / "broker_outputs.parquet"
+    path = silver_dir / "broker_events.parquet"
     if not path.exists():
         return []
     try:

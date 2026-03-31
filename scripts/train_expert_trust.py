@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import pandas as pd
 
-from debass.models.expert_trust import train_expert_trust_suite
-from debass.models.splitters import group_train_cal_test_split
+from debass_meta_meta.models.expert_trust import train_expert_trust_suite
+from debass_meta_meta.models.splitters import group_train_cal_test_split
 
 
 def main() -> None:
@@ -34,6 +34,13 @@ def main() -> None:
     if args.strict_labels and snapshot_df["label_quality"].fillna("").eq("weak").any():
         raise SystemExit("Weak-label truth present; strict mode blocks expert-trust training")
 
+    if snapshot_df["label_quality"].fillna("").eq("weak").any():
+        print("WARNING: weak-label truth is present in snapshots; trust metrics should be treated as weak-label results.")
+    if not args.allow_unsafe_alerce:
+        print("Excluding ALeRCE latest-object snapshots from trust training by default.")
+    else:
+        print("WARNING: including latest_object_unsafe ALeRCE snapshots in trust training (--allow-unsafe-alerce).")
+
     split = group_train_cal_test_split(object_to_label)
     _, metrics_report, metadata = train_expert_trust_suite(
         helpfulness_df=helpfulness_df,
@@ -49,6 +56,8 @@ def main() -> None:
     reports_dir.mkdir(parents=True, exist_ok=True)
     with open(reports_dir / "expert_trust_metrics.json", "w") as fh:
         json.dump(metrics_report, fh, indent=2)
+    metadata["allow_unsafe_alerce"] = bool(args.allow_unsafe_alerce)
+    metadata["contains_weak_labels"] = bool(snapshot_df["label_quality"].fillna("").eq("weak").any())
     with open(Path(args.models_dir) / "metadata.json", "w") as fh:
         json.dump(metadata, fh, indent=2)
     print(f"Wrote expert trust metrics → {reports_dir / 'expert_trust_metrics.json'}")

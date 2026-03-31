@@ -1,4 +1,7 @@
-"""scripts/train_early.py — Train early-epoch meta-classifier.
+"""scripts/train_early.py — Train the baseline early-epoch meta-classifier.
+
+This script is kept for benchmark comparisons only.
+It is not the primary trust-aware science path.
 
 Trains on (object_id, n_det) epoch feature table.
 Outputs: models/early_meta/early_meta.pkl + metrics summary.
@@ -27,8 +30,8 @@ sys.path.insert(0, str(_SRC_ROOT))
 import numpy as np
 
 try:
-    from debass.models.calibrate import TemperatureScaler
-    from debass.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
+    from debass_meta_meta.models.calibrate import TemperatureScaler
+    from debass_meta_meta.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
 except ModuleNotFoundError as exc:
     print(f"ERROR: failed to import DEBASS package modules from {_SRC_ROOT}: {exc}")
     print("This usually means the SCC checkout is incomplete or stale. Re-sync the repository and retry.")
@@ -38,7 +41,7 @@ except ModuleNotFoundError as exc:
 def _load_epoch_table(path: Path):
     import pandas as pd
     if not path.exists():
-        raise FileNotFoundError(f"{path} not found — run build_epoch_table.py first")
+        raise FileNotFoundError(f"{path} not found — run build_epoch_table_from_lc.py first")
     return pd.read_parquet(path)
 
 
@@ -109,7 +112,7 @@ def _stratified_object_split(df, val_frac: float, seed: int = 42) -> tuple[set[s
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train early-epoch meta-classifier")
+    parser = argparse.ArgumentParser(description="Train baseline early-epoch meta-classifier")
     parser.add_argument("--epochs-dir", default="data/epochs")
     parser.add_argument("--model-dir",  default="models/early_meta")
     parser.add_argument("--max-n-det",  type=int, default=20,
@@ -121,10 +124,10 @@ def main() -> None:
     import pandas as pd
 
     epoch_path = Path(args.epochs_dir) / "epoch_features.parquet"
+    print("NOTE: train_early.py is the baseline benchmark path, not the primary trust-aware pipeline.")
     print(f"Loading epoch table from {epoch_path}...")
     df = _load_epoch_table(epoch_path)
 
-    # Filter to requested max epoch depth
     df = df[df["n_det"] <= args.max_n_det]
     labelled = df[df["target_label"].notna()]
     print(f"  Total rows: {len(df)} | Labelled: {len(labelled)} | Objects: {df['object_id'].nunique()}")
@@ -132,10 +135,10 @@ def main() -> None:
     print(f"  n_det dist (labelled): {labelled['n_det'].value_counts().sort_index().to_dict()}")
 
     if len(labelled) < 3:
-        print("Not enough labelled data. Run fetch_training_data.py --limit 500 first.")
+        print("Not enough labelled baseline data.")
+        print("Run the seed-data path first: download_alerce_training.py → backfill.py → normalize.py → build_epoch_table_from_lc.py")
         sys.exit(1)
 
-    # Train/val split by object (not by row — prevents leakage), stratified by label
     train_ids, val_ids = _stratified_object_split(labelled, args.val_frac, seed=42)
 
     df_train = df[df["object_id"].isin(train_ids)]
@@ -146,11 +149,9 @@ def main() -> None:
         f"{df_val[df_val['target_label'].notna()].groupby('target_label')['object_id'].nunique().to_dict()}"
     )
 
-    # Train
     clf = EarlyMetaClassifier(n_estimators=args.n_estimators)
     clf.fit(df_train)
 
-    # Evaluate raw probabilities before any calibration is fitted.
     raw_all_metrics = _metrics(clf, df_val, calibrated=False)
     raw_early_metrics = _early_epoch_metrics(clf, df_val, max_early=5, calibrated=False)
 
@@ -182,12 +183,10 @@ def main() -> None:
         print(f"All epochs metrics (active):      {active_all_metrics}")
         print(f"Early (n_det≤5) metrics (active): {active_early_metrics}")
 
-    # Save
     model_dir = Path(args.model_dir)
     clf.save(model_dir)
     print(f"\nModel saved → {model_dir}/early_meta.pkl")
 
-    # Save metrics
     report = {
         "all_epochs": active_all_metrics,
         "early_epochs": active_early_metrics,

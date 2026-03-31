@@ -1,8 +1,7 @@
-"""scripts/build_epoch_table.py — Build (object_id, n_det) epoch feature table.
+"""scripts/build_epoch_table.py — Legacy wrapper for the baseline epoch-table builder.
 
-Usage:
-    python scripts/build_epoch_table.py
-    python scripts/build_epoch_table.py --max-n-det 10 --labels data/labels.csv
+This entry point is retained for compatibility only.
+Prefer `scripts/build_epoch_table_from_lc.py` for the baseline benchmark path.
 """
 from __future__ import annotations
 
@@ -13,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.ingest.epochs import build_epoch_table
+from debass_meta_meta.ingest.epochs import build_epoch_table
 
 
 def _load_labels(path: Path) -> dict[str, str]:
@@ -25,7 +24,7 @@ def _load_labels(path: Path) -> dict[str, str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build epoch feature table")
+    parser = argparse.ArgumentParser(description="Build legacy baseline epoch feature table")
     parser.add_argument("--lc-dir",     default="data/lightcurves")
     parser.add_argument("--silver-dir", default="data/silver")
     parser.add_argument("--epochs-dir", default="data/epochs")
@@ -33,12 +32,15 @@ def main() -> None:
     parser.add_argument("--max-n-det",  type=int, default=20)
     args = parser.parse_args()
 
+    print("NOTE: build_epoch_table.py is a legacy compatibility wrapper.")
+    print("Prefer: python scripts/build_epoch_table_from_lc.py")
+
     label_map = {}
     if Path(args.labels).exists():
         label_map = _load_labels(Path(args.labels))
         print(f"Loaded {len(label_map)} labels from {args.labels}")
 
-    print("Building epoch feature table...")
+    print("Building legacy baseline epoch feature table...")
     out = build_epoch_table(
         lc_dir=Path(args.lc_dir),
         silver_dir=Path(args.silver_dir),
@@ -48,7 +50,6 @@ def main() -> None:
     )
     print(f"Wrote {out}")
 
-    # Quick summary
     try:
         import pandas as pd
         df = pd.read_parquet(out)

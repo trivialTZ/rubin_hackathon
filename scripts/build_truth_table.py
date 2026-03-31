@@ -1,4 +1,8 @@
-"""Build the canonical truth table."""
+"""Build the canonical truth table.
+
+Prefer external curated truth via ``--input``.
+Using ``--labels`` builds an explicitly weak truth table from broker/self labels.
+"""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +19,14 @@ def _read_table(path: Path):
     if path.suffix.lower() == ".parquet":
         return pd.read_parquet(path)
     return pd.read_csv(path)
+
+
+def _print_weak_label_warning(labels_path: Path) -> None:
+    print(
+        "WARNING: building truth from weak labels in "
+        f"{labels_path}. label_source will be 'alerce_self_label' and "
+        "label_quality will be 'weak'."
+    )
 
 
 def build_truth_table(
@@ -85,15 +97,22 @@ def build_truth_table(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build canonical truth table")
     parser.add_argument("--input", default=None, help="External CSV/parquet truth table")
-    parser.add_argument("--labels", default="data/labels.csv", help="Fallback weak-label CSV")
+    parser.add_argument("--labels", default=None, help="Weak-label CSV with object_id,label columns")
     parser.add_argument("--output", default="data/truth/object_truth.parquet")
     parser.add_argument("--label-source", default=None)
     parser.add_argument("--label-quality", default=None)
     args = parser.parse_args()
 
+    if not args.input and not args.labels:
+        raise SystemExit("Provide --input for curated truth or --labels for explicitly weak truth")
+
+    labels_path = Path(args.labels) if args.labels else None
+    if labels_path is not None:
+        _print_weak_label_warning(labels_path)
+
     path = build_truth_table(
         input_path=Path(args.input) if args.input else None,
-        labels_path=Path(args.labels) if args.labels else None,
+        labels_path=labels_path,
         output_path=Path(args.output),
         label_source=args.label_source,
         label_quality=args.label_quality,

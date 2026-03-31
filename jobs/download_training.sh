@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#$ -N debass_download
+#$ -N debass_meta_meta_download
 #$ -l h_rt=12:00:00
 #$ -l mem_per_core=8G
 #$ -pe omp 1
@@ -8,18 +8,18 @@
 # Uncomment and set your project if on Med Campus:
 ##$ -P your_project_name
 
-# Download ALeRCE labelled training objects + lightcurves.
+# Download weakly labelled ALeRCE seed objects + lightcurves.
 # Network-bound job; no GPU needed.
 # For 2000 objects at ~0.15s/LC expect ~10-15 min.
 #
 # Environment variables:
-#   DEBASS_LIMIT   (default 2000) — total labelled objects to download
+#   DEBASS_LIMIT   (default 2000) — total weakly labelled seed objects to download
 #   DEBASS_ROOT    — path to rubin_hackathon repo
 
 set -euo pipefail
 
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_meta_env}
 : "${DEBASS_ROOT:?DEBASS_ROOT must be set before running this job}"
 
 module load "$DEBASS_PYTHON_MODULE"
@@ -32,7 +32,7 @@ source "$DEBASS_VENV/bin/activate"
 cd "$DEBASS_ROOT"
 mkdir -p logs data/lightcurves
 
-echo "=== DEBASS: downloading ALeRCE training data ==="
+echo "=== DEBASS: downloading weakly labelled ALeRCE seed data ==="
 echo "Limit: ${DEBASS_LIMIT:-2000} objects"
 echo "Node:  $(hostname)"
 echo "Start: $(date)"

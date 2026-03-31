@@ -8,12 +8,15 @@
 # ParSNIP weights, while SuperNNova remains stub-only until its loader is
 # implemented. Override if needed:
 #   bash -l jobs/run_gpu_resume.sh --experts=parsnip,supernnova
+#
+# Baseline resume is available only with --baseline.
 
 set -euo pipefail
 
 DEBASS_GPU_EXPERTS=${DEBASS_GPU_EXPERTS:-parsnip}
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_meta_env}
+RUN_BASELINE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -23,6 +26,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         --experts=*)
             DEBASS_GPU_EXPERTS="${1#*=}"
+            ;;
+        --baseline)
+            RUN_BASELINE=true
             ;;
         *)
             echo "Unknown argument: $1"
@@ -65,14 +71,8 @@ if ! ls data/lightcurves/*.json >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ ! -f data/silver/broker_outputs.parquet ]; then
-    echo "ERROR: data/silver/broker_outputs.parquet not found."
-    echo "Run CPU prep first: bash jobs/submit_cpu_prep.sh"
-    exit 1
-fi
-
-if [ ! -f data/epochs/epoch_features.parquet ]; then
-    echo "ERROR: data/epochs/epoch_features.parquet not found."
+if [ ! -f data/silver/broker_events.parquet ]; then
+    echo "ERROR: data/silver/broker_events.parquet not found."
     echo "Run CPU prep first: bash jobs/submit_cpu_prep.sh"
     exit 1
 fi
@@ -121,16 +121,22 @@ echo " DEBASS_MAX_N_DET:     ${DEBASS_MAX_N_DET:-20}"
 echo " DEBASS_N_EST:         ${DEBASS_N_EST:-500}"
 echo " DEBASS_PYTHON_MODULE: $DEBASS_PYTHON_MODULE"
 echo " DEBASS_VENV:          $DEBASS_VENV"
+echo " Baseline mode:        $RUN_BASELINE"
 echo "======================================="
 
-bash -l jobs/local_infer_gpu.sh
-
-if [ -f data/gold/expert_helpfulness.parquet ]; then
-    bash -l jobs/train_expert_trust.sh
-    bash -l jobs/train_followup.sh
+if [ "$RUN_BASELINE" = true ]; then
+    export DEBASS_SCORE_MODE=baseline
+    bash -l jobs/train_early.sh
     bash -l jobs/score_all.sh
 else
-    bash -l jobs/train_early.sh
+    bash -l jobs/local_infer_gpu.sh
+    if [ ! -f data/gold/expert_helpfulness.parquet ]; then
+        echo "ERROR: trust-aware CPU artifacts missing (data/gold/expert_helpfulness.parquet)."
+        echo "Run CPU prep first or use --baseline for benchmark mode."
+        exit 1
+    fi
+    bash -l jobs/train_expert_trust.sh
+    bash -l jobs/train_followup.sh
     bash -l jobs/score_all.sh
 fi
 

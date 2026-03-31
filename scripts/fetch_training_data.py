@@ -1,15 +1,14 @@
 """scripts/fetch_training_data.py
 
-Fetch labelled training data from ALeRCE (TNS-classified SNe) and
-optionally Fink. Writes bronze → silver → gold and a labels.csv.
+Fetch a weakly labelled seed dataset from ALeRCE and optional broker payloads.
+Writes bronze → silver and a weak-label/object list CSV, but does not build gold.
 
 Workflow:
-  1. Query ALeRCE for objects with known LC classifier labels
-     (SNIa, SNIbc, SNII, SLSN → mapped to ternary target)
-  2. Fetch probabilities + lightcurves for each object
+  1. Query ALeRCE for self-labelled seed objects
+  2. Fetch broker probabilities/lightcurves for each object
   3. Write bronze Parquet
-  4. Run bronze→silver→gold transforms
-  5. Write data/labels.csv with object_id,label columns
+  4. Optionally run bronze→silver normalization
+  5. Write data/labels.csv with weak seed labels
 
 Usage:
     python scripts/fetch_training_data.py --limit 10      # smoke test
@@ -25,11 +24,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.access.alerce import AlerceAdapter
-from debass.access.fink import FinkAdapter
-from debass.ingest.bronze import write_bronze
-from debass.ingest.silver import bronze_to_silver
-from debass.ingest.gold import silver_to_gold
+from debass_meta_meta.access.alerce import AlerceAdapter
+from debass_meta_meta.access.fink import FinkAdapter
+from debass_meta_meta.ingest.bronze import write_bronze
+from debass_meta_meta.ingest.silver import bronze_to_silver
 
 # ------------------------------------------------------------------ #
 # Ternary label mapping from ALeRCE LC classifier classes             #
@@ -62,7 +60,7 @@ _CLASS_QUOTA = {
 
 
 def _query_alerce_objects(adapter: AlerceAdapter, limit: int) -> list[dict]:
-    """Query ALeRCE for classified objects. Returns list of {oid, ternary_label}."""
+    """Query ALeRCE for self-labelled seed objects."""
     if adapter._client is None:
         print("  [alerce] client not available — cannot query objects")
         return []
@@ -76,8 +74,8 @@ def _query_alerce_objects(adapter: AlerceAdapter, limit: int) -> list[dict]:
                 format="pandas",
                 classifier=classifier,
                 class_name=cls_name,
-                probability=0.5,   # lowered threshold for better coverage
-                page_size=n * 2,   # fetch extra to account for duplicates
+                probability=0.5,
+                page_size=n * 2,
                 page=1,
             )
             if df is not None and len(df) > 0:
@@ -127,32 +125,31 @@ def _write_labels(label_map: dict[str, str], out_path: Path) -> None:
         writer.writeheader()
         for oid, lbl in sorted(label_map.items()):
             writer.writerow({"object_id": oid, "label": lbl})
-    print(f"  labels.csv: {len(label_map)} objects → {out_path}")
+    print(f"  weak labels: {len(label_map)} objects → {out_path}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fetch labelled training data")
+    parser = argparse.ArgumentParser(description="Fetch weakly labelled seed data")
     parser.add_argument("--limit", type=int, default=10,
-                        help="Total number of labelled objects to fetch")
+                        help="Total number of self-labelled seed objects to fetch")
     parser.add_argument("--brokers", nargs="+", default=["alerce"],
                         choices=["alerce", "fink"],
                         help="Which brokers to fetch from (fink adds score features)")
     parser.add_argument("--bronze-dir", default="data/bronze")
     parser.add_argument("--silver-dir", default="data/silver")
-    parser.add_argument("--gold-dir",   default="data/gold")
     parser.add_argument("--labels-out", default="data/labels.csv")
+    parser.add_argument("--skip-silver", action="store_true",
+                        help="Only fetch bronze payloads and weak labels")
     args = parser.parse_args()
 
     bronze_dir = Path(args.bronze_dir)
     silver_dir = Path(args.silver_dir)
-    gold_dir   = Path(args.gold_dir)
     labels_out = Path(args.labels_out)
 
-    print(f"=== Fetching {args.limit} labelled objects ===")
+    print(f"=== Fetching {args.limit} weakly labelled seed objects ===")
 
-    # ---- Step 1: query ALeRCE for classified objects ---- #
     alerce = AlerceAdapter()
-    print("\n[1/5] Querying ALeRCE for classified objects...")
+    print("\n[1/4] Querying ALeRCE for self-labelled seed objects...")
     classified = _query_alerce_objects(alerce, args.limit)
 
     if not classified:
@@ -163,42 +160,35 @@ def main() -> None:
     label_map = {o["oid"]: o["ternary_label"] for o in classified}
     print(f"  Total objects: {len(oids)}")
     from collections import Counter
-    print(f"  Label distribution: {dict(Counter(label_map.values()))}")
+    print(f"  Weak-label distribution: {dict(Counter(label_map.values()))}")
 
-    # ---- Step 2: fetch ALeRCE broker outputs ---- #
-    print("\n[2/5] Fetching ALeRCE broker outputs...")
+    print("\n[2/4] Fetching ALeRCE broker outputs...")
     _fetch_and_write_bronze(alerce, oids, bronze_dir)
 
-    # ---- Step 3: optionally fetch Fink scores ---- #
     if "fink" in args.brokers:
-        print("\n[3/5] Fetching Fink broker outputs...")
+        print("\n[3/4] Fetching Fink broker outputs...")
         fink = FinkAdapter()
         _fetch_and_write_bronze(fink, oids, bronze_dir)
     else:
-        print("\n[3/5] Skipping Fink (not in --brokers)")
+        print("\n[3/4] Skipping Fink (not in --brokers)")
 
-    # ---- Step 4: bronze → silver → gold ---- #
-    print("\n[4/5] Normalising bronze → silver → gold...")
-    try:
-        silver_path = bronze_to_silver(bronze_dir=bronze_dir, silver_dir=silver_dir)
-        print(f"  silver: {silver_path}")
-        gold_path = silver_to_gold(
-            silver_dir=silver_dir,
-            gold_dir=gold_dir,
-            label_map=label_map,
-            label_source="alerce_lc_classifier",
-        )
-        print(f"  gold:   {gold_path}")
-    except Exception as exc:
-        print(f"  Normalise error: {exc}")
-        print("  (This is expected if no data was fetched live — check bronze dir.)")
+    if args.skip_silver:
+        print("\n[4/4] Skipping silver normalization (--skip-silver)")
+    else:
+        print("\n[4/4] Normalising bronze → silver...")
+        try:
+            silver_path = bronze_to_silver(bronze_dir=bronze_dir, silver_dir=silver_dir)
+            print(f"  silver: {silver_path}")
+        except Exception as exc:
+            print(f"  Normalise error: {exc}")
+            print("  (This is expected if no data was fetched live — check bronze dir.)")
 
-    # ---- Step 5: write labels.csv ---- #
-    print("\n[5/5] Writing labels.csv...")
+    print("\nWriting weak labels / object list...")
     _write_labels(label_map, labels_out)
 
     print("\n=== Done ===")
-    print(f"  Next: python scripts/train.py --labels {labels_out}")
+    print("This CSV contains weak ALeRCE self-labels for seed objects, not canonical truth.")
+    print(f"Next: python scripts/build_truth_table.py --labels {labels_out}")
 
 
 if __name__ == "__main__":

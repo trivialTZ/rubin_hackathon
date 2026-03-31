@@ -17,8 +17,8 @@ git clone <repo-url> rubin_hackathon
 cd rubin_hackathon
 
 # Create the virtualenv in project space, not $HOME
-python3 -m venv /projectnb/<yourproject>/venvs/debass_env
-source /projectnb/<yourproject>/venvs/debass_env/bin/activate
+python3 -m venv /projectnb/<yourproject>/venvs/debass_meta_meta_env
+source /projectnb/<yourproject>/venvs/debass_meta_meta_env/bin/activate
 
 # Install dependencies
 pip install -r env/requirements.txt
@@ -40,7 +40,7 @@ pip install astro-parsnip
 
 # Set the repo root env var (add to ~/.bashrc for persistence)
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
-export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
+export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_meta_meta_env
 ```
 
 ## 2. Credentials
@@ -75,7 +75,8 @@ Recommended CPU-first order:
 
 ```text
 download_training
-  → backfill / normalize
+  → backfill (array)
+  → normalize
   → build_truth_table
   → build_object_epoch_snapshots
   → build_expert_helpfulness
@@ -97,7 +98,7 @@ $DEBASS_VENV/bin/python scripts/summarize_cpu_prep.py \
 
 That report should summarize:
 
-- `data/labels.csv`
+- `data/labels.csv` (weak self-label seed set)
 - `data/lightcurves/*.json`
 - `data/bronze/*.parquet`
 - `data/silver/broker_events.parquet`
@@ -133,6 +134,9 @@ bash -l jobs/run_gpu_resume.sh
 
 # If you later enable more experts, override the list explicitly
 bash -l jobs/run_gpu_resume.sh --experts=parsnip,supernnova
+
+# Baseline benchmark only
+bash -l jobs/run_gpu_resume.sh --baseline
 ```
 
 GPU should be used only for local rerunnable experts. CPU is the default for:
@@ -153,10 +157,13 @@ Note: on SCC, `nvidia-smi` may show all physical GPUs on the node even when your
 job only owns one GPU. The DEBASS resume script now checks `torch.cuda.is_available()`
 and `torch.cuda.device_count()` instead of trusting the raw `nvidia-smi` count.
 
-If you still want the old single-submit batch flow, it remains available:
+If you still want the single-submit batch flow, it now defaults to the trust-aware chain:
 
 ```bash
 bash jobs/submit_all.sh --gpu --limit 2000
+
+# Baseline benchmark only
+bash jobs/submit_all.sh --gpu --baseline --limit 2000
 ```
 
 ## 5. Manual stage control
@@ -164,8 +171,9 @@ bash jobs/submit_all.sh --gpu --limit 2000
 Use `-V` so SCC jobs inherit `DEBASS_ROOT`, `DEBASS_PYTHON_MODULE`, and related env vars:
 
 ```bash
-qsub -V jobs/download_training.sh      # seed objects + lightcurves
-qsub -V jobs/build_epochs.sh           # backfill + normalize + gold prep
+qsub -V jobs/download_training.sh      # weakly labelled seed objects + lightcurves
+qsub -V jobs/backfill.sh               # array backfill by broker
+qsub -V jobs/build_epochs.sh           # normalize + truth + gold prep
 qsub -V jobs/local_infer_gpu.sh        # GPU: local experts only
 qsub -V jobs/train_expert_trust.sh     # CPU trust-head training
 qsub -V jobs/train_followup.sh         # CPU follow-up training
@@ -194,7 +202,7 @@ export DEBASS_GPU_QUEUE=l40s
 export DEBASS_GPU_COUNT=1
 export DEBASS_GPU_MEMORY=40G
 export DEBASS_PYTHON_MODULE=python3/3.10.12
-export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
+export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_meta_meta_env
 ```
 
 ## 8. Output locations

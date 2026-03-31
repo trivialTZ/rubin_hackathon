@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from debass.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
-from debass.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
+from debass_meta_meta.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
+from debass_meta_meta.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
 
 _SILVER_DIR = Path("data/silver")
 _GOLD_DIR = Path("data/gold")
@@ -79,7 +79,7 @@ def build_object_epoch_snapshots(
     truth_path: Path = _TRUTH_PATH,
     max_n_det: int = 20,
     object_ids: list[str] | None = None,
-    allow_unsafe_latest_snapshot: bool = True,
+    allow_unsafe_latest_snapshot: bool = False,
 ) -> Path:
     """Build the canonical gold v2 object-epoch snapshot table."""
     try:
@@ -144,7 +144,7 @@ def select_events_asof(
     event_rows,
     *,
     alert_jd: float,
-    allow_unsafe_latest_snapshot: bool = True,
+    allow_unsafe_latest_snapshot: bool = False,
 ) -> list[dict[str, Any]]:
     """Select the latest event-safe rows for one expert/object pair."""
     if len(event_rows) == 0:
