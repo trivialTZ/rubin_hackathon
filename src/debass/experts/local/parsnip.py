@@ -78,6 +78,7 @@ class ParSNIPExpert(LocalExpert):
             "model_dir": str(self.model_dir),
             "available": self._parsnip_available,
             "model_loaded": self._model is not None,
+            "inference_implemented": False,
             "requires": "astro-parsnip>=1.4.0, multi-band photometry",
             "epoch_aware": True,
             "calibration": "generative — well-calibrated by design",

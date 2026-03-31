@@ -78,6 +78,7 @@ class SuperNNovaExpert(LocalExpert):
             "model_dir": str(self.model_dir),
             "available": self._snn_available,
             "model_loaded": self._model is not None,
+            "inference_implemented": False,
             "requires": "PyTorch, supernnova>=2.0",
             "epoch_aware": True,
         }

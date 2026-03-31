@@ -121,7 +121,14 @@ def main() -> None:
     for expert in experts:
         meta = expert.metadata()
         model_loaded = bool(meta.get("model_loaded"))
+        inference_implemented = bool(meta.get("inference_implemented", True))
         print(f"[{expert.name}] available={meta['available']} model_loaded={model_loaded}")
+        if args.require_live_model and not inference_implemented:
+            print(
+                f"[{expert.name}] live inference is not implemented in this repository yet. "
+                "Do not run the GPU training stage until the wrapper is completed."
+            )
+            sys.exit(2)
         if args.require_live_model and (not meta.get("available") or not model_loaded):
             print(
                 f"[{expert.name}] live model unavailable. "
