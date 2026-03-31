@@ -153,7 +153,7 @@ Baseline outputs:
 ## Repository Structure
 
 ```
-src/debass/
+src/debass_meta/
   access/           Broker adapters
   features/         No-leakage lightcurve feature extraction
   ingest/           Bronze / broker-events / gold snapshot builders

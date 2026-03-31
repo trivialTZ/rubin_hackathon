@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.experts.local import ALL_LOCAL_EXPERTS
+from debass_meta.experts.local import ALL_LOCAL_EXPERTS
 
 _SILVER_DIR = Path("data/silver")
 _LC_DIR = Path("data/lightcurves")

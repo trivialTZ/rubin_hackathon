@@ -8,7 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.ingest.gold import build_object_epoch_snapshots
+from debass_meta.ingest.gold import build_object_epoch_snapshots
 
 
 def test_snapshot_builder_blocks_future_event_from_earlier_epoch(tmp_path: Path) -> None:

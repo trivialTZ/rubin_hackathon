@@ -17,11 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import numpy as np
 
-from debass.models.baselines import (
+from debass_meta.models.baselines import (
     AverageEnsemble, WeightedEnsemble, StackedEnsemble, LABEL_MAP, LABEL_NAMES
 )
-from debass.models.meta import MetaClassifier
-from debass.models.calibrate import TemperatureScaler
+from debass_meta.models.meta import MetaClassifier
+from debass_meta.models.calibrate import TemperatureScaler
 
 _GOLD_DIR = Path("data/gold")
 _MODEL_DIR = Path("models")

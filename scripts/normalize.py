@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.ingest.silver import bronze_to_silver
-from debass.ingest.gold import silver_to_gold
+from debass_meta.ingest.silver import bronze_to_silver
+from debass_meta.ingest.gold import silver_to_gold
 
 
 def _load_labels(path: Path) -> dict[str, str]:

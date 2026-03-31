@@ -71,10 +71,10 @@ required_files=(
     "jobs/submit_cpu_prep.sh"
     "jobs/run_gpu_resume.sh"
     "scripts/download_alerce_training.py"
-    "src/debass/__init__.py"
-    "src/debass/models/__init__.py"
-    "src/debass/models/early_meta.py"
-    "src/debass/models/calibrate.py"
+    "src/debass_meta/__init__.py"
+    "src/debass_meta/models/__init__.py"
+    "src/debass_meta/models/early_meta.py"
+    "src/debass_meta/models/calibrate.py"
 )
 
 missing=()

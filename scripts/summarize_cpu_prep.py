@@ -18,7 +18,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.features.lightcurve import FEATURE_NAMES
+from debass_meta.features.lightcurve import FEATURE_NAMES
 
 
 def _iso_mtime(path: Path) -> str | None:

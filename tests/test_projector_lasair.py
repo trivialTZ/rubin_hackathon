@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.projectors.lasair import project_events
+from debass_meta.projectors.lasair import project_events
 
 
 def test_lasair_projector_emits_context_one_hot() -> None:

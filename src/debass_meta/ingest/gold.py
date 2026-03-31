@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from debass.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
-from debass.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
+from debass_meta.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
+from debass_meta.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
 
 _SILVER_DIR = Path("data/silver")
 _GOLD_DIR = Path("data/gold")

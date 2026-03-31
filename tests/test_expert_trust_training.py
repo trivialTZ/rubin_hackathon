@@ -7,8 +7,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.models.expert_trust import train_expert_trust_suite
-from debass.models.splitters import GroupSplit
+from debass_meta.models.expert_trust import train_expert_trust_suite
+from debass_meta.models.splitters import GroupSplit
 
 
 def _toy_rows() -> tuple[pd.DataFrame, pd.DataFrame]:

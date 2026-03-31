@@ -8,7 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.ingest.silver import bronze_to_silver
+from debass_meta.ingest.silver import bronze_to_silver
 
 
 def test_broker_events_preserve_fink_temporal_keys(tmp_path: Path) -> None:

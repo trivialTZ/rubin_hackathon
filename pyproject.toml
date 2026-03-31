@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "debass"
+name = "debass_meta"
 version = "0.1.0"
 description = "DEBASS meta-classifier: trust-aware fusion of Rubin broker outputs"
 requires-python = ">=3.10"
@@ -33,11 +33,11 @@ dev = [
 ]
 
 [project.scripts]
-debass-probe = "debass.cli.probe:main"
-debass-backfill = "debass.cli.backfill:main"
+debass_meta-probe = "debass_meta.cli.probe:main"
+debass_meta-backfill = "debass_meta.cli.backfill:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/debass"]
+packages = ["src/debass_meta"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

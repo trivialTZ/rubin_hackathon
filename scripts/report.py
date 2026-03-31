@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import numpy as np
 
-from debass.models.baselines import LABEL_MAP, LABEL_NAMES, N_CLASSES
+from debass_meta.models.baselines import LABEL_MAP, LABEL_NAMES, N_CLASSES
 
 try:
     from rich.console import Console

@@ -16,7 +16,7 @@
 #
 # Requirements:
 #   - DEBASS_ROOT must be set (e.g. export DEBASS_ROOT=/projectnb/myproject/rubin_hackathon)
-#   - virtualenv at $HOME/debass_env must exist (see README_scc.md)
+#   - virtualenv at $HOME/debass_meta_env must exist (see README_scc.md)
 #   - logs/ directory will be created automatically
 
 set -euo pipefail
@@ -28,7 +28,7 @@ DEBASS_LIMIT=${DEBASS_LIMIT:-2000}
 DEBASS_MAX_N_DET=${DEBASS_MAX_N_DET:-20}
 DEBASS_N_EST=${DEBASS_N_EST:-500}
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 DEBASS_GPU_EXPERTS=${DEBASS_GPU_EXPERTS:-parsnip}
 RUN_GPU=false
 

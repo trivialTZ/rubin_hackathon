@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.access.alerce_history import AlerceHistoryFetcher
+from debass_meta.access.alerce_history import AlerceHistoryFetcher
 
 
 def _load_oids_from_labels(path: Path) -> list[str]:

@@ -13,7 +13,7 @@ set -euo pipefail
 
 DEBASS_GPU_EXPERTS=${DEBASS_GPU_EXPERTS:-parsnip}
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

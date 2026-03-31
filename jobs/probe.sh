@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#$ -N debass_probe
+#$ -N debass_meta_probe
 #$ -l h_rt=00:30:00
 #$ -l mem_per_core=4G
 #$ -pe omp 1
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 : "${DEBASS_ROOT:?DEBASS_ROOT must be set before running this job}"
 
 module load "$DEBASS_PYTHON_MODULE"

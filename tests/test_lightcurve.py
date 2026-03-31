@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.features.lightcurve import extract_features
+from debass_meta.features.lightcurve import extract_features
 
 
 def test_extract_features_skips_slope_when_times_are_identical() -> None:

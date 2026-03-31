@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from debass.ingest.gold import build_object_epoch_snapshots
+from debass_meta.ingest.gold import build_object_epoch_snapshots
 
 
 def _load_object_ids(path: Path | None) -> list[str] | None:

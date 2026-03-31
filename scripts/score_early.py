@@ -17,7 +17,7 @@ _SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 sys.path.insert(0, str(_SRC_ROOT))
 
 try:
-    from debass.models.early_meta import EarlyMetaClassifier
+    from debass_meta.models.early_meta import EarlyMetaClassifier
 except ModuleNotFoundError as exc:
     print(f"ERROR: failed to import DEBASS package modules from {_SRC_ROOT}: {exc}")
     print("This usually means the SCC checkout is incomplete or stale. Re-sync the repository and retry.")
