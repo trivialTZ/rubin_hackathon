@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.access import ALL_ADAPTERS
-from debass.ingest.bronze import write_bronze
+from debass_meta.access import ALL_ADAPTERS
+from debass_meta.ingest.bronze import write_bronze
 
 # Default test objects (known ZTF transients)
 _DEFAULT_OBJECTS = [

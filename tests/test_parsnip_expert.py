@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.experts.local.parsnip import ParSNIPExpert
+from debass_meta.experts.local.parsnip import ParSNIPExpert
 
 
 class FakeTable:

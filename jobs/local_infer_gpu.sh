@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#$ -N debass_local_infer_gpu
+#$ -N debass_meta_local_infer_gpu
 #$ -l h_rt=12:00:00
 #$ -l mem_per_core=16G
 #$ -pe omp 8
@@ -7,7 +7,7 @@
 #$ -q l40s
 #$ -j y
 #$ -o logs/local_infer_gpu.$JOB_ID.log
-#$ -hold_jid debass_build_epochs
+#$ -hold_jid debass_meta_build_epochs
 # Uncomment and set your project if on Med Campus:
 ##$ -P your_project_name
 
@@ -31,7 +31,7 @@
 set -euo pipefail
 
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 DEBASS_GPU_EXPERTS=${DEBASS_GPU_EXPERTS:-parsnip}
 : "${DEBASS_ROOT:?DEBASS_ROOT must be set before running this job}"
 

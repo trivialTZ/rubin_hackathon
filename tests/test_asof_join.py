@@ -7,7 +7,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.ingest.gold import select_events_asof
+from debass_meta.ingest.gold import select_events_asof
 
 
 def test_select_events_asof_uses_latest_past_event_only() -> None:
