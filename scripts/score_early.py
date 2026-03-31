@@ -31,7 +31,7 @@ except ImportError:
     console = None
 
 
-def _print_results(results: list[dict]) -> None:
+def _print_results(results: list[dict], *, summary: dict | None = None) -> None:
     if console and results:
         t = Table(title="Early-Epoch Classification")
         for col in ["object_id", "n_det", "alert_mjd", "p_snia", "p_nonIa_snlike", "p_other", "predicted_class", "follow_up_priority"]:
@@ -53,9 +53,20 @@ def _print_results(results: list[dict]) -> None:
                     f"[{color}]{priority}[/{color}]",
                 )
         console.print(t)
+        if summary:
+            console.print(
+                f"Scored {summary.get('scored', 0)} objects"
+                + (
+                    f"; skipped {summary.get('skipped_missing_epoch', 0)} objects with fewer than n_det={summary.get('requested_n_det')}"
+                    if summary.get("requested_n_det") is not None
+                    else ""
+                )
+            )
     else:
         for r in results:
             print(json.dumps(r))
+        if summary:
+            print(json.dumps({"summary": summary}))
 
 
 def main() -> None:
@@ -98,6 +109,7 @@ def main() -> None:
         oids = list(df["object_id"].unique())
 
     results = []
+    skipped_missing_epoch = 0
     for oid in oids:
         obj_df = df[df["object_id"] == oid]
         if len(obj_df) == 0:
@@ -105,6 +117,12 @@ def main() -> None:
             continue
 
         if args.n_det is not None:
+            if args.n_det not in set(obj_df["n_det"].astype(int).tolist()):
+                if args.object:
+                    results.append({"object_id": oid, "n_det": args.n_det, "error": f"No epoch row for {oid} at n_det={args.n_det}"})
+                else:
+                    skipped_missing_epoch += 1
+                continue
             r = clf.score_object_at_n_det(oid, args.n_det, df)
             results.append(r)
         else:
@@ -114,7 +132,13 @@ def main() -> None:
                 r = clf.score_object_at_n_det(oid, nd, df)
                 results.append(r)
 
-    _print_results(results)
+    summary = {
+        "scored": len([r for r in results if "error" not in r]),
+        "errors": len([r for r in results if "error" in r]),
+        "requested_n_det": args.n_det,
+        "skipped_missing_epoch": skipped_missing_epoch,
+    }
+    _print_results(results, summary=summary)
 
 
 if __name__ == "__main__":
