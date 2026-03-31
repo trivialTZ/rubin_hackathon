@@ -9,6 +9,9 @@
     "object_id":     { "type": "string" },
     "query_time":    { "type": "number", "description": "Unix timestamp (UTC)" },
     "survey":        { "type": "string", "default": "ZTF" },
+    "source_endpoint": { "type": ["string", "null"] },
+    "request_params_json": { "type": ["string", "null"] },
+    "status_code": { "type": ["integer", "null"] },
     "semantic_type": {
       "type": "string",
       "enum": ["probability", "binary_score", "context_class", "crossmatch_tag", "heuristic_class", "mixed"]
@@ -16,7 +19,8 @@
     "availability":  { "type": "boolean" },
     "fixture_used":  { "type": "boolean" },
     "payload_hash":  { "type": "string", "description": "SHA-256 of raw_payload JSON" },
-    "raw_payload":   { "type": "object" }
+    "raw_payload":   { "type": "object" },
+    "events_json":   { "type": ["string", "null"] }
   },
   "additionalProperties": false
 }

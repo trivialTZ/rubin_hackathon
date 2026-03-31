@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Silver v2 — broker_events row",
+  "description": "Canonical event-level expert row. One row per expert field event.",
+  "type": "object",
+  "required": [
+    "object_id",
+    "broker",
+    "classifier",
+    "expert_key",
+    "field",
+    "semantic_type",
+    "event_scope",
+    "availability",
+    "fixture_used",
+    "temporal_exactness"
+  ],
+  "properties": {
+    "object_id": { "type": "string" },
+    "broker": { "type": "string" },
+    "classifier": { "type": ["string", "null"] },
+    "classifier_version": { "type": ["string", "null"] },
+    "expert_key": { "type": "string" },
+    "field": { "type": "string" },
+    "class_name": { "type": ["string", "null"] },
+    "semantic_type": {
+      "type": "string",
+      "enum": ["probability", "binary_score", "context_class", "crossmatch_tag", "heuristic_class", "mixed"]
+    },
+    "event_scope": {
+      "type": "string",
+      "enum": ["alert", "object_snapshot", "static_context", "rerun_local"]
+    },
+    "event_time_jd": { "type": ["number", "null"] },
+    "alert_id": { "type": ["string", "null"] },
+    "n_det": { "type": ["integer", "null"] },
+    "raw_label_or_score": {},
+    "canonical_projection": { "type": ["number", "null"] },
+    "ranking": { "type": ["integer", "null"] },
+    "availability": { "type": "boolean" },
+    "fixture_used": { "type": "boolean" },
+    "temporal_exactness": {
+      "type": "string",
+      "enum": ["exact_alert", "static_safe", "rerun_exact", "latest_object_unsafe"]
+    },
+    "payload_hash": { "type": ["string", "null"] },
+    "provenance_json": { "type": ["string", "null"] },
+    "survey": { "type": ["string", "null"] },
+    "source_endpoint": { "type": ["string", "null"] },
+    "request_params_json": { "type": ["string", "null"] },
+    "status_code": { "type": ["integer", "null"] },
+    "query_time_unix": { "type": ["number", "null"] }
+  },
+  "additionalProperties": true
+}

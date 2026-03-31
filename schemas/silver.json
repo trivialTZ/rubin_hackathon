@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Silver — broker_outputs table row",
-  "description": "Normalised broker output row. raw_label_or_score is always preserved verbatim.",
+  "title": "Silver — legacy broker_outputs row",
+  "description": "Deprecated schema retained for backward compatibility. Use schemas/broker_events.json for the primary pipeline.",
   "type": "object",
   "required": ["broker", "object_id", "query_time", "field", "raw_label_or_score", "semantic_type"],
   "properties": {

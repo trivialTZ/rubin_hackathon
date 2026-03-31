@@ -45,12 +45,22 @@ def write_bronze(
             "broker": o.broker,
             "object_id": o.object_id,
             "query_time": o.query_time,
-            "survey": "ZTF",
+            "survey": o.survey,
+            "source_endpoint": o.source_endpoint,
+            "request_params_json": json.dumps(o.request_params or {}, sort_keys=True),
+            "status_code": o.status_code,
             "semantic_type": o.semantic_type,
             "availability": o.availability,
             "fixture_used": o.fixture_used,
             "payload_hash": _payload_hash(o.raw_payload),
-            "raw_payload": json.dumps({**o.raw_payload, "_fields": o.fields}),
+            "events_json": json.dumps(o.events or o.fields),
+            "raw_payload": json.dumps(
+                {
+                    **o.raw_payload,
+                    "_fields": o.fields,
+                    "_events": o.events or o.fields,
+                }
+            ),
         })
 
     df = pd.DataFrame(rows)

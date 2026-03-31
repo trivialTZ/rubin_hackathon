@@ -4,21 +4,22 @@ This file tells Codex how to work with this repository.
 
 ## Project Summary
 
-DEBASS (Detection-Based Astronomical Source Spectroscopic) meta-classifier.
-Fuses heterogeneous broker outputs (ALeRCE, Fink, Lasair) + per-epoch lightcurve
-features to classify transients as **SN Ia / non-Ia SN-like / other** after only
-3–5 detections, for spectroscopic follow-up prioritisation with Rubin/LSST.
+DEBASS is a trust-aware early-epoch transient system.
+Its primary product is **per-expert confidence** at a given object epoch, with
+an optional trust-weighted follow-up proxy as a secondary output.
 
-## Key Design Decisions
+## Science Contract
 
-- **No-leakage epoch table**: features at n_det=N are computed from lightcurve
-  truncated to exactly N detections. Never use future detections.
-- **broker scores are object-level** (ALeRCE doesn't expose per-alert probs).
-  The same score is repeated across all n_det rows for a given object.
-  Only SuperNNova/ParSNIP (GPU path) provide true per-epoch scores.
-- **LightGBM handles NaN natively** — missing broker scores are fine.
-- **Column names must match exactly** between `features/lightcurve.py:FEATURE_NAMES`,
-  `models/early_meta.py:DEFAULT_FEATURES`, and `build_epoch_table_from_lc.py:_BROKER_SCORE_COLS`.
+- **Primary output**: `expert_confidence`, not a single fused class posterior.
+- **No-future-leakage light curves**: features at `n_det=N` are computed from detections
+  `1..N` only.
+- **Event-level temporal semantics must survive normalization**: preserve `event_time_jd`,
+  `n_det`, `alert_id`, `event_scope`, and `temporal_exactness`.
+- **Unsafe historical ALeRCE snapshots**: object-level ALeRCE probabilities backfilled later
+  must be marked `latest_object_unsafe` and excluded from trust training by default.
+- **Truth separation**: do not treat broker-derived labels as final science truth. Weak labels
+  must remain explicitly marked weak.
+- **Baseline status**: `EarlyMetaClassifier` is a benchmark only, not the primary science model.
 
 ## Python Environment
 
@@ -34,23 +35,34 @@ pip install -r env/requirements.txt
 
 Always use `python3.11` locally (pyarrow is installed there).
 
-## Running the Pipeline Locally (smoke test)
+## Running the Trust Pipeline Locally (smoke test)
 
 ```bash
 # 1. Download 20 objects
 python3.11 scripts/download_alerce_training.py --limit 20
 
-# 2. Fetch broker scores → bronze/silver
+# 2. Fetch broker payloads → bronze/silver
 python3.11 scripts/backfill.py --broker all --from-labels data/labels.csv
 python3.11 scripts/normalize.py --skip-gold
 
-# 3. Build epoch table
-python3.11 scripts/build_epoch_table_from_lc.py
+# 3. Build truth + gold tables
+python3.11 scripts/build_truth_table.py --labels data/labels.csv
+python3.11 scripts/build_object_epoch_snapshots.py
+python3.11 scripts/build_expert_helpfulness.py
 
-# 4. Train
-python3.11 scripts/train_early.py --n-estimators 100
+# 4. Train trust-aware models
+python3.11 scripts/train_expert_trust.py
+python3.11 scripts/train_followup.py
 
 # 5. Score
+python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
+```
+
+## Running the Baseline Pipeline
+
+```bash
+python3.11 scripts/build_epoch_table_from_lc.py
+python3.11 scripts/train_early.py --n-estimators 100
 python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
 ```
 
@@ -69,18 +81,24 @@ See `README_scc.md` for full SCC setup.
 src/debass/
   access/         Broker adapters (ALeRCE, Fink, Lasair + stubs)
   features/       Lightcurve feature extractor — FEATURE_NAMES list is authoritative
-  ingest/         Bronze → silver → gold Parquet transforms
-  models/         EarlyMetaClassifier (LightGBM) + baselines + calibration
+  ingest/         Bronze → broker-events → gold Parquet transforms
+  models/         Trust heads, follow-up head, baseline model
+  projectors/     Expert-specific projection logic
   experts/local/  SuperNNova, ParSNIP wrappers (stub until SCC GPU)
 
 scripts/
   download_alerce_training.py   Step 1: get labelled objects + lightcurves
   backfill.py                   Step 2: fetch broker scores → bronze
   normalize.py                  Step 3: bronze → silver
-  build_epoch_table_from_lc.py  Step 4: build (object, n_det) feature table
-  local_infer.py                Step 4b: GPU — SNN/ParSNIP per epoch
-  train_early.py                Step 5: train LightGBM
-  score_early.py                Step 6: score + follow-up priority
+  build_truth_table.py          Build external/weak truth table
+  build_object_epoch_snapshots.py Build exact object-epoch gold table
+  build_expert_helpfulness.py   Build trust targets
+  train_expert_trust.py         Train calibrated per-expert trust heads
+  train_followup.py             Train follow-up proxy head
+  score_nightly.py              Emit `expert_confidence` payload
+  build_epoch_table_from_lc.py  Baseline-only epoch table
+  train_early.py                Baseline-only LightGBM
+  score_early.py                Baseline-only scoring
 
 jobs/
   submit_all.sh   Master SGE submission script
@@ -90,30 +108,36 @@ data/            (gitignored — generated by scripts)
   labels.csv
   lightcurves/*.json
   bronze/*.parquet
-  silver/broker_outputs.parquet
-  silver/local_expert_outputs.json   (written by local_infer.py)
-  epochs/epoch_features.parquet
+  silver/broker_events.parquet
+  silver/local_expert_outputs/
+  truth/object_truth.parquet
+  gold/object_epoch_snapshots.parquet
+  gold/expert_helpfulness.parquet
+  epochs/epoch_features.parquet       (baseline only)
 
-models/          (gitignored — generated by train_early.py)
-  early_meta/early_meta.pkl
+models/
+  trust/<expert>/model.pkl
+  followup/model.pkl
+  early_meta/early_meta.pkl           (baseline only)
 ```
 
-## Critical Column Name Contract
+## Critical Contracts
 
 If you add a new LC feature:
 1. Add to `FEATURE_NAMES` in `src/debass/features/lightcurve.py`
-2. Add to `DEFAULT_FEATURES` in `src/debass/models/early_meta.py`
-3. The epoch table is rebuilt automatically by `build_epoch_table_from_lc.py`
+2. Add to any trust/follow-up feature selection that should consume it
+3. Add to `DEFAULT_FEATURES` in `src/debass/models/early_meta.py` only if the baseline should also use it
 
-If you add a new broker score feature:
-1. Add to `_BROKER_SCORE_COLS` in `scripts/build_epoch_table_from_lc.py`
-2. Add to `DEFAULT_FEATURES` in `src/debass/models/early_meta.py`
-3. Re-run `backfill.py` + `normalize.py` + `build_epoch_table_from_lc.py`
+If you add a new expert/broker field:
+1. Preserve it in `data/silver/broker_events.parquet`
+2. Update the relevant projector in `src/debass/projectors/`
+3. Rebuild `object_epoch_snapshots` and `expert_helpfulness`
+4. Update the baseline merge path only if the baseline needs it
 
 ## Known Limitations
 
-- Fink scores are 100% NaN for most ZTF objects (sparse stream coverage)
-- Forced-phot ALeRCE classifiers (ATAT, BHRF beta) only cover ~20% of objects
-- Stamp classifier is ZTF-trained; Rubin-native version not yet released
-- SuperNNova/ParSNIP are stubs until weights are placed in `artifacts/local_experts/`
-- 19-object smoke test overfits (F1=1.0) — need 2000+ objects for real metrics
+- Sample data may still be effectively ALeRCE-heavy unless broader broker history is backfilled
+- `data/labels.csv` produced from ALeRCE queries is a weak-label fallback, not final truth
+- Historical ALeRCE object snapshots are unsafe for trust training unless archived or rerun epoch-safely
+- Lasair Sherlock is context-only in phase 1
+- SuperNNova remains gated until the wrapper is completed and real weights are installed

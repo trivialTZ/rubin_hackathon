@@ -1,4 +1,4 @@
-# DEBASS on BU SCC — Setup & Run Guide
+# DEBASS on BU SCC — Trust Pipeline Guide
 
 ## 1. One-time environment setup
 
@@ -59,7 +59,7 @@ ALeRCE and Fink require no credentials — they use public REST APIs.
 mkdir -p $DEBASS_ROOT/logs
 ```
 
-## 4. Recommended two-command workflow
+## 4. Recommended workflow
 
 Run the CPU-safe stages first from a login node:
 
@@ -71,9 +71,14 @@ cd $DEBASS_ROOT
 bash -l jobs/scc_bootstrap.sh --limit 2000
 ```
 
-That submits:
-```
-download_training  →  build_epochs
+Recommended CPU-first order:
+
+```text
+download_training
+  → backfill / normalize
+  → build_truth_table
+  → build_object_epoch_snapshots
+  → build_expert_helpfulness
 ```
 
 To watch both jobs with live progress bars:
@@ -90,12 +95,15 @@ $DEBASS_VENV/bin/python scripts/summarize_cpu_prep.py \
   --json-out reports/summary/cpu_prep_summary.json
 ```
 
-That report summarizes:
+That report should summarize:
+
 - `data/labels.csv`
 - `data/lightcurves/*.json`
 - `data/bronze/*.parquet`
-- `data/silver/broker_outputs.parquet`
-- `data/epochs/epoch_features.parquet`
+- `data/silver/broker_events.parquet`
+- `data/truth/object_truth.parquet`
+- `data/gold/object_epoch_snapshots.parquet`
+- `data/gold/expert_helpfulness.parquet`
 
 Use `--strict` if you want the command to exit nonzero when labelled objects
 are missing from lightcurves, silver, or the epoch table.
@@ -127,10 +135,13 @@ bash -l jobs/run_gpu_resume.sh
 bash -l jobs/run_gpu_resume.sh --experts=parsnip,supernnova
 ```
 
-That GPU resume command runs:
-```
-local_infer_gpu  →  train_early  →  score_all
-```
+GPU should be used only for local rerunnable experts. CPU is the default for:
+
+- silver/gold building
+- expert trust training
+- follow-up training
+- evaluation
+- scoring
 
 The default expert list is `parsnip` because the repo now supports real
 ParSNIP inference when both `model.pt` and `classifier.pkl` are present in
@@ -153,11 +164,12 @@ bash jobs/submit_all.sh --gpu --limit 2000
 Use `-V` so SCC jobs inherit `DEBASS_ROOT`, `DEBASS_PYTHON_MODULE`, and related env vars:
 
 ```bash
-qsub -V jobs/download_training.sh   # fetch ALeRCE objects + lightcurves
-qsub -V jobs/build_epochs.sh        # build (object_id, n_det) epoch table
-qsub -V jobs/local_infer_gpu.sh     # GPU: run configured local experts
-qsub -V jobs/train_early.sh         # train LightGBM meta-classifier
-qsub -V jobs/score_all.sh           # score objects, write follow-up priorities
+qsub -V jobs/download_training.sh      # seed objects + lightcurves
+qsub -V jobs/build_epochs.sh           # backfill + normalize + gold prep
+qsub -V jobs/local_infer_gpu.sh        # GPU: local experts only
+qsub -V jobs/train_expert_trust.sh     # CPU trust-head training
+qsub -V jobs/train_followup.sh         # CPU follow-up training
+qsub -V jobs/score_all.sh              # score expert_confidence payloads
 ```
 
 ## 6. Monitor jobs
@@ -174,10 +186,13 @@ Edit the `#$ -l` directives in `jobs/*.sh` to match your queue limits.
 Key variables you can override at submission time:
 
 ```bash
-export DEBASS_LIMIT=2000     # number of objects to backfill
-export DEBASS_MAX_N_DET=20   # truncate training rows at this detection count
-export DEBASS_N_EST=500      # LightGBM tree count
-export DEBASS_GPU_EXPERTS="parsnip"   # or "parsnip supernnova"
+export DEBASS_LIMIT=2000
+export DEBASS_MAX_N_DET=20
+export DEBASS_N_EST=500
+export DEBASS_GPU_EXPERTS="parsnip"
+export DEBASS_GPU_QUEUE=l40s
+export DEBASS_GPU_COUNT=1
+export DEBASS_GPU_MEMORY=40G
 export DEBASS_PYTHON_MODULE=python3/3.10.12
 export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
 ```
@@ -187,41 +202,40 @@ export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_env
 | Stage | Output |
 |-------|--------|
 | backfill | `data/bronze/<broker>_<ts>.parquet` |
-| normalize | `data/silver/broker_outputs.parquet` |
-| local_infer | `data/silver/local_expert_outputs.json` |
-| train | `models/early_meta/early_meta.pkl` |
-| report | `reports/metrics/early_meta_metrics.json`, `reports/scores/scores_ndet{3,5,10}.txt` |
+| normalize | `data/silver/broker_events.parquet` |
+| truth | `data/truth/object_truth.parquet` |
+| snapshots | `data/gold/object_epoch_snapshots.parquet` |
+| helpfulness | `data/gold/expert_helpfulness.parquet` |
+| local_infer | `data/silver/local_expert_outputs/<expert>/part-*.parquet` |
+| trust | `models/trust/<expert>/model.pkl` |
+| followup | `models/followup/model.pkl` |
+| report | `reports/metrics/*.json`, `reports/scores/*.jsonl` |
 
 ## 9. Pipeline architecture summary
 
 ```
-Remote brokers          Local experts
-(ALeRCE, Fink,          (SuperNNova,
- Lasair)                 ParSNIP, AMPEL)
-     |                        |
-     v                        v
-  Bronze layer  ──────────────┤
-  (raw Parquet)               |
-     |                        |
-     v                        |
-  Silver layer ───────────────┘
-  (canonical rows, raw_label_or_score preserved)
+Remote brokers + local experts
      |
      v
-  Gold layer
-  (object-by-epoch snapshots + availability mask)
+Bronze
      |
      v
-  Trust heads  (per-broker q_b(t))
+Silver v2: broker events
      |
      v
-  Meta-classifier  (ternary: SN Ia / non-Ia SN / other)
+Gold v2: object_epoch_snapshots
      |
      v
-  Calibration  (temperature scaling)
+expert_helpfulness
      |
      v
-  reports/metrics/early_meta_metrics.json
+Per-expert trust heads
+     |
+     v
+Optional follow-up head
+     |
+     v
+reports/metrics + reports/scores
 ```
 
 ## 10. Semantic type contract
@@ -231,7 +245,7 @@ interchangeable probability vectors**:
 
 | Broker | Field | Semantic type |
 |--------|-------|---------------|
-| ALeRCE | `probabilities` | `probability` — safe to use directly |
+| ALeRCE | object snapshot probabilities | `probability`, but historical backfill is `latest_object_unsafe` |
 | Fink | `rf_snia_vs_nonia`, `snn_*` | `probability` |
 | Fink | `finkclass` | `heuristic_class` — do NOT use as posterior |
 | Lasair | `sherlock_classification` | `crossmatch_tag` — context only |

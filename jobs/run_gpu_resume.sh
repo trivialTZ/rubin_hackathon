@@ -124,12 +124,20 @@ echo " DEBASS_VENV:          $DEBASS_VENV"
 echo "======================================="
 
 bash -l jobs/local_infer_gpu.sh
-bash -l jobs/train_early.sh
-bash -l jobs/score_all.sh
+
+if [ -f data/gold/expert_helpfulness.parquet ]; then
+    bash -l jobs/train_expert_trust.sh
+    bash -l jobs/train_followup.sh
+    bash -l jobs/score_all.sh
+else
+    bash -l jobs/train_early.sh
+    bash -l jobs/score_all.sh
+fi
 
 echo ""
 echo "GPU resume finished."
 echo "Outputs:"
-echo "  $DEBASS_ROOT/models/early_meta/early_meta.pkl"
-echo "  $DEBASS_ROOT/reports/metrics/early_meta_metrics.json"
-echo "  $DEBASS_ROOT/reports/scores/scores_ndet{3,5,10}.txt"
+echo "  $DEBASS_ROOT/models/trust/"
+echo "  $DEBASS_ROOT/models/followup/"
+echo "  $DEBASS_ROOT/reports/metrics/"
+echo "  $DEBASS_ROOT/reports/scores/"

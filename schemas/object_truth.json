@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Truth table row",
+  "description": "Canonical object-level truth used for training and evaluation.",
+  "type": "object",
+  "required": [
+    "object_id",
+    "final_class_raw",
+    "final_class_ternary",
+    "follow_proxy",
+    "label_source",
+    "label_quality"
+  ],
+  "properties": {
+    "object_id": { "type": "string" },
+    "final_class_raw": { "type": ["string", "null"] },
+    "final_class_ternary": {
+      "type": ["string", "null"],
+      "enum": ["snia", "nonIa_snlike", "other", null]
+    },
+    "follow_proxy": { "type": ["integer", "boolean", "null"] },
+    "label_source": { "type": "string" },
+    "label_quality": { "type": "string" },
+    "truth_timestamp": { "type": ["string", "null"] },
+    "tns_type": { "type": ["string", "null"] },
+    "specz": { "type": ["number", "null"] },
+    "host_redshift": { "type": ["number", "null"] },
+    "notes": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}

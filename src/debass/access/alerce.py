@@ -48,6 +48,7 @@ class AlerceAdapter(BrokerAdapter):
         fixture_path = _FIXTURE_DIR / f"{object_id}_object.json"
         raw: dict[str, Any] = {}
         fixture_used = False
+        status_code: int | None = None
 
         if self._client is not None:
             try:
@@ -73,7 +74,12 @@ class AlerceAdapter(BrokerAdapter):
             query_time=self.now(),
             raw_payload=raw,
             semantic_type=self.semantic_type,
+            survey="ZTF",
+            source_endpoint="alerce.query_probabilities",
+            request_params={"oid": object_id},
+            status_code=status_code,
             fields=fields,
+            events=fields,
             availability=not fixture_used,
             fixture_used=fixture_used,
         )
@@ -103,12 +109,19 @@ class AlerceAdapter(BrokerAdapter):
                 cls_name = entry.get("class_name", "unknown")
                 prob_val = entry.get("probability")
                 classifier = entry.get("classifier_name", "unknown")
+                classifier_version = entry.get("classifier_version")
                 fields.append({
                     "field": f"{classifier}_{cls_name}",
                     "raw_label_or_score": prob_val,
                     "semantic_type": "probability",
                     "canonical_projection": float(prob_val) if prob_val is not None else None,
                     "classifier": classifier,
-                    "class": cls_name,
+                    "class_name": cls_name,
+                    "classifier_version": classifier_version,
+                    "expert_key": f"alerce/{classifier}",
+                    "event_scope": "object_snapshot",
+                    "temporal_exactness": "latest_object_unsafe",
+                    "event_time_jd": None,
+                    "n_det": None,
                 })
         return fields

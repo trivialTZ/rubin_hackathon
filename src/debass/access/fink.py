@@ -60,17 +60,20 @@ class FinkAdapter(BrokerAdapter):
         fixture_path = _FIXTURE_DIR / f"{object_id}_object.json"
         raw: dict[str, Any] = {}
         fixture_used = False
+        status_code: int | None = None
+        request_payload = {
+            "objectId": object_id,
+            "output-format": "json",
+            "columns": "i:jd,i:ndethist,d:rf_snia_vs_nonia,d:snn_snia_vs_nonia,d:snn_sn_vs_all,d:rf_kn_vs_nonkn,d:mulens_class_1,d:finkclass",
+        }
 
         try:
             r = requests.post(
                 f"{_BASE_URL}/api/v1/objects",
-                json={
-                    "objectId": object_id,
-                    "output-format": "json",
-                    "columns": "i:jd,i:ndethist,d:rf_snia_vs_nonia,d:snn_snia_vs_nonia,d:snn_sn_vs_all,d:rf_kn_vs_nonkn,d:mulens_class_1,d:finkclass",
-                },
+                json=request_payload,
                 timeout=self._timeout,
             )
+            status_code = r.status_code
             r.raise_for_status()
             data = r.json()
             raw = {"alerts": data}
@@ -90,7 +93,12 @@ class FinkAdapter(BrokerAdapter):
             query_time=self.now(),
             raw_payload=raw,
             semantic_type=self.semantic_type,
+            survey="ZTF",
+            source_endpoint=f"{_BASE_URL}/api/v1/objects",
+            request_params=request_payload,
+            status_code=status_code,
             fields=fields,
+            events=fields,
             availability=not fixture_used,
             fixture_used=fixture_used,
         )
@@ -165,7 +173,21 @@ class FinkAdapter(BrokerAdapter):
                     "raw_label_or_score": val,
                     "semantic_type": stype,
                     "canonical_projection": proj,
+                    "classifier": "snn" if short.startswith("snn_") else "rf" if short.startswith("rf_") else "fink",
+                    "classifier_version": None,
+                    "expert_key": self._expert_key_for_field(short),
+                    "event_scope": "alert",
+                    "temporal_exactness": "exact_alert",
                     "n_det": n_det,
                     "alert_jd": float(jd) if jd is not None else None,
+                    "event_time_jd": float(jd) if jd is not None else None,
                 })
         return fields
+
+    @staticmethod
+    def _expert_key_for_field(field_name: str) -> str:
+        if field_name.startswith("snn_"):
+            return "fink/snn"
+        if field_name == "rf_snia_vs_nonia":
+            return "fink/rf_ia"
+        return "fink/aux"

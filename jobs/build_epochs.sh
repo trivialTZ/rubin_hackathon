@@ -31,6 +31,11 @@ echo "=== DEBASS: building epoch feature table ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 
+export OMP_NUM_THREADS="${NSLOTS:-1}"
+export OPENBLAS_NUM_THREADS="${NSLOTS:-1}"
+export MKL_NUM_THREADS="${NSLOTS:-1}"
+export NUMEXPR_NUM_THREADS="${NSLOTS:-1}"
+
 # Fetch broker scores for all labelled objects (ALeRCE + Fink)
 # Use --from-labels to avoid ARG_MAX shell limits with large object lists
 python scripts/backfill.py \
@@ -43,6 +48,23 @@ python scripts/normalize.py \
     --bronze-dir data/bronze \
     --silver-dir data/silver \
     --skip-gold
+
+# Build truth + trust-aware gold tables
+python scripts/build_truth_table.py \
+    --labels data/labels.csv \
+    --output data/truth/object_truth.parquet
+
+python scripts/build_object_epoch_snapshots.py \
+    --lc-dir data/lightcurves \
+    --silver-dir data/silver \
+    --gold-dir data/gold \
+    --truth data/truth/object_truth.parquet \
+    --objects-csv data/labels.csv \
+    --max-n-det "${DEBASS_MAX_N_DET:-20}"
+
+python scripts/build_expert_helpfulness.py \
+    --snapshots data/gold/object_epoch_snapshots.parquet \
+    --output data/gold/expert_helpfulness.parquet
 
 # Build no-leakage epoch table from lightcurves
 python scripts/build_epoch_table_from_lc.py \

@@ -32,9 +32,15 @@ class BrokerOutput:
     query_time: float          # unix timestamp
     raw_payload: dict[str, Any]
     semantic_type: SemanticType
+    survey: str = "ZTF"
+    source_endpoint: str | None = None
+    request_params: dict[str, Any] = field(default_factory=dict)
+    status_code: int | None = None
     # Per-field breakdowns (list of dicts with keys: field, raw_label_or_score,
     # semantic_type, canonical_projection)
     fields: list[dict[str, Any]] = field(default_factory=list)
+    # Optional event-level rows retained alongside the raw payload.
+    events: list[dict[str, Any]] = field(default_factory=list)
     availability: bool = True  # False when fixture fallback was used
     fixture_used: bool = False
 

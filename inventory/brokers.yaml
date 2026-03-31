@@ -12,6 +12,10 @@ brokers:
     client: alerce
     base_url: https://api.alerce.online/ztf/v1
     semantic_type: probability
+    event_scope: object_snapshot
+    temporal_exactness: latest_object_unsafe
+    historical_trainability: live_only_until_epoch_safe
+    classifier_version_expected: true
     output_fields:
       - classifier: ALeRCE stamp classifier
         field: probabilities
@@ -23,7 +27,8 @@ brokers:
         classes: [SNIa, SNIbc, SNII, SLSN, AGN, VS, asteroid, bogus]
     notes: >
       Explicit multiclass posteriors from both stamp and LC classifiers.
-      Safe to use as probability inputs to meta-classifier after calibration check.
+      Historical backfilled object snapshots are unsafe for epoch-level trust
+      training unless they were archived contemporaneously or rerun locally.
 
   fink:
     phase: 1
@@ -34,6 +39,10 @@ brokers:
     client: fink-client (REST mode)
     base_url: https://fink-portal.org
     semantic_type: mixed  # probability scores + heuristic class string
+    event_scope: alert
+    temporal_exactness: exact_alert
+    historical_trainability: trainable
+    classifier_version_expected: false
     output_fields:
       - field: rf_snia_vs_nonia
         type: probability
@@ -69,6 +78,10 @@ brokers:
     client: lasair
     base_url: https://lasair-ztf.lsst.ac.uk/api
     semantic_type: context_class
+    event_scope: static_context
+    temporal_exactness: static_safe
+    historical_trainability: context_only
+    classifier_version_expected: false
     output_fields:
       - field: sherlock_classification
         type: crossmatch_tag
@@ -86,6 +99,10 @@ brokers:
     status: stubbed
     public: true
     credentials_required: true  # Google Cloud service account
+    event_scope: unknown
+    temporal_exactness: unknown
+    historical_trainability: deferred
+    classifier_version_expected: false
     notes: Useful but requires GCP setup. Deferred to phase 2.
 
   antares:
@@ -94,4 +111,8 @@ brokers:
     status: stubbed
     public: partial
     credentials_required: true
+    event_scope: unknown
+    temporal_exactness: unknown
+    historical_trainability: deferred
+    classifier_version_expected: false
     notes: Open client exists; stream access needs credentials. Deferred to phase 2.

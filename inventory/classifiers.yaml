@@ -3,43 +3,83 @@
 
 classifiers:
 
-  supernnova:
-    type: local_expert
-    framework: SuperNNova
-    repo: https://github.com/supernnova/SuperNNova
+  fink/snn:
+    type: remote_expert
+    broker: fink
+    phase1_status: trust_head
     semantic_type: probability
-    output_fields:
-      - field: prob_class0  # SN Ia
-        type: probability
-      - field: prob_class1  # non-Ia
-        type: probability
-    input: light curve photometry (g, r bands minimum)
-    epoch_aware: true  # can score at any photometric epoch
+    temporal_exactness: exact_alert
+    epoch_safe: true
     notes: >
-      Best local rerunnable SN classifier. Requires PyTorch.
-      Wrap in experts/local/supernnova.py.
+      Uses the alert-level `snn_snia_vs_nonia` and `snn_sn_vs_all` pair and
+      projects them to a ternary expert view.
+
+  fink/rf_ia:
+    type: remote_expert
+    broker: fink
+    phase1_status: trust_head
+    semantic_type: probability
+    temporal_exactness: exact_alert
+    epoch_safe: true
+    notes: >
+      Scalar Ia-vs-non-Ia expert. Keep the raw scalar semantics instead of
+      fabricating a full posterior.
 
   parsnip:
     type: local_expert
+    broker: local
     framework: ParSNIP
     repo: https://github.com/LSSTDESC/parsnip
+    phase1_status: trust_head
     semantic_type: probability
+    temporal_exactness: rerun_exact
+    epoch_safe: true
     output_fields:
       - field: class_probabilities
         type: probability
         classes: [SN Ia, SN II, SN IIn, SN Ibc, SN IIb, SLSN-I]
     input: light curve photometry (multi-band)
     epoch_aware: true
-    notes: >
-      Generative model; produces well-calibrated class posteriors.
-      Slower than SuperNNova but richer taxonomy.
 
-  ampel:
-    type: local_framework
-    framework: AMPEL
-    repo: https://github.com/AmpelAstro/Ampel-HU-astro
-    semantic_type: probability  # depends on unit
+  supernnova:
+    type: local_expert
+    broker: local
+    framework: SuperNNova
+    repo: https://github.com/supernnova/SuperNNova
+    phase1_status: gated
+    semantic_type: probability
+    temporal_exactness: rerun_exact
+    epoch_safe: false
     notes: >
-      Framework, not a single classifier. Run specific AMPEL units
-      (e.g. T2SNcosmo, T2TabulatedRiseDeclineStat) as local experts.
-      Wrap in experts/local/ampel_runner.py.
+      Wrapper is incomplete in this repository, so keep it out of phase-1 trust
+      training until live inference is implemented.
+
+  alerce/lc_classifier_transient:
+    type: remote_expert
+    broker: alerce
+    phase1_status: live_only
+    semantic_type: probability
+    temporal_exactness: latest_object_unsafe
+    epoch_safe: false
+    notes: >
+      Historical backfilled object snapshots are not safe for trust training by
+      default. Keep available for live scoring with exactness notes.
+
+  alerce/stamp_classifier:
+    type: remote_expert
+    broker: alerce
+    phase1_status: live_only
+    semantic_type: probability
+    temporal_exactness: latest_object_unsafe
+    epoch_safe: false
+
+  lasair/sherlock:
+    type: remote_expert
+    broker: lasair
+    phase1_status: context_only
+    semantic_type: crossmatch_tag
+    temporal_exactness: static_safe
+    epoch_safe: true
+    notes: >
+      Sherlock is used as a context expert in phase 1. Do not force it into a
+      fake posterior space.

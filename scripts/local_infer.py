@@ -3,9 +3,9 @@
 For each (object_id, n_det) pair, truncates the cached lightcurve to exactly
 n_det detections (ordered by mjd) and runs SuperNNova / ParSNIP.
 
-Output: data/silver/local_expert_outputs.json
-  List of records: {expert, object_id, n_det, alert_mjd, class_probabilities, ...}
-  Consumed by build_epoch_table_from_lc.py to fill snn_prob_ia / parsnip_prob_ia.
+Outputs:
+  - `data/silver/local_expert_outputs/<expert>/part-latest.parquet`
+  - `data/silver/local_expert_outputs.json` (legacy compatibility for the baseline path)
 
 Usage (local smoke test — weights not required, returns stub probs):
     python scripts/local_infer.py --expert supernnova --limit 5 --max-n-det 5
@@ -105,6 +105,28 @@ def _merge_records(existing: list[dict], new_records: list[dict]) -> tuple[list[
             appended += 1
 
     return combined, appended, refreshed
+
+
+def _write_parquet_partitions(records: list[dict], silver_dir: Path) -> list[Path]:
+    import pandas as pd
+
+    out_paths: list[Path] = []
+    base_dir = silver_dir / "local_expert_outputs"
+    for expert in sorted({str(record.get("expert")) for record in records if record.get("expert")}):
+        expert_records = [record for record in records if record.get("expert") == expert]
+        if not expert_records:
+            continue
+        df = pd.DataFrame(expert_records).copy()
+        if "class_probabilities" in df.columns:
+            df["class_probabilities"] = df["class_probabilities"].apply(
+                lambda value: json.dumps(value, sort_keys=True) if isinstance(value, dict) else value
+            )
+        out_dir = base_dir / expert
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "part-latest.parquet"
+        df.to_parquet(out_path, index=False)
+        out_paths.append(out_path)
+    return out_paths
 
 
 def main() -> None:
@@ -225,10 +247,13 @@ def main() -> None:
 
     with open(out_path, "w") as fh:
         json.dump(combined, fh)
+    parquet_paths = _write_parquet_partitions(combined, silver_dir)
     print(
         f"\nWrote {appended} new records and refreshed {refreshed} existing records "
         f"({len(combined)} total) → {out_path}"
     )
+    for parquet_path in parquet_paths:
+        print(f"Parquet partition updated → {parquet_path}")
     print("Next: python scripts/build_epoch_table_from_lc.py")
 
 

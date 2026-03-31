@@ -69,4 +69,16 @@ python scripts/build_epoch_table_from_lc.py \
     --labels     data/labels.csv \
     --max-n-det  "${DEBASS_MAX_N_DET:-20}"
 
+python scripts/build_object_epoch_snapshots.py \
+    --lc-dir data/lightcurves \
+    --silver-dir data/silver \
+    --gold-dir data/gold \
+    --truth data/truth/object_truth.parquet \
+    --objects-csv data/labels.csv \
+    --max-n-det "${DEBASS_MAX_N_DET:-20}"
+
+python scripts/build_expert_helpfulness.py \
+    --snapshots data/gold/object_epoch_snapshots.parquet \
+    --output data/gold/expert_helpfulness.parquet
+
 echo "Done: $(date)"

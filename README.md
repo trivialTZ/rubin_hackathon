@@ -1,8 +1,10 @@
-# DEBASS — Early-Epoch Transient Meta-Classifier
+# DEBASS — Trust-Aware Early-Epoch Transient Meta-Classifier
 
-Fuses heterogeneous astronomical broker outputs with per-epoch lightcurve features
-to classify transients as **SN Ia / non-Ia SN-like / other** after only 3–5 detections.
-Built for Rubin/LSST follow-up prioritisation.
+DEBASS estimates **which expert/classifier is trustworthy at a given early epoch**
+and then optionally turns those trust estimates into a follow-up recommendation.
+
+The primary science product is not a single fused class posterior. It is
+`expert_confidence` for each expert at `(object_id, n_det, alert_jd)`.
 
 ## Science Motivation
 
@@ -10,35 +12,31 @@ Rubin/LSST will generate ~10 million alerts per night. Spectroscopic follow-up
 resources are scarce — you need to decide *which transients are worth observing*
 within hours, often before a full lightcurve is available.
 
-Existing brokers (ALeRCE, Fink, Lasair, SuperNNova, ParSNIP) each provide partial,
-heterogeneous signals. No single broker is universally trusted. DEBASS fuses them
-into a single calibrated posterior with a follow-up priority score.
+Existing brokers and local experts (ALeRCE, Fink, Lasair, ParSNIP, SuperNNova)
+provide heterogeneous signals with different semantics and different historical
+trustworthiness. DEBASS models those experts separately, preserves temporal
+exactness, and produces calibrated per-expert trust before any follow-up score.
 
 ## Architecture
 
 ```
-Raw alerts
+Raw alerts / cached lightcurves
     │
-    ├── ALeRCE  ─── lc_classifier_transient (SNIa/SNII/SNIbc/SLSN)
-    │               stamp_classifier (SN/AGN/VS/asteroid/bogus)
-    │               lc_classifier_top (Transient/Periodic/Stochastic)
+    ├── Bronze: raw broker payloads + provenance
+    ├── Silver v2: broker events with exactness metadata
+    ├── Gold v2: object_epoch_snapshots via as-of joins
     │
-    ├── Fink    ─── rf_snia_vs_nonia, snn_snia_vs_nonia, snn_sn_vs_all
+    ├── Projectors
+    │     ├── Fink SNN / RF
+    │     ├── ALeRCE classifier snapshots
+    │     ├── Lasair Sherlock context
+    │     └── local experts (ParSNIP / SuperNNova)
     │
-    ├── Lasair  ─── sherlock_classification (context crossmatch)
+    ├── Expert trust heads
+    │     └── calibrated q_e,t = P(expert e is trustworthy now)
     │
-    ├── SuperNNova ─ prob_ia per epoch [SCC GPU]
-    ├── ParSNIP  ── prob_ia per epoch [SCC GPU]
-    │
-    └── Raw lightcurve ── 24 features truncated at each n_det
-                          (rise rate, color, per-band mags, etc.)
-
-    All inputs → LightGBM EarlyMetaClassifier
-                      │
-                      ├── p(SN Ia)
-                      ├── p(non-Ia SN-like)
-                      ├── p(other)
-                      └── follow_up_priority ∈ [0,1]
+    └── Optional follow-up head
+          └── trust-weighted p_follow_proxy
 ```
 
 ## No-Leakage Epoch Design
@@ -48,21 +46,58 @@ Row at n_det=k uses **only** detections 1..k. This means the model learns how
 classification confidence evolves over time — and can be applied at any stage
 of a new transient's lightcurve.
 
-## Quick Start (Local)
+The same no-leakage rule also applies to expert evidence:
+
+- exact expert events must satisfy `event_time_jd <= alert_jd`
+- unsafe historical object snapshots are marked and excluded from trust training by default
+
+## Science Contract
+
+See [docs/science_contract.md](docs/science_contract.md).
+
+Core rules:
+
+- `expert_confidence` is the primary deliverable
+- truth must be external or explicitly marked weak
+- ALeRCE object-snapshot history is unsafe for historical trust unless archived or rerun epoch-safely
+- `EarlyMetaClassifier` remains a baseline, not the final science architecture
+
+## Trust-Aware Workflow (Local)
 
 ```bash
-pip install -r env/requirements.txt
+python3.11 -m pip install -r env/requirements.txt
 
-# Download 20 labelled ZTF objects
-python3 scripts/download_alerce_training.py --limit 20
+# 1. Download seed objects + cached lightcurves
+python3.11 scripts/download_alerce_training.py --limit 20
 
-# Fetch broker scores, build epoch table, train, score
-python3 scripts/backfill.py --broker all --from-labels data/labels.csv
-python3 scripts/normalize.py --skip-gold
-python3 scripts/build_epoch_table_from_lc.py
-python3 scripts/train_early.py --n-estimators 100
-python3 scripts/score_early.py --from-labels data/labels.csv --n-det 4
+# 2. Fetch broker payloads and normalize to event-level silver
+python3.11 scripts/backfill.py --broker all --from-labels data/labels.csv
+python3.11 scripts/normalize.py --skip-gold
+
+# 3. Build truth and exact object-epoch snapshots
+python3.11 scripts/build_truth_table.py --labels data/labels.csv
+python3.11 scripts/build_object_epoch_snapshots.py
+python3.11 scripts/build_expert_helpfulness.py
+
+# 4. Train trust heads and optional follow-up model
+python3.11 scripts/train_expert_trust.py
+python3.11 scripts/train_followup.py
+
+# 5. Score epochs with the expert_confidence payload
+python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
 ```
+
+## Baseline Workflow
+
+The legacy fused baseline remains available:
+
+```bash
+python3.11 scripts/build_epoch_table_from_lc.py
+python3.11 scripts/train_early.py --n-estimators 100
+python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
+```
+
+This baseline is useful for benchmarking, but it is not the primary science path.
 
 ## Full Training Run (BU SCC)
 
@@ -79,43 +114,57 @@ bash -l jobs/run_gpu_resume.sh
 ```
 
 Recommended split:
-1. `submit_cpu_prep.sh` runs `download_training → build_epochs`
-2. `run_gpu_resume.sh` runs `local_infer_gpu → train_early → score_all`
+1. CPU prep: `download_training → backfill/normalize → build_truth_table → build_object_epoch_snapshots → build_expert_helpfulness`
+2. GPU inference when enabled: `local_infer`
+3. CPU training: `train_expert_trust → train_followup → score_nightly`
 
 ## Output
 
-After training:
-- `models/early_meta/early_meta.pkl` — trained classifier
-- `reports/metrics/early_meta_metrics.json` — macro-F1, Brier, NLL at all epochs and n_det≤5
-- `reports/scores/scores_ndet{3,5,10}.txt` — per-object classification + follow-up priority
+Trust-aware outputs:
+
+- `data/silver/broker_events.parquet`
+- `data/truth/object_truth.parquet`
+- `data/gold/object_epoch_snapshots.parquet`
+- `data/gold/expert_helpfulness.parquet`
+- `models/trust/<expert>/model.pkl`
+- `models/trust/<expert>/calibrator.pkl`
+- `models/followup/model.pkl`
+- `reports/metrics/expert_trust_metrics.json`
+- `reports/metrics/followup_metrics.json`
+- `reports/scores/*.jsonl`
+
+Baseline outputs:
+
+- `models/early_meta/early_meta.pkl`
+- `reports/metrics/early_meta_metrics.json`
 
 ## Brokers
 
-| Broker | Type | Phase | Notes |
-|--------|------|-------|-------|
-| ALeRCE | Multiclass posterior | 1 | Public API, no credentials |
-| Fink | SN Ia probability | 1 | Public REST API |
-| Lasair | Sherlock crossmatch | 1 | Requires `LASAIR_TOKEN` |
-| SuperNNova | SN Ia probability | 1 | Local weights on SCC GPU |
-| ParSNIP | Multiclass posterior | 1 | Local weights on SCC GPU |
-| ANTARES | — | 2 | Stub — future work |
-| Pitt-Google | — | 2 | Stub — future work |
+| Expert key | Type | Phase-1 trust head | Notes |
+|------------|------|--------------------|-------|
+| `fink/snn` | alert-level posterior-like | yes | exact alert history |
+| `fink/rf_ia` | alert-level scalar Ia score | yes | exact alert history |
+| `parsnip` | local rerun posterior | yes | rerun exact when weights exist |
+| `supernnova` | local rerun posterior | pending | wrapper incomplete |
+| `alerce/lc_classifier_transient` | object snapshot | live-only | historical backfill is unsafe |
+| `alerce/stamp_classifier` | object snapshot | live-only | historical backfill is unsafe |
+| `lasair/sherlock` | context expert | context-only | static-safe, not calibrated posterior |
 
 ## Repository Structure
 
 ```
-src/debass/         Python package
+src/debass/
   access/           Broker adapters
-  features/         Lightcurve feature extractor
-  ingest/           Bronze/silver/gold Parquet pipeline
-  models/           EarlyMetaClassifier + baselines + calibration
-  experts/local/    SuperNNova, ParSNIP wrappers
-scripts/            Pipeline scripts (run in order)
-jobs/               SGE job scripts for BU SCC
-schemas/            JSON schemas for bronze/silver/gold layers
-inventory/          Broker + classifier metadata YAML
-fixtures/           Offline test fixtures
-env/                requirements.txt
+  features/         No-leakage lightcurve feature extraction
+  ingest/           Bronze / broker-events / gold snapshot builders
+  models/           Trust heads, follow-up head, baseline model
+  projectors/       Expert-specific projections
+  experts/local/    Local rerunnable experts
+scripts/            Training and scoring entry points
+jobs/               SCC scripts
+schemas/            JSON schemas
+inventory/          Source and expert metadata
+docs/               Science contract
 ```
 
 ## Ternary Labels
@@ -126,14 +175,16 @@ env/                requirements.txt
 | `nonIa_snlike` | Core-collapse SN (II, Ibc, SLSN, IIn, IIb) |
 | `other` | AGN, variable star, asteroid, bogus, TDE |
 
-## Follow-Up Priority
+## Follow-Up Proxy
 
-```
-follow_up_priority = 1.0 × p(SN Ia) + 0.3 × p(non-Ia SN-like)
+Phase-1 uses a trust-weighted follow-up proxy head. If no operational follow-up
+truth is available yet, the default proxy target is:
+
+```text
+follow_proxy = 1{final_class_ternary == "snia"}
 ```
 
-Range [0, 1]. Objects with priority > 0.6 are recommended for immediate
-spectroscopic follow-up.
+That target should be described explicitly as a proxy, not as final operational truth.
 
 ## Citation
 

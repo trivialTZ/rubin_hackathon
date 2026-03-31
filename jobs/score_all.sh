@@ -9,7 +9,7 @@
 # Uncomment and set your project if on Med Campus:
 ##$ -P your_project_name
 
-# Score all objects in the epoch table and write follow-up priority reports.
+# Score all objects and write trust-aware outputs when available.
 
 set -euo pipefail
 
@@ -32,22 +32,27 @@ echo "Start: $(date)"
 
 mkdir -p reports/scores
 
-# Score at n_det = 3, 5, 10 (early, medium, late)
-for N in 3 5 10; do
-    echo "  Scoring at n_det=${N}..."
-    python scripts/score_early.py \
-        --from-labels data/labels.csv \
-        --n-det       $N \
-        --epochs-dir  data/epochs \
-        --model-dir   models/early_meta \
-        > reports/scores/scores_ndet${N}.txt 2>&1
-done
-
-# Full trajectory for all objects (all n_det)
-python scripts/score_early.py \
-    --from-labels data/labels.csv \
-    --epochs-dir  data/epochs \
-    --model-dir   models/early_meta \
-    --max-n-det   20
+if [ -f data/gold/object_epoch_snapshots_trust.parquet ]; then
+    for N in 3 5 10; do
+        echo "  Trust-aware scoring at n_det=${N}..."
+        python scripts/score_nightly.py \
+            --from-labels data/labels.csv \
+            --n-det "$N" \
+            --snapshots data/gold/object_epoch_snapshots_trust.parquet \
+            --trust-models-dir models/trust \
+            --followup-model-dir models/followup \
+            --output "reports/scores/scores_ndet${N}.jsonl"
+    done
+else
+    for N in 3 5 10; do
+        echo "  Baseline scoring at n_det=${N}..."
+        python scripts/score_early.py \
+            --from-labels data/labels.csv \
+            --n-det       $N \
+            --epochs-dir  data/epochs \
+            --model-dir   models/early_meta \
+            > reports/scores/scores_ndet${N}.txt 2>&1
+    done
+fi
 
 echo "Done: $(date)"

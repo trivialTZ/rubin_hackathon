@@ -80,7 +80,11 @@ class LasairAdapter(BrokerAdapter):
             query_time=self.now(),
             raw_payload=raw,
             semantic_type=self.semantic_type,
+            survey="ZTF",
+            source_endpoint="lasair.objects",
+            request_params={"object_id": object_id},
             fields=fields,
+            events=fields,
             availability=self._has_live_access(),
             fixture_used=fixture_used,
         )
@@ -117,5 +121,11 @@ class LasairAdapter(BrokerAdapter):
             "raw_label_or_score": sherlock,
             "semantic_type": "crossmatch_tag",
             "canonical_projection": None,  # never interpret as probability
+            "classifier": "sherlock",
+            "class_name": str(sherlock),
+            "expert_key": "lasair/sherlock",
+            "event_scope": "static_context",
+            "temporal_exactness": "static_safe",
+            "event_time_jd": None,
             "note": "context label only — not a calibrated posterior",
         }]

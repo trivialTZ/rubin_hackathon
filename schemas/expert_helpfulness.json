@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Expert helpfulness row",
+  "description": "Per-expert trust-training target at one object epoch.",
+  "type": "object",
+  "required": [
+    "object_id",
+    "n_det",
+    "alert_jd",
+    "expert_key",
+    "available",
+    "temporal_exactness",
+    "target_class",
+    "target_follow_proxy"
+  ],
+  "properties": {
+    "object_id": { "type": "string" },
+    "n_det": { "type": "integer", "minimum": 1 },
+    "alert_jd": { "type": "number" },
+    "expert_key": { "type": "string" },
+    "available": { "type": "boolean" },
+    "temporal_exactness": { "type": "string" },
+    "mapped_pred_class": {
+      "type": ["string", "null"],
+      "enum": ["snia", "nonIa_snlike", "other", null]
+    },
+    "mapped_p_true_class": { "type": ["number", "null"] },
+    "is_topclass_correct": { "type": ["integer", "boolean", "null"] },
+    "is_helpful_for_follow_proxy": { "type": ["integer", "boolean", "null"] },
+    "target_class": {
+      "type": ["string", "null"],
+      "enum": ["snia", "nonIa_snlike", "other", null]
+    },
+    "target_follow_proxy": { "type": ["integer", "boolean", "null"] },
+    "prediction_type": { "type": ["string", "null"] },
+    "reason": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Gold — object-by-epoch snapshot row",
-  "description": "One row per (object_id, epoch_index). Availability mask tracks which brokers/experts contributed.",
+  "title": "Gold — legacy object snapshot row",
+  "description": "Deprecated schema retained for backward compatibility. Use schemas/object_epoch_snapshot_v2.json for the primary pipeline.",
   "type": "object",
   "required": ["object_id", "epoch_index", "epoch_jd", "availability_mask"],
   "properties": {

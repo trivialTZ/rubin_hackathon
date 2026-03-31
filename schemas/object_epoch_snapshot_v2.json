@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Gold v2 — object epoch snapshot row",
+  "description": "One row per object and detection epoch with no-future-leakage joins.",
+  "type": "object",
+  "required": [
+    "object_id",
+    "n_det",
+    "alert_jd"
+  ],
+  "properties": {
+    "object_id": { "type": "string" },
+    "n_det": { "type": "integer", "minimum": 1 },
+    "alert_jd": { "type": "number" },
+    "target_class": {
+      "type": ["string", "null"],
+      "enum": ["snia", "nonIa_snlike", "other", null]
+    },
+    "target_follow_proxy": { "type": ["integer", "boolean", "null"] },
+    "label_source": { "type": ["string", "null"] },
+    "label_quality": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}
