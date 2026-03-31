@@ -27,8 +27,8 @@ sys.path.insert(0, str(_SRC_ROOT))
 import numpy as np
 
 try:
-    from debass.models.calibrate import TemperatureScaler
-    from debass.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
+    from debass_meta.models.calibrate import TemperatureScaler
+    from debass_meta.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
 except ModuleNotFoundError as exc:
     print(f"ERROR: failed to import DEBASS package modules from {_SRC_ROOT}: {exc}")
     print("This usually means the SCC checkout is incomplete or stale. Re-sync the repository and retry.")

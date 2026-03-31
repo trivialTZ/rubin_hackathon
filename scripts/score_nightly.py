@@ -11,9 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import pandas as pd
 
-from debass.models.expert_trust import ExpertTrustArtifact
-from debass.models.followup import FollowupArtifact
-from debass.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
+from debass_meta.models.expert_trust import ExpertTrustArtifact
+from debass_meta.models.followup import FollowupArtifact
+from debass_meta.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
 
 
 def _load_object_ids(path: Path | None) -> list[str] | None:

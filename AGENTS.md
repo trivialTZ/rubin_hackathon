@@ -28,8 +28,8 @@ an optional trust-weighted follow-up proxy as a secondary output.
 python3.11 -m pip install -r env/requirements.txt
 
 # SCC
-python3 -m venv ~/debass_env
-source ~/debass_env/bin/activate
+python3 -m venv ~/debass_meta_env
+source ~/debass_meta_env/bin/activate
 pip install -r env/requirements.txt
 ```
 
@@ -78,7 +78,7 @@ See `README_scc.md` for full SCC setup.
 ## File Map
 
 ```
-src/debass/
+src/debass_meta/
   access/         Broker adapters (ALeRCE, Fink, Lasair + stubs)
   features/       Lightcurve feature extractor — FEATURE_NAMES list is authoritative
   ingest/         Bronze → broker-events → gold Parquet transforms
@@ -124,13 +124,13 @@ models/
 ## Critical Contracts
 
 If you add a new LC feature:
-1. Add to `FEATURE_NAMES` in `src/debass/features/lightcurve.py`
+1. Add to `FEATURE_NAMES` in `src/debass_meta/features/lightcurve.py`
 2. Add to any trust/follow-up feature selection that should consume it
-3. Add to `DEFAULT_FEATURES` in `src/debass/models/early_meta.py` only if the baseline should also use it
+3. Add to `DEFAULT_FEATURES` in `src/debass_meta/models/early_meta.py` only if the baseline should also use it
 
 If you add a new expert/broker field:
 1. Preserve it in `data/silver/broker_events.parquet`
-2. Update the relevant projector in `src/debass/projectors/`
+2. Update the relevant projector in `src/debass_meta/projectors/`
 3. Rebuild `object_epoch_snapshots` and `expert_helpfulness`
 4. Update the baseline merge path only if the baseline needs it
 

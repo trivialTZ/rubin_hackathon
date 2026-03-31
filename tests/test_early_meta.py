@@ -8,7 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.models.early_meta import EarlyMetaClassifier
+from debass_meta.models.early_meta import EarlyMetaClassifier
 
 
 class DummyCalibrator:

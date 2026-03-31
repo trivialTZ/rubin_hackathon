@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.projectors.fink import project_events
+from debass_meta.projectors.fink import project_events
 
 
 def test_fink_snn_projector_computes_ternary_projection() -> None:

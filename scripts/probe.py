@@ -14,7 +14,7 @@ from pathlib import Path
 # Allow running from repo root without installing
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.access import ALL_ADAPTERS
+from debass_meta.access import ALL_ADAPTERS
 
 try:
     from rich.console import Console

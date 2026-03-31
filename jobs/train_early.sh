@@ -1,22 +1,22 @@
 #!/bin/bash -l
-#$ -N debass_train_early
+#$ -N debass_meta_train_early
 #$ -l h_rt=04:00:00
 #$ -l mem_per_core=16G
 #$ -pe omp 8
 #$ -j y
 #$ -o logs/train_early.$JOB_ID.log
-#$ -hold_jid debass_build_epochs
+#$ -hold_jid debass_meta_build_epochs
 # Uncomment and set your project if on Med Campus:
 ##$ -P your_project_name
 
 # Train the early-epoch meta-classifier (LightGBM) on epoch feature table.
-# hold_jid is set to debass_build_epochs; if running after GPU job,
-# submit_all.sh overrides this to hold on debass_local_infer_gpu instead.
+# hold_jid is set to debass_meta_build_epochs; if running after GPU job,
+# submit_all.sh overrides this to hold on debass_meta_local_infer_gpu instead.
 
 set -euo pipefail
 
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 : "${DEBASS_ROOT:?DEBASS_ROOT must be set before running this job}"
 
 module load "$DEBASS_PYTHON_MODULE"

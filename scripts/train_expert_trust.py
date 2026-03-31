@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import pandas as pd
 
-from debass.models.expert_trust import train_expert_trust_suite
-from debass.models.splitters import group_train_cal_test_split
+from debass_meta.models.expert_trust import train_expert_trust_suite
+from debass_meta.models.splitters import group_train_cal_test_split
 
 
 def main() -> None:

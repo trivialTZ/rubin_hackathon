@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import pandas as pd
 
-from debass.models.followup import train_followup_model
-from debass.models.splitters import GroupSplit
+from debass_meta.models.followup import train_followup_model
+from debass_meta.models.splitters import GroupSplit
 
 
 def _load_split(models_dir: Path) -> GroupSplit:

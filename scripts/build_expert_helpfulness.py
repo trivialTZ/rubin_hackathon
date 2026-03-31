@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from debass.features.lightcurve import FEATURE_NAMES
-from debass.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
+from debass_meta.features.lightcurve import FEATURE_NAMES
+from debass_meta.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
 
 
 def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:

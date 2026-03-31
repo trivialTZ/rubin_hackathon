@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass.features.lightcurve import extract_features_at_each_epoch, FEATURE_NAMES
+from debass_meta.features.lightcurve import extract_features_at_each_epoch, FEATURE_NAMES
 
 # Broker score columns to merge from silver parquet (object-level, same at all epochs)
 _BROKER_SCORE_COLS = [

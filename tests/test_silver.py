@@ -8,7 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from debass.ingest.silver import bronze_to_silver
+from debass_meta.ingest.silver import bronze_to_silver
 
 
 def test_bronze_to_silver_serializes_mixed_raw_label_or_score(tmp_path: Path) -> None:
