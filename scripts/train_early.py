@@ -21,12 +21,18 @@ from pathlib import Path
 os.environ.setdefault("KMP_WARNINGS", "0")
 warnings.filterwarnings("ignore", category=UserWarning, module="lightgbm")
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+_SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
+sys.path.insert(0, str(_SRC_ROOT))
 
 import numpy as np
 
-from debass.models.calibrate import TemperatureScaler
-from debass.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
+try:
+    from debass.models.calibrate import TemperatureScaler
+    from debass.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
+except ModuleNotFoundError as exc:
+    print(f"ERROR: failed to import DEBASS package modules from {_SRC_ROOT}: {exc}")
+    print("This usually means the SCC checkout is incomplete or stale. Re-sync the repository and retry.")
+    sys.exit(1)
 
 
 def _load_epoch_table(path: Path):

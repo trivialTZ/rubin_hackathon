@@ -13,9 +13,15 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+_SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
+sys.path.insert(0, str(_SRC_ROOT))
 
-from debass.models.early_meta import EarlyMetaClassifier
+try:
+    from debass.models.early_meta import EarlyMetaClassifier
+except ModuleNotFoundError as exc:
+    print(f"ERROR: failed to import DEBASS package modules from {_SRC_ROOT}: {exc}")
+    print("This usually means the SCC checkout is incomplete or stale. Re-sync the repository and retry.")
+    sys.exit(1)
 
 try:
     from rich.console import Console
