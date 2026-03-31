@@ -13,6 +13,23 @@ _BRONZE_DIR = Path("data/bronze")
 _SILVER_DIR = Path("data/silver")
 
 
+def _serialize_raw_label_or_score(value: Any) -> str | None:
+    """Return a parquet-safe string representation preserving the original value.
+
+    PyArrow cannot write a column that mixes floats and strings. Keep the
+    verbatim payload in a single nullable string column by JSON-encoding
+    non-string values.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value)
+    except TypeError:
+        return str(value)
+
+
 def bronze_to_silver(
     bronze_dir: Path = _BRONZE_DIR,
     silver_dir: Path = _SILVER_DIR,
@@ -63,7 +80,9 @@ def bronze_to_silver(
                         "query_time": row["query_time"],
                         "survey": row.get("survey", "ZTF"),
                         "field": f.get("field", "_raw"),
-                        "raw_label_or_score": f.get("raw_label_or_score"),
+                        "raw_label_or_score": _serialize_raw_label_or_score(
+                            f.get("raw_label_or_score")
+                        ),
                         "semantic_type": f.get("semantic_type", row["semantic_type"]),
                         "canonical_projection": f.get("canonical_projection"),
                         "classifier": f.get("classifier"),
@@ -76,5 +95,6 @@ def bronze_to_silver(
     out_path = silver_dir / "broker_outputs.parquet"
 
     silver_df = pd.DataFrame(silver_rows)
+    silver_df["raw_label_or_score"] = silver_df["raw_label_or_score"].astype("string")
     silver_df.to_parquet(out_path, index=False)
     return out_path

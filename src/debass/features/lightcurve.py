@@ -92,7 +92,7 @@ def extract_features(detections: list[dict[str, Any]]) -> dict[str, float]:
     feats["dmag_first_last"] = float(mags_v[-1] - mags_v[0])
 
     # Linear slope dmag/dt over all valid detections
-    if len(mjds_v) >= 2:
+    if len(mjds_v) >= 2 and np.unique(mjds_v).size >= 2:
         try:
             with np.errstate(all="ignore"):
                 slope, _ = np.polyfit(mjds_v - t0, mags_v, 1)
@@ -136,7 +136,7 @@ def extract_features(detections: list[dict[str, Any]]) -> dict[str, float]:
                 color_mjds.append(g_t)
         if color_vals:
             feats["color_gr"] = float(np.mean(color_vals))
-            if len(color_vals) >= 2:
+            if len(color_vals) >= 2 and np.unique(color_mjds).size >= 2:
                 try:
                     with np.errstate(all="ignore"):
                         cslope, _ = np.polyfit(

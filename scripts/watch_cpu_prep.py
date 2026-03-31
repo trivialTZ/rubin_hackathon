@@ -79,6 +79,42 @@ def _job_states(job_ids):
     return states
 
 
+def _log_phase_hint(log_path: Path, stage: str) -> Optional[str]:
+    if not log_path.exists():
+        return None
+    try:
+        text = log_path.read_text(errors="replace")
+    except Exception:
+        return None
+
+    if "Traceback" in text or "ERROR:" in text:
+        return "failed"
+
+    if stage == "build":
+        if "Processing " in text:
+            return "epoch_table"
+        if "Bronze → Silver..." in text:
+            return "normalize"
+        if "] wrote " in text or "[alerce]" in text or "[fink]" in text or "[lasair]" in text:
+            return "backfill"
+    else:
+        if "=== Fetching " in text:
+            return "fetch"
+        if "=== Collecting " in text:
+            return "collect"
+    return None
+
+
+def _has_failure(log_path: Path) -> bool:
+    if not log_path.exists():
+        return False
+    try:
+        text = log_path.read_text(errors="replace")
+    except Exception:
+        return False
+    return "Traceback" in text or "ERROR:" in text
+
+
 def _bar(current: int, total: int, width: int = 28) -> str:
     if total <= 0:
         return "-" * width
@@ -145,6 +181,16 @@ def main() -> None:
             states = _job_states([download_job, build_job])
             dl_info = _parse_progress(download_log, "download")
             ep_info = _parse_progress(build_log, "build")
+
+            if not dl_info.get("phase"):
+                dl_info["phase"] = _log_phase_hint(download_log, "download")
+            if not ep_info.get("phase"):
+                ep_info["phase"] = _log_phase_hint(build_log, "build")
+
+            if _has_failure(download_log):
+                states[download_job] = "failed"
+            if _has_failure(build_log):
+                states[build_job] = "failed"
 
             os.system("clear")
             print("DEBASS CPU Prep Watch")

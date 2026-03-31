@@ -76,6 +76,24 @@ To watch both jobs with live progress bars:
 $DEBASS_VENV/bin/python scripts/watch_cpu_prep.py
 ```
 
+After CPU prep finishes, write a summary of what was downloaded and how the
+CPU-side artifacts are structured:
+
+```bash
+$DEBASS_VENV/bin/python scripts/summarize_cpu_prep.py \
+  --json-out reports/summary/cpu_prep_summary.json
+```
+
+That report summarizes:
+- `data/labels.csv`
+- `data/lightcurves/*.json`
+- `data/bronze/*.parquet`
+- `data/silver/broker_outputs.parquet`
+- `data/epochs/epoch_features.parquet`
+
+Use `--strict` if you want the command to exit nonzero when labelled objects
+are missing from lightcurves, silver, or the epoch table.
+
 If you already have the SCC environment set up and only want to resubmit the
 CPU stage, you can still run:
 
