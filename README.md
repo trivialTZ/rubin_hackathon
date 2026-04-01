@@ -119,6 +119,31 @@ Recommended split:
 2. GPU inference when enabled: `local_infer`
 3. CPU training: `train_expert_trust → train_followup → score_nightly`
 
+## Data Engineering QA
+
+Use the readiness audit and benchmark check after changing ingest, normalization, snapshot building, or training inputs:
+
+```bash
+python3.11 -m pytest -q
+python3.11 scripts/audit_data_readiness.py --root <run-root> --labels data/labels.csv --lightcurves-dir data/lightcurves
+python3.11 scripts/check_data_benchmarks.py --root <run-root> --labels data/labels.csv --lightcurves-dir data/lightcurves
+```
+
+Edit `benchmarks/data_engineering.toml` as the project benchmark tightens. Recurring failures and fixes are tracked in `troubleshooting.md`.
+
+For the full pre-ML build order, use:
+
+```bash
+python3.11 scripts/run_preml_pipeline.py --root tmp/preml_run --labels data/labels.csv --lightcurves-dir data/lightcurves
+python3.11 scripts/check_preml_readiness.py --root tmp/preml_run --labels data/labels.csv --lightcurves-dir data/lightcurves
+```
+
+If you have curated truth, validate it before building the canonical truth layer:
+
+```bash
+python3.11 scripts/validate_truth_table.py path/to/curated_truth.parquet --require-strong
+```
+
 ## Output
 
 Trust-aware outputs:

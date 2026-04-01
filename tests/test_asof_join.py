@@ -23,3 +23,17 @@ def test_select_events_asof_uses_latest_past_event_only() -> None:
 
     assert len(selected) == 1
     assert selected[0]["field"] == "b"
+
+
+def test_select_events_asof_ignores_unavailable_rows() -> None:
+    events = pd.DataFrame(
+        [
+            {"event_time_jd": 20.0, "temporal_exactness": "exact_alert", "field": "stale", "availability": False},
+            {"event_time_jd": 10.0, "temporal_exactness": "exact_alert", "field": "live", "availability": True},
+        ]
+    )
+
+    selected = select_events_asof(events, alert_jd=24.0)
+
+    assert len(selected) == 1
+    assert selected[0]["field"] == "live"

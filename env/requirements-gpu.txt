@@ -1,0 +1,27 @@
+# DEBASS GPU-stage dependencies
+# Install AFTER base requirements (env/requirements.txt).
+#
+# Step 1: Install PyTorch with CUDA support.
+#   See https://pytorch.org/get-started/locally/ for the correct command
+#   matching your SCC CUDA driver.  Example for CUDA 12.1:
+#     pip install torch --index-url https://download.pytorch.org/whl/cu121
+#
+# Step 2: Install this file:
+#     pip install -r env/requirements-gpu.txt
+#
+# Step 3: Place model artifacts:
+#     artifacts/local_experts/parsnip/model.pt
+#     artifacts/local_experts/parsnip/classifier.pkl
+#     artifacts/local_experts/supernnova/model.pt   (when available)
+
+# --- PyTorch (install manually first — see above) ---
+torch>=2.0
+
+# --- ParSNIP (primary GPU expert) ---
+astro-parsnip>=1.4.0
+astropy>=5.0
+lcdata>=0.3
+
+# --- SuperNNova (optional — requires Python 3.11+) ---
+# Uncomment when you have a Python 3.11 venv and trained SNN weights:
+# supernnova>=2.0

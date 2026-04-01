@@ -29,6 +29,7 @@ def main() -> None:
     parser.add_argument("--snapshots", default="data/gold/object_epoch_snapshots_trust.parquet")
     parser.add_argument("--trust-models-dir", default="models/trust")
     parser.add_argument("--model-dir", default="models/followup")
+    parser.add_argument("--metrics-out", default=None)
     parser.add_argument("--n-estimators", type=int, default=200)
     parser.add_argument("--n-jobs", type=int, default=1)
     args = parser.parse_args()
@@ -43,11 +44,11 @@ def main() -> None:
         n_jobs=args.n_jobs,
     )
 
-    reports_dir = Path("reports/metrics")
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    with open(reports_dir / "followup_metrics.json", "w") as fh:
+    metrics_out = Path(args.metrics_out) if args.metrics_out else Path(args.model_dir).parent.parent / "reports/metrics/followup_metrics.json"
+    metrics_out.parent.mkdir(parents=True, exist_ok=True)
+    with open(metrics_out, "w") as fh:
         json.dump(metrics, fh, indent=2)
-    print(f"Wrote follow-up metrics → {reports_dir / 'followup_metrics.json'}")
+    print(f"Wrote follow-up metrics → {metrics_out}")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ dependencies = [
 local-experts = [
     "supernnova>=2.0",
     "astro-parsnip>=1.4.0",
+    "astropy>=5.0",
+    "lcdata>=0.3",
 ]
 dev = [
     "pytest>=8.0",

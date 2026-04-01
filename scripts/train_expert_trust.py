@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import pandas as pd
 
-from debass_meta_meta.models.expert_trust import train_expert_trust_suite
-from debass_meta_meta.models.splitters import group_train_cal_test_split
+from debass_meta.models.expert_trust import train_expert_trust_suite
+from debass_meta.models.splitters import group_train_cal_test_split
 
 
 def main() -> None:
@@ -20,6 +20,7 @@ def main() -> None:
     parser.add_argument("--helpfulness", default="data/gold/expert_helpfulness.parquet")
     parser.add_argument("--models-dir", default="models/trust")
     parser.add_argument("--output-snapshots", default="data/gold/object_epoch_snapshots_trust.parquet")
+    parser.add_argument("--metrics-out", default=None)
     parser.add_argument("--n-splits", type=int, default=5)
     parser.add_argument("--strict-labels", action="store_true")
     parser.add_argument("--allow-unsafe-alerce", action="store_true")
@@ -52,15 +53,15 @@ def main() -> None:
         allow_unsafe_latest_snapshot=args.allow_unsafe_alerce,
     )
 
-    reports_dir = Path("reports/metrics")
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    with open(reports_dir / "expert_trust_metrics.json", "w") as fh:
+    metrics_out = Path(args.metrics_out) if args.metrics_out else Path(args.models_dir).parent.parent / "reports/metrics/expert_trust_metrics.json"
+    metrics_out.parent.mkdir(parents=True, exist_ok=True)
+    with open(metrics_out, "w") as fh:
         json.dump(metrics_report, fh, indent=2)
     metadata["allow_unsafe_alerce"] = bool(args.allow_unsafe_alerce)
     metadata["contains_weak_labels"] = bool(snapshot_df["label_quality"].fillna("").eq("weak").any())
     with open(Path(args.models_dir) / "metadata.json", "w") as fh:
         json.dump(metadata, fh, indent=2)
-    print(f"Wrote expert trust metrics → {reports_dir / 'expert_trust_metrics.json'}")
+    print(f"Wrote expert trust metrics → {metrics_out}")
     print(f"Wrote trust metadata → {Path(args.models_dir) / 'metadata.json'}")
 
 

@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from debass_meta_meta.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
-from debass_meta_meta.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
+from debass_meta.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
+from debass_meta.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
 
 _SILVER_DIR = Path("data/silver")
 _GOLD_DIR = Path("data/gold")
@@ -80,6 +80,7 @@ def build_object_epoch_snapshots(
     max_n_det: int = 20,
     object_ids: list[str] | None = None,
     allow_unsafe_latest_snapshot: bool = False,
+    output_path: Path | None = None,
 ) -> Path:
     """Build the canonical gold v2 object-epoch snapshot table."""
     try:
@@ -134,8 +135,12 @@ def build_object_epoch_snapshots(
     if not rows:
         raise ValueError(f"No epoch rows built from {lc_dir}")
 
-    gold_dir.mkdir(parents=True, exist_ok=True)
-    out_path = Path(gold_dir) / "object_epoch_snapshots.parquet"
+    if output_path is None:
+        gold_dir.mkdir(parents=True, exist_ok=True)
+        out_path = Path(gold_dir) / "object_epoch_snapshots.parquet"
+    else:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_parquet(out_path, index=False)
     return out_path
 
@@ -156,6 +161,12 @@ def select_events_asof(
 
     if not hasattr(event_rows, "copy"):
         event_rows = pd.DataFrame(event_rows)
+
+    if "availability" in event_rows.columns:
+        available_mask = event_rows["availability"].fillna(True).astype(bool)
+        event_rows = event_rows[available_mask].copy()
+        if len(event_rows) == 0:
+            return []
 
     timed = event_rows[event_rows["event_time_jd"].notna()].copy()
     if len(timed) > 0:

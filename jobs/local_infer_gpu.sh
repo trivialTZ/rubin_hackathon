@@ -51,6 +51,47 @@ echo "Experts: $DEBASS_GPU_EXPERTS"
 echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-<unset>}"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
+# --- GPU dependency preflight ---
+python - <<'PREFLIGHT'
+import sys, importlib
+
+experts = "$DEBASS_GPU_EXPERTS".split()
+missing = []
+
+# torch is required for all GPU experts
+try:
+    import torch
+    if not torch.cuda.is_available():
+        print("ERROR: torch is installed but CUDA is not available.")
+        sys.exit(1)
+    print(f"torch {torch.__version__}, CUDA {torch.version.cuda}, "
+          f"devices={torch.cuda.device_count()}")
+except ImportError:
+    missing.append("torch (pip install torch --index-url https://download.pytorch.org/whl/cu121)")
+
+if "parsnip" in experts:
+    for pkg, pip_name in [("parsnip", "astro-parsnip"), ("astropy", "astropy")]:
+        try:
+            importlib.import_module(pkg)
+        except ImportError:
+            missing.append(f"{pip_name}")
+
+if "supernnova" in experts:
+    try:
+        import supernnova
+    except ImportError:
+        missing.append("supernnova")
+
+if missing:
+    print("ERROR: missing GPU-stage packages:")
+    for m in missing:
+        print(f"  - {m}")
+    print("\nInstall with: pip install -r env/requirements-gpu.txt")
+    sys.exit(1)
+
+print("GPU dependency preflight passed.")
+PREFLIGHT
+
 for expert in $DEBASS_GPU_EXPERTS; do
     python scripts/local_infer.py \
         --expert      "$expert" \

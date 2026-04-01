@@ -82,6 +82,19 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
     exit 1
 fi
 
+# Install GPU deps if torch is not available
+if ! "$DEBASS_VENV/bin/python" -c "import torch" 2>/dev/null; then
+    echo ""
+    echo "GPU packages not installed. Installing from env/requirements-gpu.txt ..."
+    echo "  (If this fails, install PyTorch manually first — see env/requirements-gpu.txt)"
+    "$DEBASS_VENV/bin/pip" install -r env/requirements-gpu.txt || {
+        echo "ERROR: GPU dependency installation failed."
+        echo "  Install PyTorch manually (https://pytorch.org/get-started/locally/),"
+        echo "  then: pip install -r env/requirements-gpu.txt"
+        exit 1
+    }
+fi
+
 echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-<unset>}"
 "$DEBASS_VENV/bin/python" - <<'PY'
 import os

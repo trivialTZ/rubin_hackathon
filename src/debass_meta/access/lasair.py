@@ -24,6 +24,12 @@ class LasairAdapter(BrokerAdapter):
     semantic_type: SemanticType = "crossmatch_tag"
 
     def __init__(self) -> None:
+        try:
+            from dotenv import load_dotenv
+
+            load_dotenv()
+        except Exception:
+            pass
         self._token = os.environ.get("LASAIR_TOKEN", "")
         self._client = None
         if self._token:

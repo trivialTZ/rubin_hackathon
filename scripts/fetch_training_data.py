@@ -24,10 +24,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass_meta_meta.access.alerce import AlerceAdapter
-from debass_meta_meta.access.fink import FinkAdapter
-from debass_meta_meta.ingest.bronze import write_bronze
-from debass_meta_meta.ingest.silver import bronze_to_silver
+from debass_meta.access.alerce import AlerceAdapter
+from debass_meta.access.fink import FinkAdapter
+from debass_meta.ingest.bronze import write_bronze
+from debass_meta.ingest.silver import bronze_to_silver
 
 # ------------------------------------------------------------------ #
 # Ternary label mapping from ALeRCE LC classifier classes             #

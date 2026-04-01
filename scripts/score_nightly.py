@@ -16,6 +16,14 @@ from debass_meta.models.followup import FollowupArtifact
 from debass_meta.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
 
 
+def _clean_scalar(value):
+    if value is None:
+        return None
+    if pd.isna(value):
+        return None
+    return value
+
+
 def _load_object_ids(path: Path | None) -> list[str] | None:
     if path is None or not path.exists():
         return None
@@ -50,8 +58,8 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
         block = {
             "available": available,
             "trust": None,
-            "prediction_type": row.get(f"prediction_type__{san}"),
-            "exactness": row.get(f"temporal_exactness__{san}"),
+            "prediction_type": _clean_scalar(row.get(f"prediction_type__{san}")),
+            "exactness": _clean_scalar(row.get(f"temporal_exactness__{san}")),
         }
         if not available:
             block["reason"] = row.get(f"reason__{san}") or "expert unavailable at this epoch"
@@ -59,7 +67,7 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
             continue
 
         if row.get(f"prediction_type__{san}") == "context_only":
-            block["context_tag"] = row.get(f"context_tag__{san}")
+            block["context_tag"] = _clean_scalar(row.get(f"context_tag__{san}"))
             block["reason"] = row.get(f"reason__{san}") or "phase-1 context expert"
             payload["expert_confidence"][expert_key] = block
             continue
@@ -72,7 +80,7 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
         else:
             block["reason"] = "trust head not trained"
 
-        mapped_pred_class = row.get(f"mapped_pred_class__{san}")
+        mapped_pred_class = _clean_scalar(row.get(f"mapped_pred_class__{san}"))
         if mapped_pred_class is not None:
             block["mapped_pred_class"] = mapped_pred_class
         projected = {}

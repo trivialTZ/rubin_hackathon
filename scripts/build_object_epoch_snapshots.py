@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from debass_meta_meta.ingest.gold import build_object_epoch_snapshots
+from debass_meta.ingest.gold import build_object_epoch_snapshots
 
 
 def _load_object_ids(path: Path | None) -> list[str] | None:
@@ -27,6 +27,7 @@ def main() -> None:
     parser.add_argument("--objects-csv", default="data/labels.csv", help="Optional object filter")
     parser.add_argument("--max-n-det", type=int, default=20)
     parser.add_argument("--allow-unsafe-latest-snapshot", action="store_true")
+    parser.add_argument("--output", default=None, help="Optional explicit parquet output path")
     args = parser.parse_args()
 
     path = build_object_epoch_snapshots(
@@ -37,6 +38,7 @@ def main() -> None:
         max_n_det=args.max_n_det,
         object_ids=_load_object_ids(Path(args.objects_csv)) if args.objects_csv else None,
         allow_unsafe_latest_snapshot=args.allow_unsafe_latest_snapshot,
+        output_path=Path(args.output) if args.output else None,
     )
     print(f"Wrote object-epoch snapshots → {path}")
 

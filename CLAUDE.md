@@ -44,18 +44,38 @@ python3.11 scripts/download_alerce_training.py --limit 20
 python3.11 scripts/backfill.py --broker all --from-labels data/labels.csv
 python3.11 scripts/normalize.py
 
-# 3. Build truth + gold tables
-python3.11 scripts/build_truth_table.py --labels data/labels.csv
+# 3. Build truth table (bulk CSV mode — fast, no API calls)
+#    First download TNS bulk CSV on SCC (requires TNS credentials):
+python3.11 scripts/download_tns_bulk.py
+#    Then crossmatch locally:
+python3.11 scripts/crossmatch_tns.py --labels data/labels.csv \
+    --bulk-csv data/tns_public_objects.csv
+
+# 4. Build gold tables
 python3.11 scripts/build_object_epoch_snapshots.py
 python3.11 scripts/build_expert_helpfulness.py
 
-# 4. Train trust-aware models
+# 5. Train trust-aware models
 python3.11 scripts/train_expert_trust.py
 python3.11 scripts/train_followup.py
 
-# 5. Score
+# 6. Score
 python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
 ```
+
+## TNS Crossmatch: Bulk CSV vs API Mode
+
+**Bulk CSV mode (recommended for 2000+ objects):**
+- Download TNS bulk CSV once on SCC: `python3.11 scripts/download_tns_bulk.py`
+- Crossmatch locally (instant, no API calls): `--bulk-csv data/tns_public_objects.csv`
+- The CSV has ~160K objects, regenerated daily by TNS
+- Spectra detection: prefix="SN" + non-empty type (100% accurate on our test set)
+
+**API mode (for small runs or when you need fresh data):**
+- Queries TNS API: 2 calls per object (search + get_object)
+- Rate limited: ~60s rolling window
+- Use for <100 objects or when TNS CSV is stale
+- Requires: TNS_API_KEY, TNS_TNS_ID, TNS_MARKER_NAME in .env
 
 ## Running the Baseline (benchmark only)
 

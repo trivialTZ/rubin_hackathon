@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import urllib3
 
 from .base import BrokerAdapter, BrokerOutput, SemanticType
 
 _FIXTURE_DIR = Path("fixtures/raw/fink")
-_BASE_URL = "https://fink-portal.org"
+_BASE_URL = "https://api.fink-portal.org"
 
 # Fields that are genuine probability scores [0,1]
 _PROB_FIELDS = {
@@ -40,6 +41,7 @@ class FinkAdapter(BrokerAdapter):
 
     def __init__(self, timeout: int = 15) -> None:
         self._timeout = timeout
+        self._allow_insecure_ssl = True
 
     # ------------------------------------------------------------------ #
     # Interface                                                            #
@@ -47,9 +49,9 @@ class FinkAdapter(BrokerAdapter):
 
     def probe(self) -> dict[str, Any]:
         try:
-            r = requests.get(
+            r = self._request(
+                "GET",
                 f"{_BASE_URL}/api/v1/statistics",
-                timeout=self._timeout,
             )
             r.raise_for_status()
             return {"broker": self.name, "status": "ok", "http": r.status_code}
@@ -64,14 +66,14 @@ class FinkAdapter(BrokerAdapter):
         request_payload = {
             "objectId": object_id,
             "output-format": "json",
-            "columns": "i:jd,i:ndethist,d:rf_snia_vs_nonia,d:snn_snia_vs_nonia,d:snn_sn_vs_all,d:rf_kn_vs_nonkn,d:mulens_class_1,d:finkclass",
+            "columns": "i:jd,i:candid,i:ndethist,d:rf_snia_vs_nonia,d:snn_snia_vs_nonia,d:snn_sn_vs_all,d:rf_kn_vs_nonkn,d:mulens_class_1,d:finkclass",
         }
 
         try:
-            r = requests.post(
+            r = self._request(
+                "POST",
                 f"{_BASE_URL}/api/v1/objects",
                 json=request_payload,
-                timeout=self._timeout,
             )
             status_code = r.status_code
             r.raise_for_status()
@@ -106,14 +108,14 @@ class FinkAdapter(BrokerAdapter):
     def fetch_lightcurve(self, object_id: str) -> dict[str, Any]:
         fixture_path = _FIXTURE_DIR / f"{object_id}_lc.json"
         try:
-            r = requests.post(
+            r = self._request(
+                "POST",
                 f"{_BASE_URL}/api/v1/objects",
                 json={
                     "objectId": object_id,
                     "output-format": "json",
                     "columns": "i:jd,i:magpsf,i:sigmapsf,i:fid,i:ra,i:dec",
                 },
-                timeout=self._timeout,
             )
             r.raise_for_status()
             lc = r.json()
@@ -153,6 +155,7 @@ class FinkAdapter(BrokerAdapter):
             # n_det: number of previous detections including this one
             ndethist = alert.get("i:ndethist") or alert.get("ndethist")
             jd = alert.get("i:jd") or alert.get("jd")
+            candid = alert.get("i:candid") or alert.get("candid")
             n_det = int(ndethist) if ndethist is not None else None
 
             for key, val in alert.items():
@@ -178,6 +181,7 @@ class FinkAdapter(BrokerAdapter):
                     "expert_key": self._expert_key_for_field(short),
                     "event_scope": "alert",
                     "temporal_exactness": "exact_alert",
+                    "alert_id": int(candid) if candid is not None else None,
                     "n_det": n_det,
                     "alert_jd": float(jd) if jd is not None else None,
                     "event_time_jd": float(jd) if jd is not None else None,
@@ -191,3 +195,13 @@ class FinkAdapter(BrokerAdapter):
         if field_name == "rf_snia_vs_nonia":
             return "fink/rf_ia"
         return "fink/aux"
+
+    def _request(self, method: str, url: str, **kwargs):
+        kwargs.setdefault("timeout", self._timeout)
+        try:
+            return requests.request(method, url, **kwargs)
+        except requests.exceptions.SSLError:
+            if not self._allow_insecure_ssl:
+                raise
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            return requests.request(method, url, verify=False, **kwargs)

@@ -1,0 +1,37 @@
+# Edit these thresholds as the project benchmark tightens.
+# The defaults below are set to keep the current trust-aware smoke path honest:
+# live ALeRCE + Fink, complete seed lightcurves, trust heads for the live Fink experts,
+# and a scored payload that still contains all phase-1 expert blocks.
+
+[readiness]
+require_silver = true
+require_truth = true
+require_snapshots = true
+require_followup_model = true
+require_complete_lightcurves = true
+allow_weak_truth = true
+require_strong_truth = false
+require_exact_alert_alert_id = true
+require_exact_alert_n_det = true
+require_exact_alert_event_time_jd = true
+min_label_rows = 1
+min_snapshot_rows = 1
+min_trained_experts = 1
+require_live_brokers = ["alerce", "fink"]
+require_snapshot_experts = ["fink/snn", "fink/rf_ia"]
+require_trust_models = ["fink/snn", "fink/rf_ia"]
+
+[payload]
+scores_path = "reports/scores_ndet4.jsonl"
+min_rows = 1
+require_all_phase1_experts = true
+require_contract_fields = true
+required_available_experts = ["fink/snn", "fink/rf_ia"]
+
+path = "reports/metrics/expert_trust_metrics.json"
+require_metrics_for = ["fink/snn", "fink/rf_ia"]
+min_test_rows = 1
+
+[metrics.followup]
+path = "reports/metrics/followup_metrics.json"
+min_test_rows = 1

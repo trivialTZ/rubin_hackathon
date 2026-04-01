@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass_meta_meta.ingest.epochs import build_epoch_table
+from debass_meta.ingest.epochs import build_epoch_table
 
 
 def _load_labels(path: Path) -> dict[str, str]:

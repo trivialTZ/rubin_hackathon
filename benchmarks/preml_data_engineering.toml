@@ -1,0 +1,26 @@
+[readiness]
+require_silver = true
+require_truth = true
+require_snapshots = true
+require_followup_model = false
+require_complete_lightcurves = true
+allow_weak_truth = true
+require_strong_truth = false
+require_exact_alert_alert_id = true
+require_exact_alert_n_det = true
+require_exact_alert_event_time_jd = true
+min_label_rows = 1
+min_snapshot_rows = 1
+min_trained_experts = 0
+require_live_brokers = ["alerce", "fink"]
+require_snapshot_experts = ["fink/snn", "fink/rf_ia"]
+require_trust_models = []
+
+[payload]
+enabled = false
+
+[metrics.expert_trust]
+enabled = false
+
+[metrics.followup]
+enabled = false

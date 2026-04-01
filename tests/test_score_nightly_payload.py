@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -38,3 +39,24 @@ def test_score_payload_contains_expert_confidence_block() -> None:
     assert payload["expert_confidence"]["fink/snn"]["trust"] == 0.8
     assert payload["expert_confidence"]["lasair/sherlock"]["prediction_type"] == "context_only"
     assert "ensemble" in payload
+
+
+def test_score_payload_cleans_nan_scalars_for_unavailable_experts() -> None:
+    row = pd.Series(
+        {
+            "object_id": "ZTF2",
+            "n_det": 3,
+            "alert_jd": 2460003.0,
+            "avail__parsnip": 0.0,
+            "prediction_type__parsnip": np.nan,
+            "temporal_exactness__parsnip": np.nan,
+        }
+    )
+
+    payload = build_score_payload(row, trust_models={}, followup_model=None)
+    parsnip = payload["expert_confidence"]["parsnip"]
+
+    assert parsnip["available"] is False
+    assert parsnip["trust"] is None
+    assert parsnip["prediction_type"] is None
+    assert parsnip["exactness"] is None

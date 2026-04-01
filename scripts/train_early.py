@@ -30,8 +30,8 @@ sys.path.insert(0, str(_SRC_ROOT))
 import numpy as np
 
 try:
-    from debass_meta_meta.models.calibrate import TemperatureScaler
-    from debass_meta_meta.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
+    from debass_meta.models.calibrate import TemperatureScaler
+    from debass_meta.models.early_meta import EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES
 except ModuleNotFoundError as exc:
     print(f"ERROR: failed to import DEBASS package modules from {_SRC_ROOT}: {exc}")
     print("This usually means the SCC checkout is incomplete or stale. Re-sync the repository and retry.")
@@ -115,6 +115,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train baseline early-epoch meta-classifier")
     parser.add_argument("--epochs-dir", default="data/epochs")
     parser.add_argument("--model-dir",  default="models/early_meta")
+    parser.add_argument("--metrics-out", default=None)
     parser.add_argument("--max-n-det",  type=int, default=20,
                         help="Only train on rows with n_det <= this value")
     parser.add_argument("--val-frac",   type=float, default=0.2)
@@ -201,11 +202,11 @@ def main() -> None:
             "max_n_det": args.max_n_det,
         },
     }
-    reports_dir = Path("reports/metrics")
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    with open(reports_dir / "early_meta_metrics.json", "w") as fh:
+    metrics_out = Path(args.metrics_out) if args.metrics_out else model_dir.parent.parent / "reports/metrics/early_meta_metrics.json"
+    metrics_out.parent.mkdir(parents=True, exist_ok=True)
+    with open(metrics_out, "w") as fh:
         json.dump(report, fh, indent=2)
-    print(f"Metrics saved → {reports_dir}/early_meta_metrics.json")
+    print(f"Metrics saved → {metrics_out}")
 
 
 if __name__ == "__main__":

@@ -65,11 +65,10 @@ def bronze_to_silver(
                     events = []
 
             if not events:
-                events = [{
-                    "field": "_raw",
-                    "raw_label_or_score": raw_payload,
-                    "semantic_type": row["semantic_type"],
-                }]
+                # Bronze already preserves the raw broker response. Silver is the
+                # canonical event-level table, so skip broker payloads that do
+                # not decode into any usable event rows.
+                continue
 
             for ranking, event in enumerate(events, start=1):
                 event_time_jd = event.get("event_time_jd")
@@ -133,7 +132,8 @@ def bronze_to_silver(
     legacy_path = silver_dir / "broker_outputs.parquet"
 
     silver_df = pd.DataFrame(event_rows)
-    silver_df["raw_label_or_score"] = silver_df["raw_label_or_score"].astype("string")
+    if "raw_label_or_score" in silver_df.columns:
+        silver_df["raw_label_or_score"] = silver_df["raw_label_or_score"].astype("string")
     silver_df.to_parquet(out_path, index=False)
 
     legacy_df = pd.DataFrame(legacy_rows)
