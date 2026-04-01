@@ -79,8 +79,14 @@ def _early_epoch_metrics(clf, df, max_early: int = 5, *, calibrated: bool) -> di
     return m
 
 
-def _stratified_object_split(df, val_frac: float, seed: int = 42) -> tuple[set[str], set[str]]:
-    """Split by object_id while approximately preserving class balance."""
+def _stratified_object_split(
+    df, val_frac: float, seed: int = 42,
+) -> tuple[set[str], set[str], set[str]]:
+    """Split by object_id into train/cal/test while preserving class balance.
+
+    Returns (train_ids, cal_ids, test_ids).  cal_frac and test_frac each get
+    half of val_frac so that total held-out data equals val_frac.
+    """
     object_labels = (
         df[df["target_label"].notna()]
         .groupby("object_id")["target_label"]
@@ -88,27 +94,40 @@ def _stratified_object_split(df, val_frac: float, seed: int = 42) -> tuple[set[s
     )
     rng = np.random.default_rng(seed)
     train_ids: set[str] = set()
-    val_ids: set[str] = set()
+    cal_ids: set[str] = set()
+    test_ids: set[str] = set()
+
+    cal_frac = val_frac / 2.0
+    test_frac = val_frac / 2.0
 
     for label in sorted(object_labels.unique()):
         label_ids = object_labels[object_labels == label].index.to_numpy(copy=True)
         rng.shuffle(label_ids)
-        if len(label_ids) <= 1:
+        n = len(label_ids)
+        if n <= 2:
             train_ids.update(label_ids.tolist())
             continue
-        n_val = max(1, int(round(len(label_ids) * val_frac)))
-        n_val = min(n_val, len(label_ids) - 1)
-        val_ids.update(label_ids[:n_val].tolist())
-        train_ids.update(label_ids[n_val:].tolist())
+        n_cal = max(1, int(round(n * cal_frac)))
+        n_test = max(1, int(round(n * test_frac)))
+        # Ensure at least 1 training sample
+        if n_cal + n_test >= n:
+            n_cal = max(1, (n - 1) // 2)
+            n_test = max(1, n - 1 - n_cal)
+        cal_ids.update(label_ids[:n_cal].tolist())
+        test_ids.update(label_ids[n_cal:n_cal + n_test].tolist())
+        train_ids.update(label_ids[n_cal + n_test:].tolist())
 
-    if not val_ids:
+    if not test_ids:
         object_ids = object_labels.index.to_numpy(copy=True)
         rng.shuffle(object_ids)
-        n_val = max(1, int(len(object_ids) * val_frac))
-        val_ids = set(object_ids[:n_val].tolist())
-        train_ids = set(object_ids[n_val:].tolist())
+        n = len(object_ids)
+        n_cal = max(1, int(n * cal_frac))
+        n_test = max(1, int(n * test_frac))
+        cal_ids = set(object_ids[:n_cal].tolist())
+        test_ids = set(object_ids[n_cal:n_cal + n_test].tolist())
+        train_ids = set(object_ids[n_cal + n_test:].tolist())
 
-    return train_ids, val_ids
+    return train_ids, cal_ids, test_ids
 
 
 def main() -> None:
@@ -140,49 +159,51 @@ def main() -> None:
         print("Run the seed-data path first: download_alerce_training.py → backfill.py → normalize.py → build_epoch_table_from_lc.py")
         sys.exit(1)
 
-    train_ids, val_ids = _stratified_object_split(labelled, args.val_frac, seed=42)
+    train_ids, cal_ids, test_ids = _stratified_object_split(labelled, args.val_frac, seed=42)
 
     df_train = df[df["object_id"].isin(train_ids)]
-    df_val   = df[df["object_id"].isin(val_ids)]
-    print(f"  Train objects: {len(train_ids)} | Val objects: {len(val_ids)}")
+    df_cal   = df[df["object_id"].isin(cal_ids)]
+    df_test  = df[df["object_id"].isin(test_ids)]
+    print(f"  Train objects: {len(train_ids)} | Cal objects: {len(cal_ids)} | Test objects: {len(test_ids)}")
     print(
-        "  Val label dist (objects): "
-        f"{df_val[df_val['target_label'].notna()].groupby('target_label')['object_id'].nunique().to_dict()}"
+        "  Test label dist (objects): "
+        f"{df_test[df_test['target_label'].notna()].groupby('target_label')['object_id'].nunique().to_dict()}"
     )
 
     clf = EarlyMetaClassifier(n_estimators=args.n_estimators)
     clf.fit(df_train)
 
-    raw_all_metrics = _metrics(clf, df_val, calibrated=False)
-    raw_early_metrics = _early_epoch_metrics(clf, df_val, max_early=5, calibrated=False)
+    raw_all_metrics = _metrics(clf, df_test, calibrated=False)
+    raw_early_metrics = _early_epoch_metrics(clf, df_test, max_early=5, calibrated=False)
 
     calibration_report = {"enabled": False}
     active_all_metrics = raw_all_metrics
     active_early_metrics = raw_early_metrics
 
-    labelled_val = df_val[df_val["target_label"].notna()]
-    if len(labelled_val) > 0:
-        y_val = labelled_val["target_label"].map(LABEL_MAP).values
-        raw_val_probs = clf.predict_proba(labelled_val, calibrated=False)
+    # Fit calibrator on cal set, evaluate on separate test set (no leakage)
+    labelled_cal = df_cal[df_cal["target_label"].notna()]
+    if len(labelled_cal) > 0:
+        y_cal = labelled_cal["target_label"].map(LABEL_MAP).values
+        raw_cal_probs = clf.predict_proba(labelled_cal, calibrated=False)
         calibrator = TemperatureScaler()
-        calibrator.fit(raw_val_probs, y_val)
+        calibrator.fit(raw_cal_probs, y_cal)
         clf.set_calibrator(calibrator)
         calibration_report = {
             "enabled": True,
             "method": calibrator.name,
             "temperature": round(float(calibrator.temperature), 6),
-            "fit_split": "validation",
-            "note": "Calibrator is fit on the held-out validation split used above; calibrated validation metrics are optimistic and should be refreshed on a new hold-out set for science reporting.",
+            "fit_split": "calibration",
+            "note": "Calibrator fit on held-out cal split; metrics evaluated on separate test split.",
         }
-        active_all_metrics = _metrics(clf, df_val, calibrated=True)
-        active_early_metrics = _early_epoch_metrics(clf, df_val, max_early=5, calibrated=True)
+        active_all_metrics = _metrics(clf, df_test, calibrated=True)
+        active_early_metrics = _early_epoch_metrics(clf, df_test, max_early=5, calibrated=True)
 
     print(f"\nAll epochs metrics (raw):         {raw_all_metrics}")
     print(f"Early (n_det≤5) metrics (raw):   {raw_early_metrics}")
     if calibration_report["enabled"]:
         print(f"Calibration: {calibration_report}")
-        print(f"All epochs metrics (active):      {active_all_metrics}")
-        print(f"Early (n_det≤5) metrics (active): {active_early_metrics}")
+        print(f"All epochs metrics (calibrated):  {active_all_metrics}")
+        print(f"Early (n_det≤5) metrics (cal'd):  {active_early_metrics}")
 
     model_dir = Path(args.model_dir)
     clf.save(model_dir)
@@ -195,9 +216,10 @@ def main() -> None:
         "raw_early_epochs": raw_early_metrics,
         "calibration": calibration_report,
         "training_weights": clf.training_weight_summary,
-        "train_val_split": {
+        "train_cal_test_split": {
             "train_objects": len(train_ids),
-            "val_objects": len(val_ids),
+            "cal_objects": len(cal_ids),
+            "test_objects": len(test_ids),
             "val_frac": args.val_frac,
             "max_n_det": args.max_n_det,
         },
