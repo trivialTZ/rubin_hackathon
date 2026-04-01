@@ -1,4 +1,4 @@
-# DEBASS — Trust-Aware Early-Epoch Transient Meta-Classifier
+# DEBASS_meta — Trust-Aware Early-Epoch Transient Meta-Classifier
 
 DEBASS estimates **which expert/classifier is trustworthy at a given early epoch**
 and then optionally turns those trust estimates into a follow-up recommendation.
