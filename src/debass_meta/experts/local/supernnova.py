@@ -5,13 +5,26 @@ to detections up to epoch_jd before inference.
 
 Requires:
   - ``pip install supernnova torch``
-  - Trained model weights placed in ``artifacts/local_experts/supernnova/``
+  - Trained model **state_dict** + ``cli_args.json`` placed in
+    ``artifacts/local_experts/supernnova/``
 
 Expected artifact layout::
 
     artifacts/local_experts/supernnova/
-        model.pt               # torch.save(model) — full RNN object
-        cli_args.json          # (optional) training settings
+        model.pt               # torch.save(state_dict) — as shipped by Fink
+        cli_args.json          # training settings (REQUIRED by classify_lcs)
+        data_norm.json         # normalization constants (REQUIRED)
+
+The canonical way to obtain these artifacts is to sparse-clone
+``astrolabsoftware/fink-science`` and copy the ``snn_snia_vs_nonia``
+directory contents.
+
+Inference delegates to SuperNNova's own ``classify_lcs`` API which:
+  1. Reads ``cli_args.json`` to reconstruct the RNN architecture
+  2. Loads the state_dict from ``model.pt``
+  3. Runs inference on CPU or CUDA
+
+Runs on **CPU** — no GPU queue required.
 
 If ``supernnova`` is not installed or weights are missing, the wrapper
 returns uniform priors (stub mode) — it never raises on missing deps.
@@ -38,14 +51,15 @@ _FID_TO_BAND = {
 class SuperNNovaExpert(LocalExpert):
     name = "supernnova"
     semantic_type = "probability"
-    requires_gpu = True
+    requires_gpu = False  # Fink runs SNN on CPU; works fine
     # Binary classification: Ia vs non-Ia
     CLASSES = ["SN Ia", "non-Ia"]
 
     def __init__(self, model_dir: Path = _DEFAULT_MODEL_DIR) -> None:
         self.model_dir = Path(model_dir)
         self._snn_available = False
-        self._model: Any = None
+        self._classify_lcs: Any = None  # reference to SNN's classify_lcs
+        self._model_file: Path | None = None
         self._settings: dict[str, Any] = {}
         self._device = "cpu"
         self._load_model()
@@ -55,9 +69,16 @@ class SuperNNovaExpert(LocalExpert):
     # ------------------------------------------------------------------ #
 
     def _load_model(self) -> None:
-        """Attempt to import SuperNNova and load trained weights."""
+        """Verify SuperNNova is importable and artifacts are present.
+
+        We do NOT load the model into memory here. SuperNNova's
+        ``classify_lcs`` handles loading internally from the file path.
+        """
         try:
-            import supernnova  # noqa: F401
+            from supernnova.validation.validate_onthefly import (
+                classify_lcs,
+            )
+            self._classify_lcs = classify_lcs
             self._snn_available = True
         except ImportError:
             self._snn_available = False
@@ -67,7 +88,6 @@ class SuperNNovaExpert(LocalExpert):
             import torch
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
-            # torch missing — can't load weights
             return
 
         # Load training settings if present
@@ -79,28 +99,18 @@ class SuperNNovaExpert(LocalExpert):
             except Exception:
                 pass
 
-        # Locate and load model weights
-        model_file = self._find_model_file()
-        if model_file is None:
-            return  # Weights not placed yet — stay in stub mode
+        # Check that required artifacts exist (don't load — classify_lcs does that)
+        self._model_file = self._find_model_file()
+        if self._model_file is None:
+            return
 
-        try:
-            import torch
-            checkpoint = torch.load(
-                model_file,
-                map_location=self._device,
-                weights_only=False,
+        # Verify cli_args.json exists (required by classify_lcs)
+        if not (self.model_dir / "cli_args.json").exists():
+            print(
+                f"[supernnova] WARNING: cli_args.json not found in {self.model_dir}. "
+                f"classify_lcs requires it to reconstruct the model architecture."
             )
-            # SuperNNova typically saves the full model object via torch.save(model)
-            if hasattr(checkpoint, "eval"):
-                self._model = checkpoint
-                self._model.eval()
-            else:
-                # state_dict or other format — store as-is
-                self._model = checkpoint
-        except Exception as exc:
-            print(f"[supernnova] WARNING: failed to load {model_file}: {exc}")
-            self._model = None
+            self._model_file = None
 
     def _find_model_file(self) -> Path | None:
         """Locate model weights in the artifact directory."""
@@ -131,7 +141,7 @@ class SuperNNovaExpert(LocalExpert):
         """Score object using lightcurve truncated to epoch_jd."""
         truncated = self._truncate(lightcurve, epoch_jd)
 
-        if self._model is not None and self._snn_available:
+        if self._model_file is not None and self._snn_available:
             probs = self._run_snn(object_id, truncated)
         else:
             # Stub: return uniform priors when model not loaded
@@ -143,7 +153,7 @@ class SuperNNovaExpert(LocalExpert):
             epoch_jd=epoch_jd,
             class_probabilities=probs,
             raw_output={"truncated_n_det": len(truncated) if isinstance(truncated, list) else 0},
-            model_version="stub" if self._model is None else "loaded",
+            model_version="stub" if self._model_file is None else "loaded",
             available=self._snn_available,
         )
 
@@ -154,9 +164,9 @@ class SuperNNovaExpert(LocalExpert):
             "classes": self.CLASSES,
             "model_dir": str(self.model_dir),
             "available": self._snn_available,
-            "model_loaded": self._model is not None,
+            "model_loaded": self._model_file is not None,
             "inference_implemented": True,
-            "requires": "PyTorch, supernnova>=2.0, trained model.pt in model_dir",
+            "requires": "PyTorch, supernnova>=3.0, model.pt + cli_args.json in model_dir",
             "epoch_aware": True,
             "device": self._device,
         }
@@ -255,14 +265,15 @@ class SuperNNovaExpert(LocalExpert):
         return pd.DataFrame(rows).sort_values("MJD").reset_index(drop=True)
 
     def _run_snn(self, object_id: str, lightcurve: Any) -> dict[str, float]:
-        """Run SuperNNova inference on a truncated lightcurve.
+        """Run SuperNNova inference via classify_lcs (the Fink/SNN v3 API).
 
-        Tries three strategies in order:
-          1. SuperNNova's high-level ``classify_lcs`` API (v3+)
-          2. Direct model forward pass on a formatted tensor
-          3. Raises RuntimeError with diagnostic information
+        ``classify_lcs(df, model_path, device)`` handles everything:
+          - Reads ``cli_args.json`` to reconstruct the RNN architecture
+          - Loads the state_dict from ``model.pt``
+          - Formats data, normalizes, runs forward pass
+          - Returns (ids, pred_probs) where pred_probs shape = (N, 1, n_classes)
         """
-        import torch
+        import numpy as np
 
         dets = lightcurve if isinstance(lightcurve, list) else []
         if not dets:
@@ -270,89 +281,27 @@ class SuperNNovaExpert(LocalExpert):
 
         df = self._lc_to_snn_dataframe(object_id, dets)
 
-        # --- Strategy 1: SuperNNova high-level API (v3+) ---
+        # classify_lcs expects the model FILE PATH, not a loaded object
+        model_path = str(self._model_file)
+
         try:
-            from supernnova.visualization.prediction_distribution import (
-                classify_lcs,
-            )
-            result = classify_lcs(self._model, df, self._device)
-            if result is not None:
-                prob_ia = float(result) if not hasattr(result, "__len__") else float(result[0])
-                return {"SN Ia": prob_ia, "non-Ia": 1.0 - prob_ia}
-        except (ImportError, TypeError, Exception):
-            pass
+            ids, pred_probs = self._classify_lcs(df, model_path, self._device)
+        except Exception as exc:
+            raise RuntimeError(
+                f"SuperNNova classify_lcs failed for {object_id}: {exc}. "
+                f"Artifacts in {self.model_dir}: model.pt, cli_args.json, data_norm.json "
+                f"must all be present and consistent."
+            ) from exc
 
-        # --- Strategy 2: direct forward pass ---
-        try:
-            probs = self._forward_pass(df)
-            if probs is not None:
-                return probs
-        except Exception:
-            pass
-
-        raise RuntimeError(
-            f"SuperNNova inference failed for {object_id}. "
-            f"Ensure the model in {self.model_dir} is compatible with the "
-            f"installed supernnova version. Expected: torch.save(model) object "
-            f"with a forward(X, lengths) signature."
-        )
-
-    def _forward_pass(self, df: Any) -> dict[str, float] | None:
-        """Direct RNN forward pass — works when the model was saved as a
-        complete ``torch.save(model)`` object.
-
-        SuperNNova RNNs expect input shaped (batch, seq_len, n_features).
-        Features per timestep are [FLUXCAL, FLUXCALERR] per band, with
-        per-lightcurve normalization.
-        """
-        import torch
-        import numpy as np
-
-        if not hasattr(self._model, "forward"):
-            return None
-
-        # Group by band and build feature matrix
-        bands = sorted(df["FLT"].unique())
-        band_to_idx = {b: i for i, b in enumerate(bands)}
-        n_bands = len(bands)
-
-        # Sort by MJD and normalize flux per-lightcurve
-        df = df.sort_values("MJD").copy()
-        flux_median = df["FLUXCAL"].median()
-        flux_scale = max(df["FLUXCAL"].abs().max(), 1e-10)
-        df["FLUXCAL_norm"] = (df["FLUXCAL"] - flux_median) / flux_scale
-        df["FLUXCALERR_norm"] = df["FLUXCALERR"] / flux_scale
-
-        # Build sequence: each timestep has (flux_b0, fluxerr_b0, flux_b1, ...)
-        n_features = 2 * n_bands
-        seq_len = len(df)
-        X = np.zeros((1, seq_len, n_features), dtype=np.float32)
-
-        for row_idx, (_, row) in enumerate(df.iterrows()):
-            b_idx = band_to_idx[row["FLT"]]
-            X[0, row_idx, 2 * b_idx] = row["FLUXCAL_norm"]
-            X[0, row_idx, 2 * b_idx + 1] = row["FLUXCALERR_norm"]
-
-        X_tensor = torch.tensor(X, device=self._device)
-        lengths = torch.tensor([seq_len], dtype=torch.long, device=self._device)
-
-        with torch.no_grad():
-            # SuperNNova models accept (X, lengths) or just (X)
-            try:
-                output = self._model(X_tensor, lengths)
-            except TypeError:
-                output = self._model(X_tensor)
-
-            if output.dim() == 1:
-                logits = output.unsqueeze(0)
-            else:
-                logits = output
-
-            probs = torch.softmax(logits, dim=-1).squeeze().cpu().numpy()
+        # pred_probs shape: (n_objects, num_inference_samples, n_classes)
+        # For vanilla models num_inference_samples=1
+        probs = pred_probs[0]  # first (only) object
+        if probs.ndim > 1:
+            probs = probs.mean(axis=0)  # average over inference samples
 
         if len(probs) >= 2:
             return {"SN Ia": float(probs[0]), "non-Ia": float(probs[1])}
 
-        # Single-output model (sigmoid convention)
-        p = float(probs) if probs.ndim == 0 else float(probs[0])
+        # Single-output fallback
+        p = float(probs[0]) if hasattr(probs, '__len__') else float(probs)
         return {"SN Ia": p, "non-Ia": 1.0 - p}
