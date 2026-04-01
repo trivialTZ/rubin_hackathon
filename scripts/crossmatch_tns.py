@@ -133,7 +133,10 @@ def crossmatch_bulk_csv(
     (verified 100% accurate on our 14 matched objects)
     """
     print(f"Loading TNS bulk CSV from {bulk_csv_path}")
-    tns_df = pd.read_csv(bulk_csv_path, low_memory=False)
+    # TNS bulk CSV may have a timestamp row before the real header
+    tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"')
+    if "internal_names" not in tns_df.columns:
+        tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"', skiprows=1)
     print(f"Loaded {len(tns_df)} TNS objects")
 
     # Explode internal_names (semicolon-separated) into one row per ZTF ID

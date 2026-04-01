@@ -100,8 +100,24 @@ def main() -> None:
 
     # ── Step 1: Load and filter TNS catalog ──
     print(f"Loading TNS bulk CSV from {tns_csv} ...")
-    tns_df = pd.read_csv(tns_csv, low_memory=False)
+    # TNS bulk CSV has two header rows: first is a timestamp, second is columns.
+    # Columns are quoted: "objid","name_prefix","name","ra",...,"internal_names",...
+    # We skip the timestamp row with skiprows=0 if it looks like a data row,
+    # or detect it automatically.
+    tns_df = pd.read_csv(tns_csv, low_memory=False, quotechar='"')
+    # If the first row was a timestamp/comment, the column names will be wrong.
+    # Detect by checking for expected columns.
+    expected_cols = {"internal_names", "type", "name_prefix"}
+    if not expected_cols.issubset(set(tns_df.columns)):
+        # First row was likely the timestamp header — re-read skipping it
+        tns_df = pd.read_csv(tns_csv, low_memory=False, quotechar='"', skiprows=1)
+    if not expected_cols.issubset(set(tns_df.columns)):
+        print(f"  ERROR: TNS CSV columns don't match expected format.")
+        print(f"  Found columns: {list(tns_df.columns)[:10]}...")
+        print(f"  Expected at least: {expected_cols}")
+        sys.exit(1)
     print(f"  Total TNS objects: {len(tns_df)}")
+    print(f"  Columns: {list(tns_df.columns)}")
 
     # Keep only objects with ZTF internal names and a spectroscopic type
     tns_df["internal_names"] = tns_df["internal_names"].fillna("")
@@ -161,7 +177,7 @@ def main() -> None:
                     "ztf_id": ztf_id,
                     "ternary": row["ternary"],
                     "tns_type": row["type"],
-                    "tns_name": row.get("objname", ""),
+                    "tns_name": row.get("name", row.get("objname", "")),
                 })
                 break  # one ZTF ID per TNS object
 
