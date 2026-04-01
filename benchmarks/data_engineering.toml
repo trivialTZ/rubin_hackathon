@@ -28,6 +28,7 @@ require_all_phase1_experts = true
 require_contract_fields = true
 required_available_experts = ["fink/snn", "fink/rf_ia"]
 
+[metrics.expert_trust]
 path = "reports/metrics/expert_trust_metrics.json"
 require_metrics_for = ["fink/snn", "fink/rf_ia"]
 min_test_rows = 1
