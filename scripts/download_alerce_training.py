@@ -39,14 +39,26 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 # ------------------------------------------------------------------ #
 _CLASS_QUOTA = [
     # (classifier,              class_name,  ternary_label,     fraction, min_prob)
-    ("lc_classifier_transient", "SNIa",      "snia",            0.35,    0.7),
-    ("lc_classifier_transient", "SNII",      "nonIa_snlike",    0.20,    0.6),
-    ("lc_classifier_transient", "SNIbc",     "nonIa_snlike",    0.15,    0.6),
-    ("lc_classifier_transient", "SLSN",      "nonIa_snlike",    0.05,    0.5),
-    ("stamp_classifier",        "AGN",       "other",           0.10,    0.7),
-    ("stamp_classifier",        "asteroid",  "other",           0.08,    0.7),
-    ("stamp_classifier",        "bogus",     "other",           0.05,    0.7),
-    ("lc_classifier",           "VS",        "other",           0.02,    0.5),
+    #
+    # Primary: lc_classifier_transient (fewer objects, higher purity)
+    ("lc_classifier_transient", "SNIa",      "snia",            0.15,    0.5),
+    ("lc_classifier_transient", "SNII",      "nonIa_snlike",    0.10,    0.4),
+    ("lc_classifier_transient", "SNIbc",     "nonIa_snlike",    0.08,    0.4),
+    ("lc_classifier_transient", "SLSN",      "nonIa_snlike",    0.04,    0.3),
+    #
+    # Bulk: lc_classifier (much larger object pool)
+    ("lc_classifier",           "SNIa",      "snia",            0.15,    0.5),
+    ("lc_classifier",           "SNII",      "nonIa_snlike",    0.08,    0.4),
+    ("lc_classifier",           "SNIbc",     "nonIa_snlike",    0.05,    0.4),
+    ("lc_classifier",           "SLSN",      "nonIa_snlike",    0.03,    0.3),
+    #
+    # Other classes
+    ("stamp_classifier",        "AGN",       "other",           0.10,    0.5),
+    ("stamp_classifier",        "asteroid",  "other",           0.08,    0.5),
+    ("stamp_classifier",        "bogus",     "other",           0.05,    0.5),
+    ("lc_classifier",           "VS",        "other",           0.04,    0.3),
+    ("lc_classifier",           "QSO",       "other",           0.03,    0.3),
+    ("lc_classifier",           "AGN",       "other",           0.02,    0.3),
 ]
 
 

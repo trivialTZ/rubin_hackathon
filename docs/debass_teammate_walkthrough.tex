@@ -1,0 +1,637 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{verbatim}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  pdftitle={DEBASS: Trust-Aware Early-Epoch Transient Pipeline},
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\filepath}[1]{\path{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\urlstyle{tt}
+\setlength{\emergencystretch}{2em}
+
+\title{DEBASS: Trust-Aware Early-Epoch Transient Pipeline}
+\author{Repository note}
+\date{March 31, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+If you are joining DEBASS for the hackathon, this is the map I would want in front of me before opening files at random. It explains what the project is actually trying to predict, how the repository is organized, how the trust-aware pipeline moves from raw broker payloads to scored outputs, where the older baseline still fits, and what still blocks the full science goal. Everything here is based on the repository as it stood on March 31, 2026, so the emphasis is on what is really in the tree now, not the cleaner version we may eventually want.
+\end{abstract}
+
+\tableofcontents
+
+\section{What DEBASS Is Trying to Do}
+
+DEBASS is asking a slightly different question from a normal transient classifier. Instead of forcing every signal into one final class as early as possible, it first asks which expert looks reliable at the current stage of the lightcurve. For one object at one alert epoch, the practical questions are:
+
+\begin{itemize}
+\item which expert is available right now,
+\item which expert should be trusted right now, and
+\item what evidence that expert is contributing.
+\end{itemize}
+
+That is why the main scored object is \code{expert\_confidence}, not a single fused class posterior. There is still a follow-up proxy later in the pipeline, but it comes after the trust layer, not before it.
+
+Conceptually, the trust-aware path is:
+
+\begin{verbatim}
+lightcurves + broker payloads
+    -> bronze
+    -> silver broker_events
+    -> gold object_epoch_snapshots
+    -> gold expert_helpfulness
+    -> per-expert trust heads
+    -> optional follow-up head
+    -> score payload with expert_confidence
+\end{verbatim}
+
+The baseline path is still useful as a comparison point, but it is not the main science story here.
+
+\section{Science Contract}
+
+After reading through the repo, these are the rules that keep showing up. They are the guardrails. If we ignore them, the code may still run, but the science claim gets much weaker.
+
+\subsection{Primary Output}
+
+The primary science output is calibrated per-expert trust at a specific epoch:
+
+\begin{verbatim}
+q_{e,t} = P(expert e is trustworthy now | current epoch evidence)
+\end{verbatim}
+
+The secondary output is a follow-up proxy score. It is useful, but it is supposed to sit downstream of the trust layer.
+
+\subsection{No-Future-Leakage Epochs}
+
+For an object with $N$ detections, the pipeline builds rows for $n\_det = 1, 2, \dots, N$. The row at epoch $k$ can only use detections $1 \dots k$. The same idea applies to expert evidence: if an expert event is supposed to be historically safe, it has to satisfy \code{event\_time\_jd <= alert\_jd}.
+
+\subsection{Temporal Semantics Must Survive Normalization}
+
+DEBASS carries event-time metadata all the way through the pipeline. That may sound fussy at first, but it is one of the most important design choices in the repo. The fields that matter are:
+
+\begin{itemize}
+\item \code{event\_time\_jd}
+\item \code{n\_det}
+\item \code{alert\_id}
+\item \code{event\_scope}
+\item \code{temporal\_exactness}
+\end{itemize}
+
+This is what lets the trust-aware pipeline tell the difference between genuinely epoch-safe history and a backfilled object snapshot that only looks historical.
+
+\subsection{Truth Must Stay Separate from Broker Outputs}
+
+Weak labels are allowed for bootstrapping, but the repo is pretty clear that they must stay labeled as weak. In other words, \code{data/labels.csv} is a seed set, not the thing we should eventually cite as truth. The file meant to hold the canonical truth layer is \code{data/truth/object\_truth.parquet}.
+
+\subsection{Unsafe ALeRCE History}
+
+ALeRCE probabilities in this repo are usually object-level snapshots, not archived per-alert scores. That is why historical backfills get marked \code{latest\_object\_unsafe} and dropped from trust training by default.
+
+\section{High-Level Repository Map}
+
+If you only have a few minutes to get your bearings, Table~\ref{tab:repo-map} is the fastest way in.
+
+\begin{small}
+\begin{longtable}{L{0.28\linewidth} L{0.66\linewidth}}
+\caption{Top-level repository guide.\label{tab:repo-map}}\\
+\toprule
+Path or area & Purpose \\
+\midrule
+\endfirsthead
+\toprule
+Path or area & Purpose \\
+\midrule
+\endhead
+\filepath{README.md} & Main project summary, trust-aware workflow, baseline workflow, and output expectations. \\
+\filepath{docs/science_contract.md} & Compact statement of the science rules the code is supposed to respect. \\
+\filepath{src/debass_meta/access/} & Adapters for broker APIs and fixture fallback. \\
+\filepath{src/debass_meta/features/} & No-leakage lightcurve feature extraction. \\
+\filepath{src/debass_meta/ingest/} & Bronze, silver, gold, and baseline epoch-table builders. \\
+\filepath{src/debass_meta/projectors/} & Expert-specific projection logic into common trust features. \\
+\filepath{src/debass_meta/experts/local/} & Local expert wrappers, mainly ParSNIP and SuperNNova. \\
+\filepath{scripts/} & Most executable pipeline logic lives here today. \\
+\filepath{jobs/} & BU SCC submission scripts and resume helpers. \\
+\filepath{inventory/} & Human-readable broker and expert metadata. \\
+\filepath{schemas/} & JSON schema files for the canonical data products. \\
+\filepath{tests/} & Tests that define many of the intended contracts, especially no-leakage and exactness behavior. \\
+\filepath{codex_build_brief/} & Design brief describing the intended phase-1 trust-aware architecture. \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\subsection{A Small but Important Reality Check}
+
+The canonical package name is now \code{debass\_meta}, and the main source tree lives under \code{src/debass\_meta/}. There is still a compatibility shim for the older \code{debass\_meta\_meta} name, but teammates should treat that as legacy support rather than the primary package layout.
+
+\section{The Core Python Package}
+
+\subsection{\code{access/}: Broker Adapters}
+
+The access layer is where the repo talks to outside services, or falls back to cached fixtures when those services are missing or unavailable.
+
+\begin{itemize}
+\item \code{alerce.py}: queries ALeRCE probabilities and lightcurves. It extracts probability rows for the lightcurve classifier and stamp classifier, but marks them as \code{latest\_object\_unsafe}.
+\item \code{fink.py}: queries Fink alert history and keeps alert-level fields such as \code{rf\_snia\_vs\_nonia}, \code{snn\_snia\_vs\_nonia}, and \code{snn\_sn\_vs\_all}. These are exact alert-level events and are therefore the cleanest remote trust-training input in phase 1.
+\item \code{lasair.py}: fetches Sherlock context labels. These are treated as context tags, not calibrated posteriors.
+\item \code{tns.py}: handles TNS credentials, rate-limited API access, type mapping, and the truth-side crossmatch support used to build stronger labels.
+\item \code{alerce\_history.py}: turns ALeRCE object snapshots into per-epoch records while explicitly preserving the fact that those rows are unsafe for historical trust training.
+\item \code{antares.py} and \code{pitt.py}: stubs for later phases.
+\end{itemize}
+
+The common adapter contract is \code{BrokerOutput} in \code{access/base.py}. It keeps the raw payload, a semantic type, optional extracted field rows, and the usual provenance details like endpoint, request parameters, and whether fixture fallback was used.
+
+\subsection{\code{features/}: Early-Epoch Lightcurve Features}
+
+This is one of the cleaner parts of the codebase and worth reading closely. The main feature extractor is \code{features/lightcurve.py}, and it computes features from a truncated lightcurve slice only. The current feature list includes:
+
+\begin{itemize}
+\item detection counts: \code{n\_det}, \code{n\_det\_g}, \code{n\_det\_r},
+\item timing: \code{t\_since\_first}, \code{t\_baseline},
+\item brightness summaries: first, last, min, mean, standard deviation, range,
+\item rise or decline summaries: \code{dmag\_dt} and \code{dmag\_first\_last},
+\item simple color features: \code{color\_gr} and \code{color\_gr\_slope},
+\item quality summary: \code{mean\_rb}.
+\end{itemize}
+
+The key helper is \code{extract\_features\_at\_each\_epoch()}, which emits one row per detection count and makes sure each row only sees the detections available at that point in time.
+
+\subsection{\code{ingest/}: Bronze, Silver, Gold, and Baseline Epoch Tables}
+
+\paragraph{Bronze.}
+\code{ingest/bronze.py} writes append-only parquet partitions containing raw broker responses plus extracted field or event breakdowns. This layer is mostly about preservation: keep what came back from the broker, and do not overwrite it later.
+
+\paragraph{Silver.}
+\code{ingest/silver.py} normalizes bronze payloads into \code{data/silver/broker\_events.parquet}. Each row is an expert-field event with:
+
+\begin{itemize}
+\item object and broker identifiers,
+\item semantic type,
+\item expert key,
+\item event scope,
+\item event time,
+\item exactness label,
+\item projected numeric score where meaningful, and
+\item provenance metadata.
+\end{itemize}
+
+This is the layer where the project stops flattening everything into a generic score table. The schema keeps enough context to remember what each broker field actually meant.
+
+\paragraph{Gold v2.}
+\code{ingest/gold.py} builds \code{object\_epoch\_snapshots.parquet}. This is really the center of the trust-aware feature path. It joins truncated lightcurve features with the latest event-safe expert evidence for each phase-1 expert at each epoch.
+
+Its helper \code{select\_events\_asof()} enforces the main timing logic:
+
+\begin{itemize}
+\item use rows with \code{event\_time\_jd <= alert\_jd} when available,
+\item otherwise allow \code{static\_safe} context rows,
+\item otherwise allow \code{rerun\_exact} local expert rows,
+\item only include \code{latest\_object\_unsafe} rows if the caller explicitly opts in.
+\end{itemize}
+
+\paragraph{Baseline epoch table.}
+\code{ingest/epochs.py} and \code{scripts/build\_epoch\_table\_from\_lc.py} support the older fused-classifier benchmark path. That branch still respects no-future-leakage for the lightcurve, but it is solving a different problem from the trust-aware gold tables.
+
+\subsection{\code{projectors/}: Per-Expert Feature Mapping}
+
+The projector layer does the translation work. It turns very different expert outputs into trust-model features without pretending they all started in the same probability space.
+
+\begin{itemize}
+\item \code{fink.py}: turns the Fink SNN pair into a ternary projection and handles the scalar RF Ia score separately.
+\item \code{alerce.py}: aggregates ALeRCE class probabilities into the repository ternary label space.
+\item \code{lasair.py}: emits one-hot context features for Sherlock tags.
+\item \code{local.py}: maps local expert class probabilities into the same ternary space.
+\end{itemize}
+
+The shared expert list is defined in \code{projectors/base.py} as:
+
+\begin{verbatim}
+fink/snn
+fink/rf_ia
+parsnip
+supernnova
+alerce/lc_classifier_transient
+alerce/stamp_classifier
+lasair/sherlock
+\end{verbatim}
+
+\subsection{\code{experts/local/}: Local Expert Reruns}
+
+This directory contains wrappers for rerunning local experts on truncated archival lightcurves. It is important, but it is also one of the more uneven parts of the repo right now.
+
+\begin{itemize}
+\item \code{parsnip.py}: the most complete local wrapper. It expects both \code{model.pt} and \code{classifier.pkl}, converts cached detections into ParSNIP input format, and can return real class probabilities when artifacts are installed.
+\item \code{supernnova.py}: now has a real epoch-aware wrapper and can load weights if the \code{supernnova} package and model files are installed. In this local environment it still falls back to stub behavior because those external assets are not present.
+\item \code{base.py}: defines the common local expert interface and \code{ExpertOutput} container.
+\end{itemize}
+
+\section{Data Products and Their Meaning}
+
+For a new teammate, the easiest way to understand the system is to follow the files it is trying to produce.
+
+\begin{small}
+\begin{longtable}{L{0.28\linewidth} L{0.66\linewidth}}
+\caption{Canonical data products in the trust-aware path.}\\
+\toprule
+Artifact & Meaning \\
+\midrule
+\endfirsthead
+\toprule
+Artifact & Meaning \\
+\midrule
+\endhead
+\filepath{data/labels.csv} & Weak seed object list and weak ternary labels. Useful for bootstrapping, not final truth. \\
+\filepath{data/lightcurves/*.json} & Cached per-object photometry used to build truncated epoch slices. \\
+\filepath{data/tns_public_objects.csv} & Optional TNS bulk catalog used for stronger offline crossmatching. \\
+\filepath{data/bronze/*.parquet} & Raw append-only broker payload archive. \\
+\filepath{data/silver/broker_events.parquet} & Event-level normalized broker rows with exactness and provenance semantics. \\
+\filepath{data/silver/local_expert_outputs/<expert>/} & Local rerun outputs by expert and epoch. \\
+\filepath{data/truth/object_truth.parquet} & Canonical truth table. Intended to separate real truth from broker-derived weak labels. \\
+\filepath{data/gold/object_epoch_snapshots.parquet} & The main trust-aware feature table, one row per object and epoch. \\
+\filepath{data/gold/expert_helpfulness.parquet} & One row per available expert at each epoch, with correctness and usefulness targets. \\
+\filepath{models/trust/<expert>/} & Per-expert trust models and metadata. \\
+\filepath{models/followup/} & Optional follow-up proxy model. \\
+\filepath{reports/scores/*.jsonl} & Final trust-aware score payloads. \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\subsection{Temporal Exactness Labels}
+
+The repo uses a small vocabulary for event safety:
+
+\begin{itemize}
+\item \code{exact\_alert}: truly timed alert-level evidence,
+\item \code{static\_safe}: static context that is safe to reuse historically,
+\item \code{rerun\_exact}: local rerun performed on the truncated lightcurve,
+\item \code{latest\_object\_unsafe}: latest object snapshot that is not historically epoch-safe.
+\end{itemize}
+
+If a teammate only remembers one DEBASS-specific idea after skimming the code, it should probably be this exactness system.
+
+\section{Trust-Aware Pipeline Walkthrough}
+
+\subsection{Stage 1: Collect Weak Seed Objects and Lightcurves}
+
+\code{scripts/download\_alerce\_training.py} queries ALeRCE for high-probability examples from several transient classes, fetches lightcurves, and writes:
+
+\begin{itemize}
+\item \code{data/labels.csv}
+\item \code{data/lightcurves/<object>.json}
+\end{itemize}
+
+This is a bootstrap step, not a truth pipeline. It gives the project something to work with, but the labels it writes are still weak self-labels.
+
+\subsection{Stage 2: Backfill Broker Outputs to Bronze}
+
+\code{scripts/backfill.py} instantiates the enabled adapters and fetches one raw response per broker per object. Those responses land in append-only bronze partitions.
+
+\subsection{Stage 3: Normalize Bronze to Silver}
+
+\code{scripts/normalize.py} calls the silver transform to create \code{broker\_events.parquet}. This is where raw broker payloads become event-level rows with explicit timing semantics and expert keys.
+
+\subsection{Stage 4: Build Truth and Gold Tables}
+
+The truth layer is broader than it used to be. \code{scripts/build\_truth\_table.py} can now merge three sources in priority order: curated external truth, TNS crossmatch products, and weak-label fallback from \code{labels.csv}. If you want stronger labels, the relevant helpers are \code{scripts/download\_tns\_bulk.py} and \code{scripts/crossmatch\_tns.py}.
+
+Three scripts still define the core trust-aware training inputs once truth exists:
+
+\begin{itemize}
+\item \code{scripts/build\_truth\_table.py}
+\item \code{scripts/build\_object\_epoch\_snapshots.py}
+\item \code{scripts/build\_expert\_helpfulness.py}
+\end{itemize}
+
+Together they establish:
+
+\begin{itemize}
+\item the target class and follow-up proxy,
+\item the per-epoch feature table,
+\item the per-expert trust target rows.
+\end{itemize}
+
+\subsection{Stage 5: Run Local Experts}
+
+\code{scripts/local\_infer.py} loops over each object and each detection count, truncates the lightcurve, and asks each local expert for an epoch-specific prediction. This is why local experts matter so much in DEBASS: unlike unsafe object snapshots, they can at least in principle be rerun exactly at the historical epoch.
+
+At the code level, both ParSNIP and SuperNNova now have real epoch-aware wrappers. In this checkout, though, they still behave like placeholders unless the external packages and weight files are installed.
+
+\subsection{Stage 6: Train Per-Expert Trust Heads}
+
+The intended trust training script is \code{scripts/train\_expert\_trust.py}. Its job is to learn one trust model per expert, using \code{expert\_helpfulness.parquet} as the supervision layer and grouped object splits to avoid leakage across epochs of the same object.
+
+This is where the project idea shows up most directly. The question is not just ``what class is this object,'' but ``is this expert likely to be useful right now.''
+
+\subsection{Stage 7: Train the Follow-Up Head}
+
+\code{scripts/train\_followup.py} is the secondary stage. It is meant to consume trust features and projected expert evidence to estimate \code{p\_follow\_proxy}.
+
+\subsection{Stage 8: Emit the Final Payload}
+
+\code{scripts/score\_nightly.py} assembles a JSON payload shaped roughly like:
+
+\begin{verbatim}
+{
+  "object_id": "...",
+  "n_det": 4,
+  "alert_jd": ...,
+  "expert_confidence": {
+    "fink/snn": {
+      "available": true,
+      "trust": 0.84,
+      "prediction_type": "class_correctness",
+      "mapped_pred_class": "snia",
+      "projected": {...}
+    }
+  },
+  "ensemble": {
+    "p_follow_proxy": ...,
+    "recommended": ...
+  }
+}
+\end{verbatim}
+
+This payload is the cleanest expression of the whole project: show trust per expert first, then roll that into an operational recommendation if you want one.
+
+\section{Baseline Benchmark Path}
+
+The repository still contains the earlier fused baseline workflow:
+
+\begin{itemize}
+\item \code{scripts/build\_epoch\_table\_from\_lc.py}
+\item \code{scripts/train\_early.py}
+\item \code{scripts/score\_early.py}
+\end{itemize}
+
+This path produces a single early-epoch classifier. It is worth knowing because it gives you a sanity-check comparator, but it is still the side branch here, not the main architecture.
+
+\section{Experts in Phase 1}
+
+\begin{small}
+\begin{longtable}{L{0.28\linewidth} L{0.66\linewidth}}
+\caption{Phase-1 expert summary.}\\
+\toprule
+Expert key & Summary \\
+\midrule
+\endfirsthead
+\toprule
+Expert key & Summary \\
+\midrule
+\endhead
+\filepath{fink/snn} & Remote alert expert; \code{exact\_alert}; best remote trust-training candidate in phase 1. \\
+\filepath{fink/rf_ia} & Remote scalar expert; \code{exact\_alert}; scalar Ia-vs-non-Ia expert. \\
+\filepath{parsnip} & Local rerun expert; \code{rerun\_exact}; main local expert path when artifacts exist. \\
+\filepath{supernnova} & Local rerun expert; intended \code{rerun\_exact}; wrapper exists, but live use still depends on the external package and model weights. \\
+\filepath{alerce/lc_classifier_transient} & Remote object snapshot; \code{latest\_object\_unsafe}; live scoring okay, trust training blocked by default. \\
+\filepath{alerce/stamp_classifier} & Remote object snapshot; \code{latest\_object\_unsafe}; same caveat as above. \\
+\filepath{lasair/sherlock} & Context expert; \code{static\_safe}; context-only feature source. \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\section{How to Run the Project}
+
+\subsection{Local Smoke Test}
+
+If you just want the shortest honest pre-ML audit on a laptop, the one-command path is:
+
+\begin{verbatim}
+python3.11 scripts/run_preml_pipeline.py \
+    --root tmp/preml_demo \
+    --labels data/labels.csv \
+    --lightcurves-dir data/lightcurves \
+    --emit-scoring-snapshots
+\end{verbatim}
+
+That command runs broker backfill, silver normalization, truth building, local expert inference, gold snapshot construction, the data-readiness audit, and the benchmark check. If you want the manual sequence for debugging, it is still:
+
+\begin{verbatim}
+python3.11 -m pip install -r env/requirements.txt
+python3.11 scripts/download_alerce_training.py --limit 20
+python3.11 scripts/backfill.py --broker all --from-labels data/labels.csv
+python3.11 scripts/normalize.py
+python3.11 scripts/build_truth_table.py --labels data/labels.csv
+python3.11 scripts/build_object_epoch_snapshots.py
+python3.11 scripts/build_expert_helpfulness.py
+python3.11 scripts/train_expert_trust.py
+python3.11 scripts/train_followup.py
+python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
+\end{verbatim}
+
+\subsection{BU SCC Execution Model}
+
+On SCC, the project is split into CPU-prep and GPU-resume phases. That split is not bureaucratic. It matches the actual workload pretty well.
+
+\subsection{SCC Bootstrap Note (Copy-Paste Version)}
+
+If you are setting this up on SCC and want one practical starting point, use the sequence below as a checklist. It is written for the current project layout and for the common case where the repo already exists in project space.
+
+\paragraph{Important private-repo note.}
+The repo is private. That means \code{git pull origin main} will fail on SCC unless your GitHub authentication is already configured there. The API tokens in \code{.env} are \emph{not} Git credentials. Lasair and TNS tokens help with data access, but they do not give SCC permission to pull from GitHub.
+
+Before using the update block below, make sure one of these is true:
+
+\begin{itemize}
+\item SCC has an SSH key that is added to your GitHub account, and \code{origin} uses an SSH URL such as \code{git@github.com:<org>/<repo>.git}, or
+\item SCC has HTTPS access to the private repo and you are prepared to authenticate with a GitHub personal access token when prompted.
+\end{itemize}
+
+If the remote is private and unauthenticated, this is the kind of setup step you need first:
+
+\begin{verbatim}
+# Option A: SSH (usually the cleanest on SCC)
+git remote set-url origin git@github.com:<org>/<repo>.git
+ssh -T git@github.com
+
+# Option B: HTTPS + personal access token
+git remote set-url origin https://github.com/<org>/<repo>.git
+git config --global credential.helper store
+# The next authenticated git command will ask for your GitHub username
+# and personal access token.
+\end{verbatim}
+
+Once private-repo access is working, the following update and CPU-prep flow is reasonable:
+
+\begin{verbatim}
+# 0. Fix git state (resolve the merge conflict)
+cd /project/pi-brout/rubin_hackathon
+git stash
+mkdir -p /tmp/debass_untracked_backup
+mv scripts/summarize_cpu_prep.py scripts/watch_cpu_prep.py \
+   tests/test_early_meta.py tests/test_lightcurve.py \
+   tests/test_local_infer.py tests/test_parsnip_expert.py \
+   tests/test_silver.py tests/test_watch_cpu_prep.py \
+   /tmp/debass_untracked_backup/ 2>/dev/null
+git pull origin main
+git stash drop
+
+# 1. Environment setup
+export DEBASS_ROOT=/project/pi-brout/rubin_hackathon
+export DEBASS_VENV=$DEBASS_ROOT/.venv
+export DEBASS_PYTHON_MODULE=python3/3.10.12
+
+module load $DEBASS_PYTHON_MODULE
+
+if [ ! -d "$DEBASS_VENV" ]; then
+    python3 -m venv "$DEBASS_VENV"
+fi
+source "$DEBASS_VENV/bin/activate"
+pip install --upgrade pip
+pip install -r env/requirements.txt
+
+# 2. API credentials
+cp .env.example .env
+# Edit .env and fill in:
+#   LASAIR_TOKEN=<your token>
+# Optional but important if you want stronger truth:
+#   TNS_API_KEY=<your key>
+#   TNS_TNS_ID=<your id>
+#   TNS_MARKER_NAME=<your bot name>
+
+# 3. Create directories
+mkdir -p $DEBASS_ROOT/logs
+mkdir -p $DEBASS_ROOT/data/{bronze,silver,gold,truth,lightcurves,epochs}
+mkdir -p $DEBASS_ROOT/models
+mkdir -p $DEBASS_ROOT/reports/summary
+
+# 4. Submit CPU jobs
+export DEBASS_LIMIT=2000
+export DEBASS_MAX_N_DET=20
+
+bash jobs/submit_cpu_prep.sh --limit 2000
+
+# 5. Monitor
+# qstat -u $USER
+# tail -f $DEBASS_ROOT/logs/build_epochs.*.log
+\end{verbatim}
+
+After the CPU jobs finish, the handoff to GPU is:
+
+\begin{verbatim}
+# Check CPU output
+$DEBASS_VENV/bin/python scripts/summarize_cpu_prep.py
+
+# Get GPU node and resume
+qrsh -l gpus=1 -q l40s
+cd $DEBASS_ROOT
+bash -l jobs/run_gpu_resume.sh
+\end{verbatim}
+
+The operational point here is simple: if \code{git pull} is blocked by private-repo auth, the whole SCC checklist stalls before the science pipeline even starts. So the GitHub auth step needs to be treated as a first-class prerequisite, not an afterthought.
+
+\paragraph{CPU side.}
+The main CPU-safe chain is:
+
+\begin{verbatim}
+download_training
+  -> backfill
+  -> normalize
+  -> build_truth_table
+  -> build_object_epoch_snapshots
+  -> build_expert_helpfulness
+\end{verbatim}
+
+\paragraph{GPU side.}
+GPU is reserved for local expert reruns, especially ParSNIP. The recommended resume script is \code{jobs/run\_gpu\_resume.sh}, which assumes the CPU artifacts already exist.
+
+\paragraph{Why the split matters.}
+The repo is set up so event normalization, gold-table construction, trust training, and follow-up training stay on CPU nodes. GPU only really makes sense for the local expert inference stage.
+
+\section{Tests and What They Tell You}
+
+The tests are especially useful here because they often describe the behavior the repo wants, even when the implementation is not fully cleaned up yet.
+
+\begin{itemize}
+\item \code{tests/test\_no\_future\_leakage.py}: future expert events must not appear in earlier epochs.
+\item \code{tests/test\_unsafe\_alerce\_defaults.py}: unsafe ALeRCE snapshot rows are excluded by default.
+\item \code{tests/test\_projector\_fink.py} and \code{tests/test\_projector\_lasair.py}: projector logic is source-specific, not one-size-fits-all.
+\item \code{tests/test\_score\_nightly\_payload.py}: the final payload must expose \code{expert\_confidence} blocks and an \code{ensemble} block.
+\item \code{tests/test\_expert\_trust\_training.py} and \code{tests/test\_followup\_training.py}: the intended training path relies on grouped object splits and on trust features feeding the follow-up head.
+\item \code{tests/test\_tns\_adapter.py}, \code{tests/test\_build\_truth\_table.py}, and \code{tests/test\_preml\_readiness.py}: the newer truth and readiness layer is no longer hand-wavy. It is covered by explicit tests.
+\end{itemize}
+
+In practice, the tests work like a second specification layer beside the README and the science contract.
+
+\section{Current Repository Status on March 31, 2026}
+
+Here is the blunt version: the repository is in much better shape than it was earlier in the hackathon. It is now a clean, runnable package for pre-ML data preparation and for first-pass trust-model training. The remaining blockers are mostly external assets and science inputs, not missing in-repo code.
+
+\subsection{What Is Already Strong}
+
+\begin{itemize}
+\item The science intent is unusually explicit.
+\item The no-future-leakage lightcurve features are implemented clearly.
+\item The silver broker-event layer preserves event timing and exactness semantics.
+\item The gold snapshot builder already encodes the right as-of join behavior.
+\item The model package is present and the trust-aware training scripts now run.
+\item There is a one-command pre-ML runner, benchmark checker, readiness audit, and SCC validation script.
+\item TNS crossmatch support exists for building stronger truth when credentials or the bulk CSV are available.
+\item ParSNIP and SuperNNova both have epoch-aware wrapper code, even though this local environment does not yet have the required artifacts.
+\item The SCC workflow is well documented.
+\end{itemize}
+
+\subsection{What Still Blocks the Full Science Goal}
+
+As of March 31, 2026, \code{pytest -q} passes with 71 tests in this checkout, and a fresh run of \code{scripts/run\_preml\_pipeline.py} completes successfully. The remaining problems are narrower:
+
+\begin{itemize}
+\item The current local truth table is still weak-only unless we provide curated truth or run the new TNS crossmatch path. In the latest smoke run, the truth layer is 19 weak rows and 0 strong rows.
+\item Lasair still falls back to fixtures locally because no live \code{LASAIR\_TOKEN} is configured.
+\item ParSNIP and SuperNNova wrappers exist, but real local-expert outputs still depend on external packages and trained artifacts under \code{artifacts/local\_experts/}.
+\item Epoch-safe training coverage is still narrow. In the latest local pre-ML run, the safe snapshot experts were only \code{fink/snn} and \code{fink/rf\_ia}. ALeRCE is available for scoring snapshots, but still unsafe for historical trust training by default.
+\end{itemize}
+
+So the repo is no longer best described as broken. A better description is that the pipeline code is operational, while the science-grade inputs are still incomplete.
+
+\subsection{How To Interpret That Status}
+
+For a hackathon teammate, the right way to hold all of this in your head is:
+
+\begin{itemize}
+\item the data semantics and trust-aware architecture are still the strongest part of the project,
+\item the pre-ML ingest, snapshot, and training plumbing now runs cleanly,
+\item the next bottleneck is getting better truth and real external expert assets, not fixing obvious package breakage.
+\end{itemize}
+
+\section{Recommended Reading Order for a New Teammate}
+
+If I were onboarding a new teammate tomorrow, this is the reading order I would suggest:
+
+\begin{enumerate}
+\item \filepath{README.md}
+\item \filepath{docs/science_contract.md}
+\item \filepath{src/debass_meta/features/lightcurve.py}
+\item \filepath{src/debass_meta/ingest/silver.py}
+\item \filepath{src/debass_meta/ingest/gold.py}
+\item \filepath{src/debass_meta/projectors/}
+\item \filepath{scripts/build_truth_table.py}
+\item \filepath{scripts/build_object_epoch_snapshots.py}
+\item \filepath{scripts/build_expert_helpfulness.py}
+\item \filepath{scripts/local_infer.py}
+\item \filepath{README_scc.md}
+\item \filepath{jobs/run_gpu_resume.sh}
+\end{enumerate}
+
+That order moves from the science idea, to epoch-safe features, to event semantics, to the gold training tables, and only then to the operational scripts.
+
+\section{Bottom Line}
+
+If I had to explain DEBASS in one sentence to a teammate, I would call it a trust-aware orchestration layer for a messy set of transient experts. The project is at its best when it preserves timing semantics, exactness labels, and the differences between those experts instead of sanding them down too early. The key move is simple: do not ask only ``what class is this object,'' ask ``which expert should we trust for this object right now.''
+
+As of March 31, 2026, the repository already communicates that idea pretty well and implements a meaningful part of the data pipeline. The remaining work is mostly package cleanup and completion of the model-training layer, not a rethink of the science question.
+
+\end{document}

@@ -1,11 +1,11 @@
 #!/bin/bash -l
-#$ -N debass_meta_meta_build_epochs
+#$ -N debass_meta_build_epochs
 #$ -l h_rt=02:00:00
 #$ -l mem_per_core=8G
 #$ -pe omp 4
 #$ -j y
 #$ -o logs/build_epochs.$JOB_ID.log
-#$ -hold_jid debass_meta_meta_backfill
+#$ -hold_jid debass_meta_backfill
 # Uncomment and set your project if on Med Campus:
 ##$ -P your_project_name
 
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_meta_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 : "${DEBASS_ROOT:?DEBASS_ROOT must be set before running this job}"
 
 module load "$DEBASS_PYTHON_MODULE"

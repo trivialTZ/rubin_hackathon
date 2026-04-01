@@ -12,13 +12,24 @@ export DEBASS_PYTHON_MODULE=python3/3.10.12   # replace if your SCC module list 
 module load $DEBASS_PYTHON_MODULE
 
 # Clone / copy the repo
+# IMPORTANT: this repository is private, so unauthenticated `git pull`
+# or `git clone` will fail on SCC. Configure either:
+#   1. SSH access with a GitHub-authorized key:
+#        git remote set-url origin git@github.com:<org>/<repo>.git
+#        ssh -T git@github.com
+#   2. HTTPS access with a GitHub personal access token:
+#        git config --global credential.helper store
+#        # then authenticate on the next git fetch/pull/clone prompt
+#
+# The tokens in `.env` are for Lasair/TNS data access only.
+# They do NOT grant GitHub access to the private repo.
 cd /projectnb/<yourproject>
 git clone <repo-url> rubin_hackathon
 cd rubin_hackathon
 
 # Create the virtualenv in project space, not $HOME
-python3 -m venv /projectnb/<yourproject>/venvs/debass_meta_meta_env
-source /projectnb/<yourproject>/venvs/debass_meta_meta_env/bin/activate
+python3 -m venv /projectnb/<yourproject>/venvs/debass_meta_env
+source /projectnb/<yourproject>/venvs/debass_meta_env/bin/activate
 
 # Install dependencies
 pip install -r env/requirements.txt
@@ -40,7 +51,7 @@ pip install astro-parsnip
 
 # Set the repo root env var (add to ~/.bashrc for persistence)
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
-export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_meta_meta_env
+export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_meta_env
 ```
 
 ## 2. Credentials
@@ -202,7 +213,7 @@ export DEBASS_GPU_QUEUE=l40s
 export DEBASS_GPU_COUNT=1
 export DEBASS_GPU_MEMORY=40G
 export DEBASS_PYTHON_MODULE=python3/3.10.12
-export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_meta_meta_env
+export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_meta_env
 ```
 
 ## 8. Output locations

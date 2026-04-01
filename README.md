@@ -171,7 +171,7 @@ Baseline outputs:
 | `fink/snn` | alert-level posterior-like | yes | exact alert history |
 | `fink/rf_ia` | alert-level scalar Ia score | yes | exact alert history |
 | `parsnip` | local rerun posterior | yes | rerun exact when weights exist |
-| `supernnova` | local rerun posterior | pending | wrapper incomplete |
+| `supernnova` | local rerun posterior | pending | wrapper exists; needs package and weights |
 | `alerce/lc_classifier_transient` | object snapshot | live-only | historical backfill is unsafe |
 | `alerce/stamp_classifier` | object snapshot | live-only | historical backfill is unsafe |
 | `lasair/sherlock` | context expert | context-only | static-safe, not calibrated posterior |
@@ -179,7 +179,7 @@ Baseline outputs:
 ## Repository Structure
 
 ```
-src/debass_meta_meta/
+src/debass_meta/
   access/           Broker adapters
   features/         No-leakage lightcurve feature extraction
   ingest/           Bronze / broker-events / gold snapshot builders

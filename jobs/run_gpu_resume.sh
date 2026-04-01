@@ -5,8 +5,9 @@
 # inside a GPU shell/session/node obtained via qrsh or SCC OnDemand.
 #
 # Default GPU expert list is "parsnip" because the current repository can load
-# ParSNIP weights, while SuperNNova remains stub-only until its loader is
-# implemented. Override if needed:
+# ParSNIP weights with the expected artifacts. SuperNNova has a real wrapper
+# now as well, but still needs its package and model weights to be installed.
+# Override if needed:
 #   bash -l jobs/run_gpu_resume.sh --experts=parsnip,supernnova
 #
 # Baseline resume is available only with --baseline.
@@ -15,7 +16,7 @@ set -euo pipefail
 
 DEBASS_GPU_EXPERTS=${DEBASS_GPU_EXPERTS:-parsnip}
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_meta_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 RUN_BASELINE=false
 
 while [[ $# -gt 0 ]]; do

@@ -18,7 +18,7 @@ set -euo pipefail
 DEBASS_LIMIT=${DEBASS_LIMIT:-2000}
 DEBASS_MAX_N_DET=${DEBASS_MAX_N_DET:-20}
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
-DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_meta_env}
+DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -74,7 +74,9 @@ cd "$DEBASS_ROOT"
 JID_DL=$(qsub -terse -V jobs/download_training.sh)
 echo "[1] download_training   → job $JID_DL"
 
-JID_BF=$(qsub -terse -V -hold_jid "$JID_DL" jobs/backfill.sh)
+JID_BF_RAW=$(qsub -terse -V -hold_jid "$JID_DL" jobs/backfill.sh)
+# Strip array task range (e.g. "12345.1-3:1" → "12345") so hold_jid works
+JID_BF=$(echo "$JID_BF_RAW" | cut -d. -f1)
 echo "[2] backfill array      → job $JID_BF  (holds on $JID_DL)"
 
 JID_EP=$(qsub -terse -V -hold_jid "$JID_BF" jobs/build_epochs.sh)
