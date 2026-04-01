@@ -162,8 +162,8 @@ Deploy model trained on train+cal data.
 
 ### Python Environment
 ```bash
-python3 -m venv ~/debass_env
-source ~/debass_env/bin/activate
+python3 -m venv ~/debass_meta_env
+source ~/debass_meta_env/bin/activate
 pip install -r env/requirements.txt
 ```
 
@@ -239,8 +239,8 @@ pip install -r env/requirements.txt
 ```bash
 # On SCC login node
 cd /projectnb/<yourproject>/rubin_hackathon
-python3 -m venv ~/debass_env
-source ~/debass_env/bin/activate
+python3 -m venv ~/debass_meta_env
+source ~/debass_meta_env/bin/activate
 pip install -r env/requirements.txt
 ```
 

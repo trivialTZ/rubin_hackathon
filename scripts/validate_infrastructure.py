@@ -254,7 +254,7 @@ def main():
         print("\nInfrastructure is ready for SCC deployment.")
         print("\nNext steps:")
         print("  1. Copy to SCC: scp -r . <scc>:/projectnb/<project>/rubin_hackathon")
-        print("  2. Set up environment: python3 -m venv ~/debass_env && pip install -r env/requirements.txt")
+        print("  2. Set up environment: python3 -m venv ~/debass_meta_env && source ~/debass_meta_env/bin/activate && pip install -r env/requirements.txt")
         print("  3. Configure credentials: cp .env.example .env && nano .env")
         print("  4. Download TNS CSV: python3 scripts/download_tns_bulk.py")
         print("  5. Run smoke test: python3 scripts/run_preml_pipeline.py --root tmp/test --labels data/labels.csv --lightcurves-dir data/lightcurves --skip-local-infer")

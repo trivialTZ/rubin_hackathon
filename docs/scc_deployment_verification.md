@@ -307,8 +307,8 @@ All 3 brokers have adapters implemented:
 cd /projectnb/<yourproject>/rubin_hackathon
 
 # 2. Create Python environment
-python3 -m venv ~/debass_env
-source ~/debass_env/bin/activate
+python3 -m venv ~/debass_meta_env
+source ~/debass_meta_env/bin/activate
 
 # 3. Install dependencies
 pip install -r env/requirements.txt

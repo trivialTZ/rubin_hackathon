@@ -78,9 +78,10 @@ def _load_local_expert_json(
 ) -> dict[tuple[str, int], dict[str, float | None]]:
     """Load per-(object_id, n_det) local expert scores from local_expert_outputs.json.
 
-    Returns {(object_id, n_det): {"snn_prob_ia": float|None, "parsnip_prob_ia": float|None}}.
-    Written by scripts/local_infer.py (run on SCC GPU node).
-    Returns empty dict when the file doesn't exist (pre-GPU run).
+    Returns {(object_id, n_det): {"snn_prob_ia": float|None, "parsnip_prob_ia": float|None,
+        "alerce_SNIa": ..., "alerce_SNIbc": ..., etc.}}.
+    Written by scripts/local_infer.py (run on SCC GPU/CPU nodes).
+    Returns empty dict when the file doesn't exist (pre-inference run).
     """
     path = silver_dir / "local_expert_outputs.json"
     if not path.exists():
@@ -96,15 +97,32 @@ def _load_local_expert_json(
                 continue
             key = (str(oid), int(n_det))
             if key not in out:
-                out[key] = {"snn_prob_ia": None, "parsnip_prob_ia": None}
+                out[key] = {
+                    "snn_prob_ia": None, "parsnip_prob_ia": None,
+                    "alerce_SNIa": None, "alerce_SNIbc": None,
+                    "alerce_SNII": None, "alerce_SLSN": None,
+                    "alerce_top_Transient": None,
+                }
             expert = rec.get("expert", "")
             probs = rec.get("class_probabilities", {})
-            # SuperNNova / ParSNIP both output "SN Ia" as the Ia class key
-            ia_prob = probs.get("SN Ia") if probs.get("SN Ia") is not None else probs.get("prob_ia")
+
             if expert == "supernnova":
+                ia_prob = probs.get("SN Ia") if probs.get("SN Ia") is not None else probs.get("prob_ia")
                 out[key]["snn_prob_ia"] = ia_prob
             elif expert == "parsnip":
+                ia_prob = probs.get("SN Ia") if probs.get("SN Ia") is not None else probs.get("prob_ia")
                 out[key]["parsnip_prob_ia"] = ia_prob
+            elif expert == "alerce_lc":
+                out[key]["alerce_SNIa"] = probs.get("SNIa")
+                out[key]["alerce_SNIbc"] = probs.get("SNIbc")
+                out[key]["alerce_SNII"] = probs.get("SNII")
+                out[key]["alerce_SLSN"] = probs.get("SLSN")
+                # top_Transient = sum of transient sub-class probs
+                transient_sum = sum(
+                    probs.get(c, 0.0) or 0.0
+                    for c in ("SNIa", "SNIbc", "SNII", "SLSN")
+                )
+                out[key]["alerce_top_Transient"] = transient_sum
         return out
     except Exception:
         return {}
@@ -218,12 +236,21 @@ def main() -> None:
                 key = (oid, broker, field)
                 row[col_name] = silver_lookup.get(key)  # None -> NaN
 
-            # Merge local expert scores from JSON (written by local_infer.py on GPU)
+            # Merge local expert scores from JSON (written by local_infer.py)
             # Keyed by (object_id, n_det) so each epoch gets the score from the
             # correctly truncated lightcurve — no leakage from future detections.
             expert_scores = local_expert_lookup.get((oid, n_det), {})
             row["snn_prob_ia"]     = expert_scores.get("snn_prob_ia")
             row["parsnip_prob_ia"] = expert_scores.get("parsnip_prob_ia")
+
+            # Local alerce_lc scores override API-fetched broker scores
+            # (local scores are per-epoch from truncated LCs — better than
+            #  object-level API scores that are the same at every epoch)
+            for alerce_col in ("alerce_SNIa", "alerce_SNIbc", "alerce_SNII",
+                               "alerce_SLSN", "alerce_top_Transient"):
+                local_val = expert_scores.get(alerce_col)
+                if local_val is not None:
+                    row[alerce_col] = local_val
 
             # Availability flags.
             # Remote brokers are object-level features from the silver parquet.
@@ -233,6 +260,7 @@ def main() -> None:
                 row[f"{b}_available"] = float(remote_broker_availability.get((oid, b), False))
             row["supernnova_available"] = float(expert_scores.get("snn_prob_ia") is not None)
             row["parsnip_available"] = float(expert_scores.get("parsnip_prob_ia") is not None)
+            row["alerce_lc_available"] = float(expert_scores.get("alerce_SNIa") is not None)
 
             all_rows.append(row)
 

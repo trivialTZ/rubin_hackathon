@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from debass_meta.experts.local import ALL_LOCAL_EXPERTS
+from debass_meta.experts.local import ALL_LOCAL_EXPERTS, CPU_LOCAL_EXPERTS, GPU_LOCAL_EXPERTS
 
 _SILVER_DIR = Path("data/silver")
 _LC_DIR = Path("data/lightcurves")
@@ -148,6 +148,10 @@ def main() -> None:
                         help="Max objects (for smoke tests)")
     parser.add_argument("--require-live-model", action="store_true",
                         help="Fail if the requested expert is only available in stub mode")
+    parser.add_argument("--cpu-only", action="store_true",
+                        help="Only run experts that do not require GPU (e.g. alerce_lc)")
+    parser.add_argument("--gpu-only", action="store_true",
+                        help="Only run experts that require GPU (e.g. supernnova, parsnip)")
     args = parser.parse_args()
 
     lc_dir = Path(args.lc_dir)
@@ -165,9 +169,17 @@ def main() -> None:
         print("No objects found. Run download_alerce_training.py first.")
         sys.exit(1)
 
+    # Select expert pool based on CPU/GPU flags
+    if args.cpu_only:
+        pool = CPU_LOCAL_EXPERTS
+    elif args.gpu_only:
+        pool = GPU_LOCAL_EXPERTS
+    else:
+        pool = ALL_LOCAL_EXPERTS
+
     # Instantiate requested experts
     experts = [
-        cls() for cls in ALL_LOCAL_EXPERTS
+        cls() for cls in pool
         if args.expert == "all" or cls.name == args.expert
     ]
     if not experts:

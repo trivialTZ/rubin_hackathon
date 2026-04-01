@@ -25,8 +25,8 @@ ssh <username>@scc1.bu.edu
 cd /projectnb/<project>/rubin_hackathon
 
 # Create virtual environment
-python3 -m venv ~/debass_env
-source ~/debass_env/bin/activate
+python3 -m venv ~/debass_meta_env
+source ~/debass_meta_env/bin/activate
 
 # Install dependencies
 pip install -r env/requirements.txt

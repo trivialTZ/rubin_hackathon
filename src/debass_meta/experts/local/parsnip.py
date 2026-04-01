@@ -51,6 +51,7 @@ def _to_builtin(value: Any) -> Any:
 class ParSNIPExpert(LocalExpert):
     name = "parsnip"
     semantic_type = "probability"
+    requires_gpu = True
     CLASSES = ["SN Ia", "SN II", "SN IIn", "SN Ibc", "SN IIb", "SLSN-I"]
 
     def __init__(

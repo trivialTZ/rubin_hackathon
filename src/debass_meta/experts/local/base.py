@@ -26,6 +26,7 @@ class LocalExpert(ABC):
 
     name: str          # subclass must set
     semantic_type: str = "probability"
+    requires_gpu: bool = False  # True for torch-based experts (SNN, ParSNIP)
 
     @abstractmethod
     def fit(self, lightcurves: Any, labels: Any) -> None:

@@ -38,6 +38,7 @@ _FID_TO_BAND = {
 class SuperNNovaExpert(LocalExpert):
     name = "supernnova"
     semantic_type = "probability"
+    requires_gpu = True
     # Binary classification: Ia vs non-Ia
     CLASSES = ["SN Ia", "non-Ia"]
 
