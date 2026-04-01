@@ -340,6 +340,36 @@ This is where the project idea shows up most directly. The question is not just 
 
 \code{scripts/train\_followup.py} is the secondary stage. It is meant to consume trust features and projected expert evidence to estimate \code{p\_follow\_proxy}.
 
+\subsection{ML Algorithm Details}
+
+All classifiers (trust heads, follow-up head, and the baseline \code{EarlyMetaClassifier}) use \textbf{LightGBM} gradient-boosted trees (Ke et al.\ 2017, NeurIPS). The switch from RandomForest was motivated by three properties:
+
+\begin{enumerate}
+\item \textbf{Native NaN handling.} Broker scores from Fink are ${\sim}100\%$ NaN for most ZTF objects, and forced-photometry ALeRCE classifiers cover only ${\sim}20\%$. RandomForest required median imputation, which is lossy. LightGBM learns the optimal split direction for missing values during tree construction, meaning the \emph{pattern of missingness itself} becomes an informative signal.
+
+\item \textbf{Leaf-wise tree growth.} The heterogeneous feature space (broker probabilities in $[0,1]$, magnitudes in $[15,22]$, time spans in days) benefits from leaf-wise splitting, which more efficiently captures interactions such as ``ALeRCE says Ia but the color evolution disagrees.''
+
+\item \textbf{Early stopping.} The \code{EarlyMetaClassifier} trains up to 1000 boosting rounds with early stopping (patience 50) on a held-out calibration set, preventing overfitting on the small smoke-test datasets while allowing full capacity on production runs with 2000+ objects.
+\end{enumerate}
+
+Shared regularisation across all models:
+
+\begin{verbatim}
+learning_rate    = 0.05
+num_leaves       = 31
+min_child_samples= 5
+feature_fraction = 0.8   (column subsampling)
+bagging_fraction = 0.8   (row subsampling)
+reg_alpha        = 0.1   (L1)
+reg_lambda       = 0.1   (L2)
+\end{verbatim}
+
+Binary models (trust heads, follow-up) set \code{is\_unbalance=True} for automatic class-weight correction. The multiclass baseline uses explicit per-object inverse-frequency sample weights.
+
+Calibration: the baseline uses temperature scaling on a separate calibration split; the binary models can use isotonic regression via \code{calibrate.py:IsotonicCalibrator}.
+
+Data splits follow an object-level grouping strategy (\code{GroupSplit} or \code{GroupKFold}) so that all epochs of the same transient stay in the same fold, preventing train/test contamination through repeated observations of the same object.
+
 \subsection{Stage 8: Emit the Final Payload}
 
 \code{scripts/score\_nightly.py} assembles a JSON payload shaped roughly like:
@@ -377,7 +407,7 @@ The repository still contains the earlier fused baseline workflow:
 \item \code{scripts/score\_early.py}
 \end{itemize}
 
-This path produces a single early-epoch classifier. It is worth knowing because it gives you a sanity-check comparator, but it is still the side branch here, not the main architecture.
+This path produces a single early-epoch LightGBM classifier. It is worth knowing because it gives you a sanity-check comparator, but it is still the side branch here, not the main architecture. Since the April 2026 upgrade, it uses the same LightGBM backend as the trust-aware path, with early stopping and temperature-scaled calibration.
 
 \section{Experts in Phase 1}
 
@@ -632,6 +662,6 @@ That order moves from the science idea, to epoch-safe features, to event semanti
 
 If I had to explain DEBASS in one sentence to a teammate, I would call it a trust-aware orchestration layer for a messy set of transient experts. The project is at its best when it preserves timing semantics, exactness labels, and the differences between those experts instead of sanding them down too early. The key move is simple: do not ask only ``what class is this object,'' ask ``which expert should we trust for this object right now.''
 
-As of March 31, 2026, the repository already communicates that idea pretty well and implements a meaningful part of the data pipeline. The remaining work is mostly package cleanup and completion of the model-training layer, not a rethink of the science question.
+As of April 2026, the repository already communicates that idea pretty well and implements both the data pipeline and the full training layer. All classifiers have been upgraded from RandomForest to LightGBM with native NaN handling, proper regularisation, and calibration. The remaining work is mostly external assets (expert weights, stronger truth labels), not missing in-repo code.
 
 \end{document}

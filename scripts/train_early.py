@@ -138,7 +138,8 @@ def main() -> None:
     parser.add_argument("--max-n-det",  type=int, default=20,
                         help="Only train on rows with n_det <= this value")
     parser.add_argument("--val-frac",   type=float, default=0.2)
-    parser.add_argument("--n-estimators", type=int, default=300)
+    parser.add_argument("--n-estimators", type=int, default=1000,
+                        help="Max boosting rounds (early stopping may use fewer)")
     args = parser.parse_args()
 
     import pandas as pd
@@ -171,7 +172,14 @@ def main() -> None:
     )
 
     clf = EarlyMetaClassifier(n_estimators=args.n_estimators)
-    clf.fit(df_train)
+    clf.fit(df_train, df_eval=df_cal)
+
+    importances = clf.feature_importances()
+    if importances:
+        top_features = sorted(importances.items(), key=lambda x: x[1], reverse=True)[:10]
+        print(f"\n  Top-10 feature importances (gain):")
+        for name, imp in top_features:
+            print(f"    {name:30s} {imp:.1f}")
 
     raw_all_metrics = _metrics(clf, df_test, calibrated=False)
     raw_early_metrics = _early_epoch_metrics(clf, df_test, max_early=5, calibrated=False)
@@ -215,6 +223,7 @@ def main() -> None:
         "raw_all_epochs": raw_all_metrics,
         "raw_early_epochs": raw_early_metrics,
         "calibration": calibration_report,
+        "feature_importances": {k: round(v, 2) for k, v in importances.items()},
         "training_weights": clf.training_weight_summary,
         "train_cal_test_split": {
             "train_objects": len(train_ids),

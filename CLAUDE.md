@@ -16,7 +16,15 @@ features to classify transients as **SN Ia / non-Ia SN-like / other** after only
 - **broker scores are object-level** (ALeRCE doesn't expose per-alert probs).
   The same score is repeated across all n_det rows for a given object.
   Only SuperNNova/ParSNIP (GPU path) provide true per-epoch scores.
-- **LightGBM handles NaN natively** — missing broker scores are fine.
+- **LightGBM (not RandomForest)** for all classifiers. Native NaN handling
+  means missing broker scores are passed through directly — no imputation.
+  Leaf-wise gradient boosting with regularisation (learning_rate=0.05,
+  num_leaves=31, reg_alpha/lambda=0.1, feature_fraction=0.8).
+  EarlyMeta uses early stopping on a held-out cal set; binary models use
+  `is_unbalance=True` for class-weight correction.
+- **Three-way train/cal/test split** for EarlyMeta (calibration on cal,
+  metrics on test — no data leakage). Trust and followup models use
+  grouped object-level splits via `GroupSplit`.
 - **Column names must match exactly** between `features/lightcurve.py:FEATURE_NAMES`,
   `models/early_meta.py:DEFAULT_FEATURES`, and `build_epoch_table_from_lc.py:_BROKER_SCORE_COLS`.
 
@@ -82,7 +90,7 @@ python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
 ```bash
 # NOTE: labels.csv is a weak/self-label seed set, not canonical science truth.
 python3.11 scripts/build_epoch_table_from_lc.py
-python3.11 scripts/train_early.py --n-estimators 100
+python3.11 scripts/train_early.py --n-estimators 500
 python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
 ```
 

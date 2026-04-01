@@ -26,5 +26,5 @@ python scripts/train_followup.py \
     --snapshots data/gold/object_epoch_snapshots_trust.parquet \
     --trust-models-dir models/trust \
     --model-dir models/followup \
-    --n-estimators "${DEBASS_N_EST:-200}" \
+    --n-estimators "${DEBASS_N_EST:-500}" \
     --n-jobs "${NSLOTS:-1}"

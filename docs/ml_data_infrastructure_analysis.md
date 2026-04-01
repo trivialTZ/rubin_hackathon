@@ -22,7 +22,19 @@
 
 ## ML Model Architecture
 
+All models use **LightGBM** gradient-boosted trees (Ke et al. 2017, NeurIPS).
+Chosen over RandomForest for:
+- **Native NaN handling** — Fink scores are ~100% NaN on most ZTF objects;
+  LightGBM learns optimal split direction for missing values (no imputation).
+- **Leaf-wise growth** — captures broker-score x lightcurve interactions
+  more effectively than depth-wise RF.
+- **Early stopping** — prevents overfitting on small training sets.
+
+Shared hyperparameters: `learning_rate=0.05, num_leaves=31, min_child_samples=5,
+feature_fraction=0.8, bagging_fraction=0.8, reg_alpha=0.1, reg_lambda=0.1`.
+
 ### Trust Heads (per expert)
+**Algorithm**: LightGBM binary classifier (`is_unbalance=True`, n_estimators=500)
 **Input**: `gold/object_epoch_snapshots.parquet`
 - Lightcurve features at n_det (no future leakage)
 - Expert evidence available at that epoch
@@ -32,9 +44,13 @@
 - Binary: was expert correct/helpful at this epoch?
 - Derived from truth + expert prediction
 
-**Output**: `models/trust/<expert>/model.pkl` + calibrator
+**Training**: GroupKFold (5-fold, grouped by object_id) for OOF predictions.
+Deploy model trained on train+cal data.
+
+**Output**: `models/trust/<expert>/model.pkl` + metadata
 
 ### Follow-up Head
+**Algorithm**: LightGBM binary classifier (`is_unbalance=True`, n_estimators=500)
 **Input**:
 - `gold/object_epoch_snapshots.parquet`
 - Out-of-fold trust predictions from trust heads
@@ -42,7 +58,14 @@
 **Target**: `truth/object_truth.parquet`
 - `follow_proxy = 1{final_class_ternary == 'snia'}`
 
+**Training**: Trains on train+cal objects, evaluates on test.
+
 **Output**: `models/followup/model.pkl`
+
+### Baseline (EarlyMetaClassifier)
+**Algorithm**: LightGBM multiclass (3-class, n_estimators=1000 with early stopping)
+**Calibration**: Temperature scaling on held-out cal set; metrics on separate test set.
+**Feature importances**: Logged and saved to metrics JSON.
 
 ## Data Pipeline — Pre-ML Phase
 

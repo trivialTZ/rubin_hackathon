@@ -32,12 +32,36 @@ Raw alerts / cached lightcurves
     │     ├── Lasair Sherlock context
     │     └── local experts (ParSNIP / SuperNNova)
     │
-    ├── Expert trust heads
+    ├── Expert trust heads  (LightGBM, binary, is_unbalance=True)
     │     └── calibrated q_e,t = P(expert e is trustworthy now)
     │
-    └── Optional follow-up head
-          └── trust-weighted p_follow_proxy
+    ├── Optional follow-up head  (LightGBM, binary)
+    │     └── trust-weighted p_follow_proxy
+    │
+    └── Baseline benchmark  (LightGBM, 3-class, early stopping)
+          └── EarlyMetaClassifier with temperature-scaled calibration
 ```
+
+## ML Algorithm
+
+All classifiers use **LightGBM** gradient-boosted trees (Ke et al. 2017).
+Key design choices:
+
+- **Native NaN handling** — broker scores with sparse coverage (Fink ~100% NaN
+  on most ZTF objects) are passed through directly; LightGBM learns optimal
+  split direction for missing values. No median imputation.
+- **Regularisation** — `learning_rate=0.05`, `num_leaves=31`, `reg_alpha=0.1`,
+  `reg_lambda=0.1`, `feature_fraction=0.8`, `bagging_fraction=0.8`.
+- **Class balance** — multiclass models use per-object inverse-frequency weights;
+  binary models use `is_unbalance=True`.
+- **Early stopping** — EarlyMetaClassifier trains up to 1000 rounds with early
+  stopping (patience=50) on a held-out calibration set.
+- **Calibration** — temperature scaling (multiclass) and isotonic regression
+  (binary) available in `src/debass_meta/models/calibrate.py`.
+- **Three-way split** — train/cal/test with no data leakage: calibration is fit
+  on the cal set, metrics are reported on the separate test set.
+- **Grouped object splits** — all epochs of the same object stay in the same
+  fold (GroupKFold / GroupSplit) to prevent train/test contamination.
 
 ## No-Leakage Epoch Design
 
@@ -94,7 +118,7 @@ The legacy fused baseline remains available:
 ```bash
 # NOTE: labels.csv is a weak/self-label seed set, not canonical science truth.
 python3.11 scripts/build_epoch_table_from_lc.py
-python3.11 scripts/train_early.py --n-estimators 100
+python3.11 scripts/train_early.py --n-estimators 500
 python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
 ```
 

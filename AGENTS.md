@@ -20,6 +20,9 @@ an optional trust-weighted follow-up proxy as a secondary output.
 - **Truth separation**: do not treat broker-derived labels as final science truth. Weak labels
   must remain explicitly marked weak.
 - **Baseline status**: `EarlyMetaClassifier` is a benchmark only, not the primary science model.
+- **All classifiers use LightGBM** (not RandomForest). Native NaN handling, no
+  imputation. Regularised: `learning_rate=0.05, num_leaves=31, reg_alpha/lambda=0.1`.
+  Binary models use `is_unbalance=True`. EarlyMeta uses early stopping on cal set.
 
 ## Python Environment
 
@@ -63,7 +66,7 @@ python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
 ```bash
 # NOTE: labels.csv is a weak/self-label seed set, not canonical science truth.
 python3.11 scripts/build_epoch_table_from_lc.py
-python3.11 scripts/train_early.py --n-estimators 100
+python3.11 scripts/train_early.py --n-estimators 500
 python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
 ```
 
