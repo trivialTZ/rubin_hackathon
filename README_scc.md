@@ -191,6 +191,25 @@ qsub -V jobs/train_followup.sh         # CPU follow-up training
 qsub -V jobs/score_all.sh              # score expert_confidence payloads
 ```
 
+If `qsub` returns `Unable to run job: error: no suitable queues.`, the queue/resource
+combination in the job header does not match any queue your account can use.
+For CPU stages, first try a smaller shared-memory request and add your project
+explicitly if needed:
+
+```bash
+qsub -V -P <project> -pe omp 1 -l mem_per_core=8G jobs/train_expert_trust.sh
+qsub -V -P <project> -pe omp 1 -l mem_per_core=8G jobs/train_followup.sh
+```
+
+The submission wrappers also accept override flags through the environment, so
+you do not need to edit `#$` lines for site-specific tuning:
+
+```bash
+export DEBASS_QSUB_COMMON_ARGS="-P <project>"
+export DEBASS_QSUB_CPU_TRAIN_ARGS="-pe omp 1 -l mem_per_core=8G"
+bash jobs/submit_all.sh --limit 2000
+```
+
 ## 6. Monitor jobs
 
 ```bash
@@ -201,7 +220,8 @@ tail -f logs/build_epochs.<job_id>.log
 
 ## 7. Tuning job resources
 
-Edit the `#$ -l` directives in `jobs/*.sh` to match your queue limits.
+Override resources with `qsub` flags or the submission-wrapper env vars below.
+Edit the `#$ -l` directives in `jobs/*.sh` only if you want to change repo defaults.
 Key variables you can override at submission time:
 
 ```bash
@@ -214,6 +234,10 @@ export DEBASS_GPU_COUNT=1
 export DEBASS_GPU_MEMORY=40G
 export DEBASS_PYTHON_MODULE=python3/3.10.12
 export DEBASS_VENV=/projectnb/<yourproject>/venvs/debass_meta_env
+export DEBASS_QSUB_COMMON_ARGS="-P <project>"
+export DEBASS_QSUB_CPU_ARGS="-q <cpu_queue>"
+export DEBASS_QSUB_CPU_TRAIN_ARGS="-pe omp 1 -l mem_per_core=8G"
+export DEBASS_QSUB_GPU_ARGS="-q l40s"
 ```
 
 ## 8. Output locations

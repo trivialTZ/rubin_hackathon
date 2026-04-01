@@ -1,8 +1,10 @@
 #!/bin/bash -l
 #$ -N debass_meta_train_expert_trust
 #$ -l h_rt=04:00:00
-#$ -l mem_per_core=16G
-#$ -pe omp 4
+# Conservative default so SCC shared queues can place the job.
+# Override at submission with qsub flags if you want more slots or memory.
+#$ -l mem_per_core=8G
+#$ -pe omp 1
 #$ -j y
 #$ -o logs/train_expert_trust.$JOB_ID.log
 

@@ -27,6 +27,10 @@ DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
 DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
 DEBASS_GPU_EXPERTS=${DEBASS_GPU_EXPERTS:-parsnip}
 DEBASS_SCORE_MODE=${DEBASS_SCORE_MODE:-trust}
+DEBASS_QSUB_COMMON_ARGS=${DEBASS_QSUB_COMMON_ARGS:-}
+DEBASS_QSUB_CPU_ARGS=${DEBASS_QSUB_CPU_ARGS:-}
+DEBASS_QSUB_CPU_TRAIN_ARGS=${DEBASS_QSUB_CPU_TRAIN_ARGS:-}
+DEBASS_QSUB_GPU_ARGS=${DEBASS_QSUB_GPU_ARGS:-}
 RUN_GPU=false
 RUN_BASELINE=false
 
@@ -73,6 +77,7 @@ fi
 
 export DEBASS_ROOT DEBASS_LIMIT DEBASS_MAX_N_DET DEBASS_N_EST
 export DEBASS_PYTHON_MODULE DEBASS_VENV DEBASS_GPU_EXPERTS DEBASS_SCORE_MODE
+export DEBASS_QSUB_COMMON_ARGS DEBASS_QSUB_CPU_ARGS DEBASS_QSUB_CPU_TRAIN_ARGS DEBASS_QSUB_GPU_ARGS
 
 if [ -z "${DEBASS_ROOT:-}" ]; then
     echo "ERROR: DEBASS_ROOT is not set."
@@ -81,6 +86,35 @@ if [ -z "${DEBASS_ROOT:-}" ]; then
 fi
 
 mkdir -p "$DEBASS_ROOT/logs"
+
+read -r -a QSUB_COMMON_ARR <<< "$DEBASS_QSUB_COMMON_ARGS"
+read -r -a QSUB_CPU_ARR <<< "$DEBASS_QSUB_CPU_ARGS"
+read -r -a QSUB_CPU_TRAIN_ARR <<< "$DEBASS_QSUB_CPU_TRAIN_ARGS"
+read -r -a QSUB_GPU_ARR <<< "$DEBASS_QSUB_GPU_ARGS"
+
+qsub_submit() {
+    local scope="$1"
+    shift
+
+    local -a cmd=(qsub -terse -V "${QSUB_COMMON_ARR[@]}")
+    case "$scope" in
+        cpu)
+            cmd+=("${QSUB_CPU_ARR[@]}")
+            ;;
+        cpu_train)
+            cmd+=("${QSUB_CPU_ARR[@]}" "${QSUB_CPU_TRAIN_ARR[@]}")
+            ;;
+        gpu)
+            cmd+=("${QSUB_GPU_ARR[@]}")
+            ;;
+        *)
+            echo "ERROR: unknown qsub scope '$scope'" >&2
+            return 1
+            ;;
+    esac
+    cmd+=("$@")
+    "${cmd[@]}"
+}
 
 echo "======================================="
 echo " DEBASS SCC Pipeline Submission"
@@ -95,21 +129,25 @@ echo " GPU experts:      $RUN_GPU"
 echo " Expert list:      $DEBASS_GPU_EXPERTS"
 echo " Baseline mode:    $RUN_BASELINE"
 echo " Score mode:       $DEBASS_SCORE_MODE"
+echo " QSUB common:      ${DEBASS_QSUB_COMMON_ARGS:-<none>}"
+echo " QSUB CPU:         ${DEBASS_QSUB_CPU_ARGS:-<none>}"
+echo " QSUB CPU train:   ${DEBASS_QSUB_CPU_TRAIN_ARGS:-<none>}"
+echo " QSUB GPU:         ${DEBASS_QSUB_GPU_ARGS:-<none>}"
 echo "======================================="
 
 cd "$DEBASS_ROOT"
 
-JID_DL=$(qsub -terse -V jobs/download_training.sh)
+JID_DL=$(qsub_submit cpu jobs/download_training.sh)
 echo "[1] download_training   → job $JID_DL"
 
-JID_BF=$(qsub -terse -V -hold_jid "$JID_DL" jobs/backfill.sh)
+JID_BF=$(qsub_submit cpu -hold_jid "$JID_DL" jobs/backfill.sh)
 echo "[2] backfill array      → job $JID_BF  (holds on $JID_DL)"
 
-JID_EP=$(qsub -terse -V -hold_jid "$JID_BF" jobs/build_epochs.sh)
+JID_EP=$(qsub_submit cpu -hold_jid "$JID_BF" jobs/build_epochs.sh)
 echo "[3] build_epochs        → job $JID_EP  (holds on $JID_BF)"
 
 if [ "$RUN_GPU" = true ]; then
-    JID_GPU=$(qsub -terse -V -hold_jid "$JID_EP" jobs/local_infer_gpu.sh)
+    JID_GPU=$(qsub_submit gpu -hold_jid "$JID_EP" jobs/local_infer_gpu.sh)
     echo "[4] local_infer_gpu     → job $JID_GPU (holds on $JID_EP)"
     TRAIN_HOLD="$JID_GPU"
 else
@@ -118,16 +156,16 @@ else
 fi
 
 if [ "$RUN_BASELINE" = true ]; then
-    JID_TR=$(qsub -terse -V -hold_jid "$TRAIN_HOLD" jobs/train_early.sh)
+    JID_TR=$(qsub_submit cpu_train -hold_jid "$TRAIN_HOLD" jobs/train_early.sh)
     echo "[5] train_early         → job $JID_TR  (holds on $TRAIN_HOLD)"
-    JID_SC=$(qsub -terse -V -hold_jid "$JID_TR" jobs/score_all.sh)
+    JID_SC=$(qsub_submit cpu -hold_jid "$JID_TR" jobs/score_all.sh)
     echo "[6] score_all           → job $JID_SC  (holds on $JID_TR)"
 else
-    JID_TRUST=$(qsub -terse -V -hold_jid "$TRAIN_HOLD" jobs/train_expert_trust.sh)
+    JID_TRUST=$(qsub_submit cpu_train -hold_jid "$TRAIN_HOLD" jobs/train_expert_trust.sh)
     echo "[5] train_expert_trust  → job $JID_TRUST (holds on $TRAIN_HOLD)"
-    JID_FOLLOW=$(qsub -terse -V -hold_jid "$JID_TRUST" jobs/train_followup.sh)
+    JID_FOLLOW=$(qsub_submit cpu_train -hold_jid "$JID_TRUST" jobs/train_followup.sh)
     echo "[6] train_followup      → job $JID_FOLLOW (holds on $JID_TRUST)"
-    JID_SC=$(qsub -terse -V -hold_jid "$JID_FOLLOW" jobs/score_all.sh)
+    JID_SC=$(qsub_submit cpu -hold_jid "$JID_FOLLOW" jobs/score_all.sh)
     echo "[7] score_all           → job $JID_SC  (holds on $JID_FOLLOW)"
 fi
 

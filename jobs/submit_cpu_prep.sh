@@ -25,6 +25,8 @@ DEBASS_LIMIT=${DEBASS_LIMIT:-2000}
 DEBASS_MAX_N_DET=${DEBASS_MAX_N_DET:-20}
 DEBASS_PYTHON_MODULE=${DEBASS_PYTHON_MODULE:-python3/3.10.12}
 DEBASS_VENV=${DEBASS_VENV:-$HOME/debass_meta_env}
+DEBASS_QSUB_COMMON_ARGS=${DEBASS_QSUB_COMMON_ARGS:-}
+DEBASS_QSUB_CPU_ARGS=${DEBASS_QSUB_CPU_ARGS:-}
 SKIP_DOWNLOAD=0
 SKIP_BACKFILL=0
 LOCAL_CLASSIFIERS=0
@@ -64,6 +66,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 export DEBASS_ROOT DEBASS_LIMIT DEBASS_MAX_N_DET DEBASS_PYTHON_MODULE DEBASS_VENV
+export DEBASS_QSUB_COMMON_ARGS DEBASS_QSUB_CPU_ARGS
 
 if [ -z "${DEBASS_ROOT:-}" ]; then
     echo "ERROR: DEBASS_ROOT is not set."
@@ -78,6 +81,15 @@ fi
 
 mkdir -p "$DEBASS_ROOT/logs"
 
+read -r -a QSUB_COMMON_ARR <<< "$DEBASS_QSUB_COMMON_ARGS"
+read -r -a QSUB_CPU_ARR <<< "$DEBASS_QSUB_CPU_ARGS"
+
+qsub_submit_cpu() {
+    local -a cmd=(qsub -terse -V "${QSUB_COMMON_ARR[@]}" "${QSUB_CPU_ARR[@]}")
+    cmd+=("$@")
+    "${cmd[@]}"
+}
+
 echo "======================================="
 echo " DEBASS SCC CPU Prep Submission"
 echo "======================================="
@@ -86,6 +98,8 @@ echo " DEBASS_LIMIT:         $DEBASS_LIMIT objects"
 echo " DEBASS_MAX_N_DET:     $DEBASS_MAX_N_DET"
 echo " DEBASS_PYTHON_MODULE: $DEBASS_PYTHON_MODULE"
 echo " DEBASS_VENV:          $DEBASS_VENV"
+echo " QSUB common:          ${DEBASS_QSUB_COMMON_ARGS:-<none>}"
+echo " QSUB CPU:             ${DEBASS_QSUB_CPU_ARGS:-<none>}"
 echo "======================================="
 
 cd "$DEBASS_ROOT"
@@ -98,7 +112,7 @@ echo "======================================="
 # --- Step 1: Download ---
 JID_DL=""
 if [[ "$SKIP_DOWNLOAD" -eq 0 ]]; then
-    JID_DL=$(qsub -terse -V jobs/download_training.sh)
+    JID_DL=$(qsub_submit_cpu jobs/download_training.sh)
     echo "[1] download_training   → job $JID_DL"
 else
     echo "[1] download_training   → SKIPPED"
@@ -107,9 +121,9 @@ fi
 # --- Step 2: Backfill (API calls) ---
 JID_BF=""
 if [[ "$SKIP_BACKFILL" -eq 0 ]]; then
-    HOLD_ARG=""
-    [[ -n "$JID_DL" ]] && HOLD_ARG="-hold_jid $JID_DL"
-    JID_BF_RAW=$(qsub -terse -V $HOLD_ARG jobs/backfill.sh)
+    HOLD_ARGS=()
+    [[ -n "$JID_DL" ]] && HOLD_ARGS=(-hold_jid "$JID_DL")
+    JID_BF_RAW=$(qsub_submit_cpu "${HOLD_ARGS[@]}" jobs/backfill.sh)
     JID_BF=$(echo "$JID_BF_RAW" | cut -d. -f1)
     echo "[2] backfill array      → job $JID_BF"
 else
@@ -117,24 +131,24 @@ else
 fi
 
 # --- Step 3: Build epochs ---
-HOLD_ARG=""
-[[ -n "$JID_BF" ]] && HOLD_ARG="-hold_jid $JID_BF"
-[[ -z "$JID_BF" && -n "$JID_DL" ]] && HOLD_ARG="-hold_jid $JID_DL"
-JID_EP=$(qsub -terse -V $HOLD_ARG jobs/build_epochs.sh)
+HOLD_ARGS=()
+[[ -n "$JID_BF" ]] && HOLD_ARGS=(-hold_jid "$JID_BF")
+[[ -z "$JID_BF" && -n "$JID_DL" ]] && HOLD_ARGS=(-hold_jid "$JID_DL")
+JID_EP=$(qsub_submit_cpu "${HOLD_ARGS[@]}" jobs/build_epochs.sh)
 echo "[3] build_epochs        → job $JID_EP"
 
 # --- Step 4-5: Local classifiers (optional, CPU-only) ---
 JID_LC=""
 JID_LI=""
 if [[ "$LOCAL_CLASSIFIERS" -eq 1 ]]; then
-    JID_LC=$(qsub -terse -V -hold_jid "$JID_EP" jobs/train_alerce_lc.sh)
+    JID_LC=$(qsub_submit_cpu -hold_jid "$JID_EP" jobs/train_alerce_lc.sh)
     echo "[4] train_alerce_lc     → job $JID_LC  (holds on $JID_EP)"
 
-    JID_LI=$(qsub -terse -V -hold_jid "$JID_LC" jobs/local_infer_cpu.sh)
+    JID_LI=$(qsub_submit_cpu -hold_jid "$JID_LC" jobs/local_infer_cpu.sh)
     echo "[5] local_infer_cpu     → job $JID_LI  (holds on $JID_LC)"
 
     # Rebuild epoch table with local classifier scores merged in
-    JID_EP2=$(qsub -terse -V -hold_jid "$JID_LI" jobs/build_epochs.sh)
+    JID_EP2=$(qsub_submit_cpu -hold_jid "$JID_LI" jobs/build_epochs.sh)
     echo "[6] rebuild_epochs      → job $JID_EP2 (holds on $JID_LI)"
     JID_EP="$JID_EP2"
 fi
