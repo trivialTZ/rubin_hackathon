@@ -15,7 +15,13 @@ features to classify transients as **SN Ia / non-Ia SN-like / other** after only
   truncated to exactly N detections. Never use future detections.
 - **broker scores are object-level** (ALeRCE doesn't expose per-alert probs).
   The same score is repeated across all n_det rows for a given object.
-  Only SuperNNova/ParSNIP (GPU path) provide true per-epoch scores.
+  Only SuperNNova/ParSNIP (GPU path) and the local ALeRCE LC expert (CPU)
+  provide true per-epoch scores.
+- **Local classifiers** can replace broker API calls for ALeRCE LC scores.
+  `AlerceLCExpert` trains a balanced random forest on TNS spectroscopic
+  labels and produces per-epoch probabilities. Use `--local-classifiers`
+  with `submit_cpu_prep.sh` or `--skip-backfill --local-classifiers` for
+  fully offline mode (no API calls at all).
 - **LightGBM (not RandomForest)** for all classifiers. Native NaN handling
   means missing broker scores are passed through directly — no imputation.
   Leaf-wise gradient boosting with regularisation (learning_rate=0.05,
@@ -103,6 +109,45 @@ bash jobs/submit_all.sh --limit 2000 --gpu
 
 See `README_scc.md` for full SCC setup.
 
+## Local Classifiers (no broker API calls)
+
+Instead of calling ALeRCE/Fink/Lasair APIs during backfill, you can train
+and run classifiers locally on SCC:
+
+```bash
+# Fully offline CPU pipeline (no API calls at all):
+bash jobs/submit_cpu_prep.sh --skip-backfill --local-classifiers
+
+# Or with backfill + local classifiers (local scores override API scores):
+bash jobs/submit_cpu_prep.sh --skip-download --local-classifiers
+```
+
+**What runs locally:**
+- `AlerceLCExpert`: balanced random forest trained on TNS labels → replaces
+  `alerce_SNIa`, `alerce_SNIbc`, `alerce_SNII`, `alerce_SLSN`, `alerce_top_Transient`
+- SuperNNova (GPU): replaces `fink_snn_snia`, `fink_snn_sn` (already implemented)
+- ParSNIP (GPU): additional SN typing (already implemented)
+
+**What stays NaN (infeasible locally):**
+- `alerce_stamp_SN` — needs ZTF cutout images
+- `fink_rf_snia` — no public weights/code
+- Lasair Sherlock — needs 4.5TB catalog database
+
+LightGBM handles NaN natively, so missing columns are not a problem.
+
+**Manual workflow:**
+```bash
+# 1. Train the local ALeRCE classifier
+python3 scripts/train_alerce_lc.py --from-labels data/labels.csv
+
+# 2. Run CPU-only local inference
+python3 scripts/local_infer.py --expert alerce_lc --cpu-only \
+    --from-labels data/labels.csv
+
+# 3. Rebuild epoch table (local scores override API scores)
+python3 scripts/build_epoch_table_from_lc.py
+```
+
 ## File Map
 
 ```
@@ -111,7 +156,7 @@ src/debass_meta/
   features/       Lightcurve feature extractor — FEATURE_NAMES list is authoritative
   ingest/         Bronze → silver → gold Parquet transforms
   models/         EarlyMetaClassifier (LightGBM) + baselines + calibration
-  experts/local/  SuperNNova, ParSNIP wrappers (stub until SCC GPU)
+  experts/local/  SuperNNova, ParSNIP, ALeRCE LC wrappers (local classifiers)
 
 scripts/
   download_alerce_training.py   Step 1: get weakly labelled seed objects + lightcurves
@@ -125,6 +170,7 @@ scripts/
   train_expert_trust.py         Step 5: train trust heads
   train_followup.py             Step 5b: train follow-up head
   score_nightly.py              Step 6: emit expert_confidence payload
+  train_alerce_lc.py             Train local ALeRCE-style LC classifier (CPU)
   train_early.py                Baseline benchmark only
   score_early.py                Baseline benchmark only
 

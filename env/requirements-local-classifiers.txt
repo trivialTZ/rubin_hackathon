@@ -1,0 +1,12 @@
+# Local classifier dependencies (CPU-only).
+# Install alongside the base requirements:
+#   pip install -r env/requirements.txt -r env/requirements-local-classifiers.txt
+
+# Balanced random forest for ALeRCE-style LC classifier
+imbalanced-learn>=0.12
+
+# Optional: full ALeRCE feature extraction (~50+ features).
+# If not installed, the local classifier uses the built-in 24 LC features.
+# lc-classifier>=2.0
+# turbofats>=1.0
+# P4J>=1.0
