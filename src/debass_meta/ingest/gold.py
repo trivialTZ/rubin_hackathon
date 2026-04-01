@@ -91,17 +91,33 @@ def build_object_epoch_snapshots(
     truth_lookup = _load_truth_lookup(truth_path)
     events_df = _load_all_event_rows(silver_dir)
 
+    # Pre-group events by (object_id, expert_key) for O(1) lookup
+    # instead of O(N) full-DataFrame scan per query
+    _events_index: dict[tuple[str, str], Any] = {}
+    if len(events_df) > 0:
+        for key, group in events_df.groupby(["object_id", "expert_key"]):
+            _events_index[key] = group
+    print(f"  Indexed {len(_events_index):,} (object, expert) groups "
+          f"from {len(events_df):,} event rows", flush=True)
+
     rows: list[dict[str, Any]] = []
     object_filter = set(object_ids or [])
+    lc_paths = sorted(Path(lc_dir).glob("*.json"))
+    if object_filter:
+        lc_paths = [p for p in lc_paths if p.stem in object_filter]
+    n_total = len(lc_paths)
 
-    for lc_path in sorted(Path(lc_dir).glob("*.json")):
+    for i, lc_path in enumerate(lc_paths):
+        if i % 1000 == 0:
+            print(f"  snapshot: {i:,}/{n_total:,} objects ...", flush=True)
         object_id = lc_path.stem
-        if object_filter and object_id not in object_filter:
-            continue
         detections = _load_lightcurve(lc_path)
         if not detections:
             continue
         epoch_features = extract_features_at_each_epoch(detections, max_n_det=max_n_det)
+
+        truth = truth_lookup.get(object_id, {})
+
         for feats in epoch_features:
             n_det = int(feats["n_det"])
             alert_value = float(feats.pop("alert_mjd"))
@@ -114,7 +130,6 @@ def build_object_epoch_snapshots(
             for feature_name in FEATURE_NAMES:
                 base_row[feature_name] = feats.get(feature_name)
 
-            truth = truth_lookup.get(object_id, {})
             base_row["target_class"] = truth.get("final_class_ternary")
             base_row["target_follow_proxy"] = truth.get("follow_proxy")
             base_row["label_source"] = truth.get("label_source")
@@ -123,7 +138,7 @@ def build_object_epoch_snapshots(
             for expert_key in PHASE1_EXPERT_KEYS:
                 _attach_expert_projection(
                     base_row,
-                    events_df,
+                    _events_index,
                     object_id=object_id,
                     expert_key=expert_key,
                     alert_jd=alert_jd,
@@ -131,6 +146,9 @@ def build_object_epoch_snapshots(
                 )
 
             rows.append(base_row)
+
+    print(f"  snapshot: {n_total:,}/{n_total:,} objects done "
+          f"({len(rows):,} epoch rows)", flush=True)
 
     if not rows:
         raise ValueError(f"No epoch rows built from {lc_dir}")
@@ -193,7 +211,7 @@ def select_events_asof(
 
 def _attach_expert_projection(
     row: dict[str, Any],
-    events_df,
+    events_index: dict,
     *,
     object_id: str,
     expert_key: str,
@@ -201,10 +219,14 @@ def _attach_expert_projection(
     allow_unsafe_latest_snapshot: bool,
 ) -> None:
     san = sanitize_expert_key(expert_key)
-    subset = events_df[
-        (events_df["object_id"] == object_id) &
-        (events_df["expert_key"] == expert_key)
-    ]
+    subset = events_index.get((object_id, expert_key))
+    if subset is None:
+        row[f"avail__{san}"] = 0.0
+        row[f"exact__{san}"] = 0.0
+        row[f"temporal_exactness__{san}"] = None
+        row[f"source_event_time_jd__{san}"] = None
+        row[f"reason__{san}"] = "expert unavailable at this epoch"
+        return
     selected = select_events_asof(
         subset,
         alert_jd=alert_jd,
@@ -242,10 +264,8 @@ def _load_truth_lookup(path: Path) -> dict[str, dict[str, Any]]:
     df = pd.read_parquet(path)
     if len(df) == 0:
         return {}
-    return {
-        str(row["object_id"]): row.to_dict()
-        for _, row in df.iterrows()
-    }
+    df = df.set_index(df["object_id"].astype(str))
+    return df.to_dict(orient="index")
 
 
 def _load_all_event_rows(silver_dir: Path):

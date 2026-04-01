@@ -17,8 +17,11 @@ def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
     snapshot_df = pd.read_parquet(snapshot_path)
     rows: list[dict] = []
     generic_feature_cols = [column for column in ["alert_jd", *FEATURE_NAMES] if column in snapshot_df.columns]
+    snapshot_columns = set(snapshot_df.columns)
+    snapshot_records = snapshot_df.to_dict("records")
+    print(f"  helpfulness: processing {len(snapshot_records):,} snapshot rows ...", flush=True)
 
-    for _, row in snapshot_df.iterrows():
+    for row in snapshot_records:
         for expert_key in PHASE1_EXPERT_KEYS:
             san = sanitize_expert_key(expert_key)
             if not bool(row.get(f"avail__{san}", 0)):
@@ -38,7 +41,7 @@ def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
             }
             for column in generic_feature_cols:
                 record[column] = row.get(column)
-            for column in snapshot_df.columns:
+            for column in snapshot_columns:
                 if column.startswith(f"proj__{san}__") or column in {f"avail__{san}", f"exact__{san}", f"event_count__{san}", f"source_event_time_jd__{san}"}:
                     record[column] = row.get(column)
 
