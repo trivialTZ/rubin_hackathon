@@ -48,7 +48,7 @@ def _prepare_numeric_frame(
     return numeric, fill_values
 
 
-def _fit_binary_classifier(X: pd.DataFrame, y: np.ndarray, *, n_estimators: int = 500):
+def _fit_binary_classifier(X: pd.DataFrame, y: np.ndarray, *, n_estimators: int = 500, n_jobs: int = 1):
     from lightgbm import LGBMClassifier
 
     unique = np.unique(y)
@@ -67,6 +67,7 @@ def _fit_binary_classifier(X: pd.DataFrame, y: np.ndarray, *, n_estimators: int 
         reg_lambda=0.1,
         is_unbalance=True,
         random_state=42,
+        n_jobs=n_jobs,
         verbose=-1,
     )
     model.fit(X.to_numpy(dtype=float), y)
@@ -194,6 +195,7 @@ def train_expert_trust_suite(
     output_snapshot_path: Path,
     n_splits: int = 5,
     allow_unsafe_latest_snapshot: bool = False,
+    n_jobs: int = 1,
 ):
     from sklearn.model_selection import GroupKFold
 
@@ -241,16 +243,16 @@ def train_expert_trust_suite(
         if splits >= 2:
             group_kfold = GroupKFold(n_splits=splits)
             for fit_idx, pred_idx in group_kfold.split(train_X, train_y, groups=groups):
-                fold_model = _fit_binary_classifier(train_X.iloc[fit_idx], train_y[fit_idx])
+                fold_model = _fit_binary_classifier(train_X.iloc[fit_idx], train_y[fit_idx], n_jobs=n_jobs)
                 oof_pred[pred_idx] = _predict_binary_classifier(fold_model, train_X.iloc[pred_idx])
         else:
-            base_model = _fit_binary_classifier(train_X, train_y)
+            base_model = _fit_binary_classifier(train_X, train_y, n_jobs=n_jobs)
             oof_pred[:] = _predict_binary_classifier(base_model, train_X)
 
         train_rows[f"q__{san}"] = oof_pred
         train_rows[f"trust_source__{san}"] = "oof"
 
-        train_fit_model = _fit_binary_classifier(train_X, train_y)
+        train_fit_model = _fit_binary_classifier(train_X, train_y, n_jobs=n_jobs)
 
         def _predict_rows(rows: pd.DataFrame, source: str) -> pd.DataFrame:
             rows = rows.copy()
@@ -284,7 +286,7 @@ def train_expert_trust_suite(
             fill_values=fill_values,  # reuse training fill_values for consistency
         )
         deploy_y = deploy_rows["is_topclass_correct"].astype(int).to_numpy() if len(deploy_rows) > 0 else train_y
-        deploy_model = _fit_binary_classifier(deploy_X, deploy_y)
+        deploy_model = _fit_binary_classifier(deploy_X, deploy_y, n_jobs=n_jobs)
         artifact = ExpertTrustArtifact(
             expert_key=expert_key,
             feature_cols=feature_cols,

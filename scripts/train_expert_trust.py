@@ -24,6 +24,8 @@ def main() -> None:
     parser.add_argument("--n-splits", type=int, default=5)
     parser.add_argument("--strict-labels", action="store_true")
     parser.add_argument("--allow-unsafe-alerce", action="store_true")
+    parser.add_argument("--n-jobs", type=int, default=1,
+                        help="Number of threads for LightGBM (must match -pe omp slots)")
     args = parser.parse_args()
 
     snapshot_df = pd.read_parquet(args.snapshots)
@@ -51,6 +53,7 @@ def main() -> None:
         output_snapshot_path=Path(args.output_snapshots),
         n_splits=args.n_splits,
         allow_unsafe_latest_snapshot=args.allow_unsafe_alerce,
+        n_jobs=args.n_jobs,
     )
 
     metrics_out = Path(args.metrics_out) if args.metrics_out else Path(args.models_dir).parent.parent / "reports/metrics/expert_trust_metrics.json"

@@ -28,4 +28,5 @@ python scripts/train_expert_trust.py \
     --snapshots data/gold/object_epoch_snapshots.parquet \
     --helpfulness data/gold/expert_helpfulness.parquet \
     --models-dir models/trust \
-    --output-snapshots data/gold/object_epoch_snapshots_trust.parquet
+    --output-snapshots data/gold/object_epoch_snapshots_trust.parquet \
+    --n-jobs "${NSLOTS:-1}"
