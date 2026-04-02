@@ -209,39 +209,97 @@ def main() -> None:
             )
             sys.exit(2)
 
-    # Per-(object, n_det) inference
-    results = []
-    for idx, oid in enumerate(object_ids, start=1):
+    # ── Collect all (object, n_det) items ────────────────────────────────
+    # For experts that support batch inference (SuperNNova), we collect
+    # all items first, then process in large batches so the model is
+    # loaded only once per batch instead of once per item (~100× faster).
+    BATCH_SIZE = 500  # objects per batch (not epochs — epochs expand inside)
+
+    batch_experts = [e for e in experts if hasattr(e, "predict_epoch_batch")]
+    serial_experts = [e for e in experts if not hasattr(e, "predict_epoch_batch")]
+
+    # Pre-load all lightcurves and build item lists
+    all_items: list[tuple[str, list[dict], float, int]] = []  # (oid, dets, alert_jd, n_det)
+    all_mjds: list[float] = []  # parallel to all_items
+    loaded_lcs: dict[str, list[dict]] = {}
+
+    print(f"Loading lightcurves for {len(object_ids)} objects...")
+    skipped = 0
+    for oid in object_ids:
         dets = _load_lightcurve(lc_dir, oid)
         if not dets:
-            print(f"  {oid}: no lightcurve — skipping")
+            skipped += 1
             continue
-
+        loaded_lcs[oid] = dets
         n_epochs = min(len(dets), args.max_n_det)
         for n_det in range(1, n_epochs + 1):
             truncated = dets[:n_det]
-            # MJD of the n_det-th detection (last in truncated slice)
             alert_mjd = truncated[-1].get("mjd") or truncated[-1].get("jd") or 0.0
-            # Convert to JD for experts that use it internally
             alert_jd = float(alert_mjd) + 2400000.5
+            all_items.append((oid, truncated, alert_jd, n_det))
+            all_mjds.append(float(alert_mjd))
 
-            for expert in experts:
+    print(f"  {len(all_items)} total (object, n_det) pairs "
+          f"({len(loaded_lcs)} objects, {skipped} skipped)")
+
+    results = []
+
+    # ── Batch experts (SuperNNova) ────────────────────────────────────
+    for expert in batch_experts:
+        print(f"[{expert.name}] Running batch inference ({len(all_items)} items)...")
+        import time
+        t0 = time.time()
+
+        # Process in chunks to avoid OOM on huge runs
+        for chunk_start in range(0, len(all_items), BATCH_SIZE * args.max_n_det):
+            chunk_end = min(chunk_start + BATCH_SIZE * args.max_n_det, len(all_items))
+            chunk = all_items[chunk_start:chunk_end]
+            chunk_mjds = all_mjds[chunk_start:chunk_end]
+
+            try:
+                outputs = expert.predict_epoch_batch(chunk)
+                for out, alert_mjd in zip(outputs, chunk_mjds):
+                    results.append({
+                        "expert": out.expert,
+                        "object_id": out.object_id,
+                        "n_det": out.raw_output.get("truncated_n_det", 0),
+                        "alert_mjd": alert_mjd,
+                        "class_probabilities": out.class_probabilities,
+                        "model_version": out.model_version,
+                        "available": out.available,
+                    })
+            except Exception as exc:
+                print(f"  [{expert.name}] batch chunk error: {exc}")
+
+            done = min(chunk_end, len(all_items))
+            elapsed = time.time() - t0
+            rate = done / elapsed if elapsed > 0 else 0
+            eta = (len(all_items) - done) / rate if rate > 0 else 0
+            print(f"  [{expert.name}] {done}/{len(all_items)} "
+                  f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)")
+
+        print(f"[{expert.name}] Done in {time.time() - t0:.1f}s")
+
+    # ── Serial experts (fallback for non-batch experts) ───────────────
+    if serial_experts:
+        for idx, (oid, truncated, alert_jd, n_det) in enumerate(all_items, start=1):
+            alert_mjd = all_mjds[idx - 1]
+            for expert in serial_experts:
                 try:
                     out = expert.predict_epoch(oid, truncated, alert_jd)
                     results.append({
                         "expert": out.expert,
                         "object_id": oid,
                         "n_det": n_det,
-                        "alert_mjd": float(alert_mjd),
+                        "alert_mjd": alert_mjd,
                         "class_probabilities": out.class_probabilities,
                         "model_version": out.model_version,
                         "available": out.available,
                     })
                 except Exception as exc:
                     print(f"  {oid} n_det={n_det} [{expert.name}]: ERROR — {exc}")
-
-        if idx % 100 == 0:
-            print(f"  Processed {idx}/{len(object_ids)} objects...")
+            if idx % 5000 == 0:
+                print(f"  Serial experts: {idx}/{len(all_items)}...")
 
     out_path = silver_dir / "local_expert_outputs.json"
     silver_dir.mkdir(parents=True, exist_ok=True)
