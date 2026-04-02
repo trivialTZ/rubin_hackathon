@@ -261,7 +261,18 @@ def main() -> None:
     if args.with_lasair:
         _enrich_with_lasair(all_candidates)
 
-    # Write output
+    # Deduplicate within this run
+    seen = set()
+    deduped = []
+    for c in all_candidates:
+        if c["object_id"] not in seen:
+            seen.add(c["object_id"])
+            deduped.append(c)
+    if len(deduped) < len(all_candidates):
+        print(f"\nDeduplicated: {len(all_candidates)} → {len(deduped)} (removed {len(all_candidates) - len(deduped)} duplicates)")
+    all_candidates = deduped
+
+    # Merge with existing output file (append new, update existing)
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -270,18 +281,41 @@ def main() -> None:
         "alerce_stamp_p_sn", "alerce_stamp_p_bogus", "alerce_stamp_p_agn", "alerce_stamp_p_vs",
         "sherlock_class", "discovery_broker", "survey",
     ]
+
+    existing: dict[str, dict] = {}
+    if out_path.exists():
+        with open(out_path) as fh:
+            for row in csv.DictReader(fh):
+                existing[row["object_id"]] = row
+
+    n_new = 0
+    n_updated = 0
+    for c in all_candidates:
+        oid = c["object_id"]
+        if oid in existing:
+            # Update: keep new data (fresher n_det, probs)
+            existing[oid].update({k: v for k, v in c.items() if v not in (None, "", 0, 0.0)})
+            n_updated += 1
+        else:
+            existing[oid] = c
+            n_new += 1
+
+    # Write merged output
+    merged = list(existing.values())
     with open(out_path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(all_candidates)
+        writer.writerows(merged)
 
     # Summary
-    print(f"\nWrote {len(all_candidates)} LSST candidates → {out_path}")
-    print(f"\nClass distribution:")
     from collections import Counter
-    counts = Counter(c["alerce_stamp_class"] for c in all_candidates)
+    counts = Counter(c.get("alerce_stamp_class", "?") for c in merged)
+    print(f"\n{'='*50}")
+    print(f"Output: {out_path}")
+    print(f"  Total:   {len(merged)} objects ({n_new} new, {n_updated} updated)")
+    print(f"  Classes:")
     for cls, n in counts.most_common():
-        print(f"  {cls:10s}: {n}")
+        print(f"    {cls:10s}: {n}")
 
 
 if __name__ == "__main__":
