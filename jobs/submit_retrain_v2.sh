@@ -12,34 +12,37 @@
 #            Existing bronze/silver/lightcurve caches are reused.
 #            Only ALeRCE is re-queried (to pick up new classifiers).
 #
-# Env vars you need (in .env or exported):
-#   LASAIR_TOKEN         — Lasair API token (get from https://lasair.lsst.ac.uk)
-#   LASAIR_ENDPOINT      — https://lasair.lsst.ac.uk for LSST mode (optional)
-#   TNS_API_KEY          — TNS API key (only if --update-tns)
-#   TNS_TNS_ID           — TNS bot ID (only if --update-tns)
-#   TNS_MARKER_NAME      — TNS marker name (only if --update-tns)
+# Env vars (in $DEBASS_ROOT/.env):
+#   LASAIR_TOKEN             — shared Lasair token (used for both ZTF + LSST)
+#   LASAIR_ZTF_TOKEN         — (optional) separate ZTF Lasair token
+#   LASAIR_LSST_TOKEN        — (optional) separate LSST Lasair token
+#   LASAIR_ZTF_ENDPOINT      — (optional) default: https://lasair-ztf.lsst.ac.uk
+#   LASAIR_LSST_ENDPOINT     — (optional) default: https://lasair.lsst.ac.uk
+#   TNS_API_KEY              — TNS API key (only if --update-tns)
+#   TNS_TNS_ID               — TNS bot ID (only if --update-tns)
+#   TNS_MARKER_NAME          — TNS marker name (only if --update-tns)
 #
 # Usage:
-#   bash jobs/submit_retrain_v2.sh                     # retrain only
-#   bash jobs/submit_retrain_v2.sh --update-tns        # also refresh TNS CSV
-#   bash jobs/submit_retrain_v2.sh --update-alerce     # also re-fetch ALeRCE
-#   bash jobs/submit_retrain_v2.sh --update-alerce --update-tns  # both
-#   bash jobs/submit_retrain_v2.sh --dry-run           # print commands only
-#   bash jobs/submit_retrain_v2.sh --local             # run locally (no SGE)
+#   bash jobs/submit_retrain_v2.sh                         # retrain only
+#   bash jobs/submit_retrain_v2.sh --update-alerce         # re-fetch ALeRCE
+#   bash jobs/submit_retrain_v2.sh --update-tns            # refresh TNS
+#   bash jobs/submit_retrain_v2.sh --discover-lsst 200     # discover 200 LSST objects
+#   bash jobs/submit_retrain_v2.sh --update-alerce --update-tns --discover-lsst 200
+#   bash jobs/submit_retrain_v2.sh --dry-run               # print commands only
+#   bash jobs/submit_retrain_v2.sh --local                 # run locally (no SGE)
 #
-# How to get LASAIR_TOKEN:
+# How to get LASAIR_TOKEN (same token works for both ZTF and LSST):
 #   1. Go to https://lasair.lsst.ac.uk
 #   2. Create an account / log in
 #   3. Click your username → "My Profile" → "API Token"
-#   4. Copy the token and add to your .env:
+#   4. Add to $DEBASS_ROOT/.env:
 #        LASAIR_TOKEN=your_token_here
-#        LASAIR_ENDPOINT=https://lasair.lsst.ac.uk
 #
 # How to get TNS credentials:
 #   1. Go to https://www.wis-tns.org
 #   2. Register as a bot user (or use your group's existing bot)
 #   3. Under "My Bots" → copy API Key, Bot ID, Marker Name
-#   4. Add to your .env:
+#   4. Add to $DEBASS_ROOT/.env:
 #        TNS_API_KEY=your_key_here
 #        TNS_TNS_ID=12345
 #        TNS_MARKER_NAME=your_marker_name
@@ -51,6 +54,7 @@ set -euo pipefail
 # Defaults
 UPDATE_ALERCE=false
 UPDATE_TNS=false
+DISCOVER_LSST=0
 DRY_RUN=false
 LOCAL_MODE=false
 PARALLEL=8
@@ -61,6 +65,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --update-alerce)  UPDATE_ALERCE=true; shift ;;
         --update-tns)     UPDATE_TNS=true; shift ;;
+        --discover-lsst)  DISCOVER_LSST="$2"; shift 2 ;;
         --parallel)       PARALLEL="$2"; shift 2 ;;
         --labels)         LABELS="$2"; shift 2 ;;
         --dry-run)        DRY_RUN=true; shift ;;
@@ -72,6 +77,7 @@ done
 echo "=== DEBASS v2 Retrain Pipeline ==="
 echo "DEBASS_ROOT:    ${DEBASS_ROOT}"
 echo "Labels:         ${LABELS}"
+echo "Discover LSST:  ${DISCOVER_LSST} objects (0=skip)"
 echo "Update ALeRCE:  ${UPDATE_ALERCE} (parallel=${PARALLEL})"
 echo "Update TNS:     ${UPDATE_TNS}"
 echo "Mode:           $(${LOCAL_MODE} && echo 'local' || echo 'SGE')"
@@ -87,63 +93,106 @@ if ${LOCAL_MODE}; then
     cd "${DEBASS_ROOT}"
 
     # Step 0: Install/upgrade dependencies
-    echo "[0/7] Checking Python environment..."
+    echo "[0/8] Checking Python environment..."
     python3 --version
     pip install -q -r env/requirements.txt
 
-    # Step 1: (Optional) Re-fetch ALeRCE to get BHRF/ATAT/Rubin classifiers
+    # Step 1: (Optional) Discover LSST transient candidates
+    if [ "${DISCOVER_LSST}" -gt 0 ] 2>/dev/null; then
+        echo "[1/8] Discovering ${DISCOVER_LSST} LSST candidates from Lasair..."
+        LSST_CSV="${DEBASS_ROOT}/data/lsst_candidates.csv"
+        python3 scripts/discover_lsst_training.py \
+            --max-candidates "${DISCOVER_LSST}" \
+            --min-detections 2 \
+            --output "${LSST_CSV}"
+        # Append to labels.csv (deduplicate by object_id)
+        if [ -f "${LSST_CSV}" ]; then
+            python3 -c "
+import csv, sys
+existing = set()
+with open('${LABELS}') as f:
+    reader = csv.DictReader(f)
+    existing_fields = reader.fieldnames
+    for row in reader:
+        existing.add(row['object_id'])
+
+new_count = 0
+with open('${LSST_CSV}') as f:
+    reader = csv.DictReader(f)
+with open('${LABELS}', 'a') as out:
+    with open('${LSST_CSV}') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row['object_id'] not in existing:
+                # Write minimal row compatible with labels.csv
+                out.write(','.join([row.get(h, '') for h in existing_fields]) + '\n')
+                new_count += 1
+                existing.add(row['object_id'])
+print(f'Appended {new_count} new LSST objects to labels.csv')
+"
+        fi
+    else
+        echo "[1/8] Skipping LSST discovery (use --discover-lsst N to enable)"
+    fi
+
+    # Step 2: (Optional) Re-fetch ALeRCE to get BHRF/ATAT/Rubin classifiers
     if ${UPDATE_ALERCE}; then
-        echo "[1/7] Re-fetching ALeRCE data (parallel=${PARALLEL})..."
+        echo "[2/8] Re-fetching ALeRCE data (parallel=${PARALLEL})..."
         python3 scripts/backfill.py \
             --broker alerce \
             --from-labels "${LABELS}" \
             --parallel "${PARALLEL}"
     else
-        echo "[1/7] Skipping ALeRCE re-fetch (use --update-alerce to enable)"
+        echo "[2/8] Skipping ALeRCE re-fetch (use --update-alerce to enable)"
     fi
 
-    # Step 2: (Optional) Update TNS CSV and re-run crossmatch
+    # Step 3: (Optional) Update TNS CSV and re-run crossmatch
     if ${UPDATE_TNS}; then
-        echo "[2/7] Updating TNS bulk CSV..."
+        echo "[3/8] Updating TNS bulk CSV..."
         python3 scripts/download_tns_bulk.py
-        echo "[2/7] Running TNS crossmatch (with positional fallback)..."
+        echo "[3/8] Running TNS crossmatch (with positional fallback)..."
         python3 scripts/crossmatch_tns.py \
             --labels "${LABELS}" \
             --bulk-csv data/tns_public_objects.csv \
             --positional-fallback \
             --positional-radius 3.0
     else
-        echo "[2/7] Skipping TNS update (use --update-tns to enable)"
+        echo "[3/8] Skipping TNS update (use --update-tns to enable)"
     fi
 
-    # Step 3: Normalize bronze → silver (picks up new ALeRCE classifiers)
-    echo "[3/7] Normalizing bronze → silver..."
+    # Step 4: Fetch lightcurves + backfill all brokers for new objects
+    echo "[4/8] Fetching lightcurves + broker scores..."
+    python3 scripts/fetch_lightcurves.py --from-labels "${LABELS}"
+    python3 scripts/backfill.py --broker all --from-labels "${LABELS}" --parallel "${PARALLEL}"
+
+    # Step 5: Normalize bronze → silver (picks up new ALeRCE classifiers)
+    echo "[5/8] Normalizing bronze → silver..."
     python3 scripts/normalize.py
 
-    # Step 4: Rebuild gold tables (51 LC features + 13 experts + survey flag)
-    echo "[4/7] Rebuilding gold tables..."
+    # Step 6: Rebuild gold tables (51 LC features + 13 experts + survey flag)
+    echo "[6/8] Rebuilding gold tables..."
     python3 scripts/build_object_epoch_snapshots.py \
         --objects-csv "${LABELS}" \
         --allow-unsafe-latest-snapshot
     python3 scripts/build_expert_helpfulness.py
 
-    # Step 5: Train expert trust heads
-    echo "[5/7] Training expert trust..."
+    # Step 7: Train expert trust heads
+    echo "[7/8] Training expert trust..."
     python3 scripts/train_expert_trust.py \
         --snapshots data/gold/object_epoch_snapshots.parquet \
         --helpfulness data/gold/expert_helpfulness.parquet \
         --models-dir models/trust \
         --output-snapshots data/gold/object_epoch_snapshots_trust.parquet
 
-    # Step 6: Train followup model
-    echo "[6/7] Training followup model..."
+    # Step 7b: Train followup model
+    echo "[7b/8] Training followup model..."
     python3 scripts/train_followup.py \
         --snapshots data/gold/object_epoch_snapshots_trust.parquet \
         --trust-models-dir models/trust \
         --model-dir models/followup
 
-    # Step 7: Score and analyze
-    echo "[7/7] Scoring (n_det=3,5,10)..."
+    # Step 8: Score and analyze
+    echo "[8/8] Scoring (n_det=3,5,10)..."
     mkdir -p reports/scores
     for N in 3 5 10; do
         python3 scripts/score_nightly.py \

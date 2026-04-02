@@ -21,6 +21,7 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     "alerce/stamp_classifier":         ("ztf",  "alerce"),
     # --- ALeRCE BHRF/ATAT (ZTF, newer objects with forced photometry) ---
     "alerce/lc_classifier_BHRF_forced_phot_transient": ("ztf", "alerce"),
+    "alerce/lc_classifier_BHRF_forced_phot_top":       ("ztf", "alerce"),
     "alerce/LC_classifier_ATAT_forced_phot(beta)":     ("ztf", "alerce"),
     "alerce/stamp_classifier_2025_beta":               ("ztf", "alerce"),
     # --- ALeRCE Rubin/LSST classifiers ---

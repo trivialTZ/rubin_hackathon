@@ -71,6 +71,28 @@ def _classify_transient_events(
     return summarize_ternary(p_snia, p_nonia, p_other)
 
 
+def _classify_top_level_events(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Top-level: Transient → nonIa_snlike (SN-like context), rest → other."""
+    p_transient = 0.0
+    p_other = 0.0
+    found = False
+    for row in events:
+        cls = row.get("class_name")
+        value = row.get("canonical_projection")
+        if value is None:
+            continue
+        found = True
+        value = float(value)
+        if cls == "Transient":
+            p_transient += value
+        else:
+            p_other += value
+    if not found:
+        return {"prediction_type": "class_correctness", "reason": "missing top-level probabilities"}
+    # Transient is SN-like context (no Ia/nonIa distinction)
+    return summarize_ternary(0.0, p_transient, p_other)
+
+
 def _classify_stamp_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Stamp classifier: SN → nonIa_snlike (no Ia/nonIa distinction), rest → other."""
     p_nonia = 0.0
@@ -101,9 +123,13 @@ def project_events(expert_key: str, events: list[dict[str, Any]]) -> dict[str, A
     if expert_key == "alerce/lc_classifier_BHRF_forced_phot_transient":
         return _classify_transient_events(events, _BHRF_NONIA, _BHRF_OTHER)
 
-    # --- BHRF forced-phot full taxonomy (top-level includes transient + periodic + stochastic) ---
+    # --- BHRF forced-phot full taxonomy (includes transient + periodic + stochastic) ---
     if expert_key == "alerce/lc_classifier_BHRF_forced_phot":
         return _classify_transient_events(events, _BHRF_NONIA, _BHRF_OTHER)
+
+    # --- BHRF top-level classifier (Transient / Periodic / Stochastic) ---
+    if expert_key == "alerce/lc_classifier_BHRF_forced_phot_top":
+        return _classify_top_level_events(events)
 
     # --- ATAT transformer classifier ---
     if expert_key in ("alerce/LC_classifier_ATAT_forced_phot(beta)",

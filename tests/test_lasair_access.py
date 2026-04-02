@@ -29,18 +29,17 @@ def test_extract_sherlock_label_reads_nested_classification() -> None:
     assert extract_sherlock_label(raw) == "SN"
 
 
-def test_lasair_adapter_rejects_ztf_ids_for_lsst_endpoint(monkeypatch) -> None:
+def test_lasair_dual_mode_routes_ztf_ids_to_ztf_endpoint(monkeypatch) -> None:
+    """Dual-mode adapter should route ZTF IDs to ZTF Lasair, not reject them."""
     monkeypatch.setenv("LASAIR_TOKEN", "token")
     monkeypatch.setenv("LASAIR_ENDPOINT", "https://lasair.lsst.ac.uk")
 
     adapter = LasairAdapter()
     out = adapter.fetch_object("ZTF21abbzjeq")
 
-    assert out.availability is False
-    assert out.fixture_used is False
-    assert out.survey == "LSST"
-    assert out.raw_payload["reason"] == "unsupported_identifier_for_endpoint"
-    assert out.raw_payload["expected_identifier_kind"] == "lsst_dia_object_id"
+    # Should try ZTF endpoint, not reject as unsupported
+    assert out.survey == "ZTF"
+    assert "unsupported_identifier_for_endpoint" not in str(out.raw_payload.get("reason", ""))
 
 
 def test_lasair_adapter_fetches_lsst_objects_via_api(monkeypatch) -> None:

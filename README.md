@@ -1,331 +1,361 @@
 # DEBASS_meta — Trust-Aware Early-Epoch Transient Meta-Classifier
 
 DEBASS estimates **which expert/classifier is trustworthy at a given early epoch**
-and then optionally turns those trust estimates into a follow-up recommendation.
+and then turns those trust estimates into a follow-up recommendation.
 
 The primary science product is not a single fused class posterior. It is
-`expert_confidence` for each expert at `(object_id, n_det, alert_jd)`.
+`expert_confidence` for each expert at `(object_id, n_det, alert_jd)`,
+plus a **trust-weighted ensemble** probability for spectroscopic follow-up.
 
 ## Science Motivation
 
-Rubin/LSST will generate ~10 million alerts per night. Spectroscopic follow-up
+Rubin/LSST generates ~10 million alerts per night. Spectroscopic follow-up
 resources are scarce — you need to decide *which transients are worth observing*
 within hours, often before a full lightcurve is available.
 
-Existing brokers and local experts (ALeRCE, Fink, Lasair, ParSNIP, SuperNNova)
-provide heterogeneous signals with different semantics and different historical
-trustworthiness. DEBASS models those experts separately, preserves temporal
-exactness, and produces calibrated per-expert trust before any follow-up score.
+Existing brokers (ALeRCE, Fink, Lasair) and local experts (ParSNIP, SuperNNova)
+provide heterogeneous signals with different failure modes. DEBASS models those
+experts separately, preserves temporal exactness, and produces calibrated
+per-expert trust before any follow-up score.
 
-## Architecture
+**Supports both ZTF and LSST data.** Mixed-survey training uses a union feature
+set (51 lightcurve features across ugrizy bands) with LightGBM's native NaN
+handling — ZTF objects have NaN for i/z/y bands, LSST objects have NaN for
+ZTF-only expert scores. The model learns survey-specific trust patterns.
+
+## Data Flow & Training Pipeline
 
 ```
-Raw alerts / cached lightcurves
-    │
-    ├── Bronze: raw broker payloads + provenance
-    ├── Silver v2: broker events with exactness metadata
-    ├── Gold v2: object_epoch_snapshots via as-of joins
-    │
-    ├── Projectors
-    │     ├── Fink SNN / RF
-    │     ├── ALeRCE classifier snapshots
-    │     ├── Lasair Sherlock context
-    │     └── local experts (ParSNIP / SuperNNova)
-    │
-    ├── Expert trust heads  (LightGBM, binary, is_unbalance=True)
-    │     └── calibrated q_e,t = P(expert e is trustworthy now)
-    │
-    ├── Optional follow-up head  (LightGBM, binary)
-    │     └── trust-weighted p_follow_proxy
-    │
-    └── Baseline benchmark  (LightGBM, 3-class, early stopping)
-          └── EarlyMetaClassifier with temperature-scaled calibration
+┌─────────────────────────────────────────────────────────────────────┐
+│                        DATA COLLECTION                              │
+│                                                                     │
+│  labels.csv ──────────────────────────────────────────────────────► │
+│  (object_id, ra, dec, broker, ...)                                  │
+│                                                                     │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐              │
+│  │   ALeRCE    │  │    Fink      │  │    Lasair     │              │
+│  │ (ZTF+LSST)  │  │  (ZTF only)  │  │ (ZTF+LSST)   │              │
+│  │ v2.1+ API   │  │  alerts API  │  │  Sherlock     │              │
+│  │ --parallel 8│  │              │  │  +LSST API    │              │
+│  └──────┬──────┘  └──────┬───────┘  └──────┬────────┘              │
+│         │                │                  │                       │
+│         ▼                ▼                  ▼                       │
+│  ┌──────────────────────────────────────────────────┐               │
+│  │              Bronze (raw payloads)                │               │
+│  │              data/bronze/*.parquet                │               │
+│  └──────────────────────┬───────────────────────────┘               │
+│                         │  normalize.py                             │
+│                         ▼                                           │
+│  ┌──────────────────────────────────────────────────┐               │
+│  │     Silver (event-level, exactness-tagged)        │               │
+│  │     data/silver/broker_events.parquet              │               │
+│  │     + data/silver/local_expert_outputs/            │               │
+│  └──────────────────────┬───────────────────────────┘               │
+└─────────────────────────┼───────────────────────────────────────────┘
+                          │
+┌─────────────────────────┼───────────────────────────────────────────┐
+│                    TRUTH LABELS                                     │
+│                         │                                           │
+│  TNS bulk CSV ──► crossmatch_tns.py ──► data/truth/object_truth    │
+│  (160K objects)    (name match first,    .parquet                   │
+│                     positional fallback   (three-tier:              │
+│                     for LSST RA/Dec)       spectroscopic /          │
+│                                            consensus / weak)        │
+└─────────────────────────┬───────────────────────────────────────────┘
+                          │
+┌─────────────────────────┼───────────────────────────────────────────┐
+│                    FEATURE EXTRACTION                               │
+│                         │                                           │
+│  Lightcurves ──► detection.py ──► lightcurve.py                    │
+│  (*.json)        (normalize        (51 features:                   │
+│                   ZTF fid/mag       7 band counts,                 │
+│                   or LSST           8 mag stats,                   │
+│                   flux/band)        24 per-band ugrizy,            │
+│                                     8 colors gr/ri/iz/zy,          │
+│                                     quality, survey flag)          │
+│                         │                                           │
+│                         ▼                                           │
+│  ┌──────────────────────────────────────────────────┐               │
+│  │           Gold (object-epoch snapshots)            │               │
+│  │  ┌────────────────────────────────────────────┐   │               │
+│  │  │  For each (object_id, n_det=1..20):        │   │               │
+│  │  │    • 51 LC features (no-leakage truncated) │   │               │
+│  │  │    • survey flag (ZTF=0, LSST=1)           │   │               │
+│  │  │    • 13 expert projections (ternary probs)  │   │               │
+│  │  │    • truth labels (if available)            │   │               │
+│  │  └────────────────────────────────────────────┘   │               │
+│  │  data/gold/object_epoch_snapshots.parquet          │               │
+│  └──────────────────────┬───────────────────────────┘               │
+└─────────────────────────┼───────────────────────────────────────────┘
+                          │
+┌─────────────────────────┼───────────────────────────────────────────┐
+│                    MODEL TRAINING                                   │
+│                         │                                           │
+│        ┌────────────────┴────────────────┐                          │
+│        │    Expert Helpfulness Table      │                          │
+│        │    (is each expert correct at    │                          │
+│        │     each epoch?)                 │                          │
+│        └────────────────┬────────────────┘                          │
+│                         │                                           │
+│        ┌────────────────▼────────────────┐                          │
+│        │  Per-Expert Trust Heads (×13)    │                          │
+│        │  LightGBM binary classifier     │                          │
+│        │                                  │                          │
+│        │  Input:  51 LC features          │                          │
+│        │        + expert's own projection │                          │
+│        │        + availability metadata   │                          │
+│        │  Target: is_topclass_correct     │                          │
+│        │  Output: trust q ∈ [0,1]         │                          │
+│        │                                  │                          │
+│        │  → models/trust/{expert}/        │                          │
+│        └────────────────┬────────────────┘                          │
+│                         │                                           │
+│        ┌────────────────▼────────────────┐                          │
+│        │    Follow-Up Model (shared)      │                          │
+│        │    LightGBM binary classifier   │                          │
+│        │                                  │                          │
+│        │    Input:  all trust scores q_i  │                          │
+│        │          + all expert projections │                          │
+│        │          + 51 LC features        │                          │
+│        │    Target: target_follow_proxy   │                          │
+│        │    Output: p_follow ∈ [0,1]      │                          │
+│        │                                  │                          │
+│        │    → models/followup/            │                          │
+│        └────────────────┬────────────────┘                          │
+└─────────────────────────┼───────────────────────────────────────────┘
+                          │
+┌─────────────────────────┼───────────────────────────────────────────┐
+│                    SCORING OUTPUT                                   │
+│                         │                                           │
+│        ┌────────────────▼────────────────┐                          │
+│        │     score_nightly.py             │                          │
+│        │                                  │                          │
+│        │  Per expert:                     │                          │
+│        │    trust, projected probs,       │                          │
+│        │    mapped_pred_class             │                          │
+│        │                                  │                          │
+│        │  Ensemble:                       │                          │
+│        │    p_snia_weighted (transparent   │                          │
+│        │      trust-weighted average)     │                          │
+│        │    p_follow_proxy (learned)      │                          │
+│        │    recommended (yes/no)          │                          │
+│        │                                  │                          │
+│        │  → reports/scores/*.jsonl        │                          │
+│        └─────────────────────────────────┘                          │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+## Registered Experts
+
+| Expert key | Survey | Type | Trust head | Notes |
+|------------|--------|------|------------|-------|
+| `fink/snn` | ZTF | alert-level posterior | yes | SuperNNova via Fink alerts |
+| `fink/rf_ia` | ZTF | alert-level scalar | yes | Random Forest Ia score |
+| `parsnip` | any | local rerun posterior | yes | when weights available |
+| `supernnova` | any | local rerun posterior | yes | Fink LSTM; batch CPU |
+| `alerce_lc` | any | local LC expert | yes | LightGBM trained on TNS |
+| `alerce/lc_classifier_transient` | ZTF | object snapshot | yes | legacy LC classifier |
+| `alerce/lc_classifier_BHRF_forced_phot_transient` | ZTF | object snapshot | yes | BHRF forced-phot (newer) |
+| `alerce/LC_classifier_ATAT_forced_phot(beta)` | ZTF | object snapshot | yes | transformer classifier |
+| `alerce/stamp_classifier` | ZTF | object snapshot | yes | legacy stamp |
+| `alerce/stamp_classifier_2025_beta` | ZTF | object snapshot | yes | updated stamp |
+| `alerce/stamp_classifier_rubin_beta` | LSST | object snapshot | yes | Rubin-specific stamp |
+| `lasair/sherlock` | any | context expert | context-only | static-safe crossmatch |
 
 ## ML Algorithm
 
-All classifiers use **LightGBM** gradient-boosted trees (Ke et al. 2017).
-Key design choices:
+All classifiers use **LightGBM** gradient-boosted trees (Ke et al. 2017):
 
-- **Native NaN handling** — broker scores with sparse coverage (Fink ~100% NaN
-  on most ZTF objects) are passed through directly; LightGBM learns optimal
-  split direction for missing values. No median imputation.
+- **Native NaN handling** — missing broker scores passed through directly;
+  LightGBM learns optimal split direction. No imputation.
 - **Regularisation** — `learning_rate=0.05`, `num_leaves=31`, `reg_alpha=0.1`,
   `reg_lambda=0.1`, `feature_fraction=0.8`, `bagging_fraction=0.8`.
-- **Class balance** — multiclass models use per-object inverse-frequency weights;
-  binary models use `is_unbalance=True`.
-- **Early stopping** — EarlyMetaClassifier trains up to 1000 rounds with early
-  stopping (patience=50) on a held-out calibration set.
-- **Calibration** — temperature scaling (multiclass) and isotonic regression
-  (binary) available in `src/debass_meta/models/calibrate.py`.
-- **Three-way split** — train/cal/test with no data leakage: calibration is fit
-  on the cal set, metrics are reported on the separate test set.
-- **Grouped object splits** — all epochs of the same object stay in the same
-  fold (GroupKFold / GroupSplit) to prevent train/test contamination.
+- **Class balance** — binary models use `is_unbalance=True`.
+- **Three-way split** — train/cal/test (60/20/20) with no data leakage.
+- **Grouped object splits** — all epochs of same object stay in same fold.
+- **Mixed-survey ready** — `survey_is_lsst` flag lets models learn per-survey trust.
 
 ## No-Leakage Epoch Design
 
 For each object with N total detections, the pipeline builds N training rows.
-Row at n_det=k uses **only** detections 1..k. This means the model learns how
-classification confidence evolves over time — and can be applied at any stage
-of a new transient's lightcurve.
+Row at n_det=k uses **only** detections 1..k. Features at n_det=4 only use
+information available after the 4th detection.
 
-The same no-leakage rule also applies to expert evidence:
+Expert evidence follows the same rule:
+- exact events must satisfy `event_time_jd <= alert_jd`
+- unsafe historical snapshots are marked and excluded from trust training by default
 
-- exact expert events must satisfy `event_time_jd <= alert_jd`
-- unsafe historical object snapshots are marked and excluded from trust training by default
-
-## Science Contract
-
-See [docs/science_contract.md](docs/science_contract.md).
-
-Core rules:
-
-- `expert_confidence` is the primary deliverable
-- truth must be external or explicitly marked weak
-- ALeRCE object-snapshot history is unsafe for historical trust unless archived or rerun epoch-safely
-- `EarlyMetaClassifier` remains a baseline, not the final science architecture
-
-## Trust-Aware Workflow (Local)
+## Quick Start (Local)
 
 ```bash
-python3.11 -m pip install -r env/requirements.txt
+# Requires Python >=3.10 (for ALeRCE LSST support)
+pip install -r env/requirements.txt
 
-# 1. Download weakly labelled seed objects + cached lightcurves
-python3.11 scripts/download_alerce_training.py --limit 20
+# 1. Download seed objects + lightcurves
+python3 scripts/download_alerce_training.py --limit 20
 
-# 2. Fetch broker payloads and normalize to event-level silver
-python3.11 scripts/backfill.py --broker all --from-labels data/labels.csv
-python3.11 scripts/normalize.py
+# 2. Fetch all broker scores (parallel)
+python3 scripts/backfill.py --broker all --from-labels data/labels.csv --parallel 8
 
-# 3. Build truth and exact object-epoch snapshots
-python3.11 scripts/build_truth_table.py --labels data/labels.csv
-python3.11 scripts/build_object_epoch_snapshots.py
-python3.11 scripts/build_expert_helpfulness.py
+# 3. Normalize and build truth
+python3 scripts/normalize.py
+python3 scripts/crossmatch_tns.py --labels data/labels.csv \
+    --bulk-csv data/tns_public_objects.csv --positional-fallback
 
-# 4. Train trust heads and optional follow-up model
-python3.11 scripts/train_expert_trust.py
-python3.11 scripts/train_followup.py
+# 4. Build gold tables and train
+python3 scripts/build_object_epoch_snapshots.py
+python3 scripts/build_expert_helpfulness.py
+python3 scripts/train_expert_trust.py
+python3 scripts/train_followup.py
 
-# 5. Score epochs with the expert_confidence payload
-python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
+# 5. Score
+python3 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
 ```
 
-## Baseline Workflow
-
-The legacy fused baseline remains available:
-
-```bash
-# NOTE: labels.csv is a weak/self-label seed set, not canonical science truth.
-python3.11 scripts/build_epoch_table_from_lc.py
-python3.11 scripts/train_early.py --n-estimators 500
-python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
-```
-
-This baseline is useful for benchmarking, but it is not the primary science path.
-
-## Full Training Run (BU SCC)
+## Full Training (BU SCC)
 
 See [README_scc.md](README_scc.md) for environment setup.
 
-### Phase 1: CPU-only pipeline (SuperNNova + LightGBM)
-
-The entire Phase 1 pipeline runs on CPU. SuperNNova uses Fink's pre-trained
-bidirectional LSTM weights via `classify_lcs`; all trust/follow-up models use
-LightGBM. No GPU queue is required.
+### v2 Retrain (recommended)
 
 ```bash
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
+cd $DEBASS_ROOT && git pull origin main
 
-# 1. CPU prep: download + backfill + normalize + truth + gold tables
-bash jobs/submit_cpu_prep.sh --limit 2000
+# Update venv (gets alerce v2.1+ for LSST)
+source ${DEBASS_VENV:-$HOME/debass_meta_env}/bin/activate
+pip install -r env/requirements.txt
 
-# 2. SuperNNova batch inference (~10 min for 7K objects)
-qsub -V -P pi-brout jobs/local_infer_snn.sh
+# Dry-run first (see what would be submitted)
+bash jobs/submit_retrain_v2.sh --update-alerce --dry-run
 
-# 3. After SNN finishes, submit the full chain with SGE job dependencies:
-#    rebuild gold → train trust → train followup → score → analyze
-bash jobs/submit_phase1_chain.sh
+# Submit (re-fetches ALeRCE for BHRF/ATAT/Rubin classifiers, then retrains)
+bash jobs/submit_retrain_v2.sh --update-alerce
 
-# Or hold on the SNN job if it's still running:
-bash jobs/submit_phase1_chain.sh --after-snn <SNN_JOB_ID>
+# Full: also refresh TNS truth
+bash jobs/submit_retrain_v2.sh --update-alerce --update-tns
 ```
 
-Monitor and read results:
-```bash
-qstat -u $USER
-cat $DEBASS_ROOT/reports/results_summary.txt
-cat $DEBASS_ROOT/reports/metrics/expert_trust_metrics.json
-```
+The `--update-alerce` flag re-queries ALeRCE using 8 parallel threads (~5 min
+for 2000 objects) to pick up BHRF/ATAT/Rubin classifiers. Without it, existing
+cached data is reused.
 
-### Phase 2: GPU experts (ParSNIP — when weights available)
+### Nightly scoring pipeline
 
 ```bash
-# Request an interactive GPU session
-qrsh -l gpus=1 -q l40s
-
-cd $DEBASS_ROOT
-bash -l jobs/run_gpu_resume.sh --experts=parsnip
+bash jobs/submit_nightly.sh                      # today's date
+bash jobs/submit_nightly.sh --date 2026-04-02    # specific date
+bash jobs/submit_nightly.sh --local              # run locally (no SGE)
 ```
 
-### Pipeline stages
+### Environment variables
 
-1. CPU prep: `download_training → backfill(array) → normalize → crossmatch_tns → build_object_epoch_snapshots → build_expert_helpfulness`
-2. Local expert inference: `local_infer_snn.sh` (CPU), `local_infer_gpu.sh` (GPU, Phase 2)
-3. CPU training chain: `rebuild_gold → train_expert_trust → train_followup → score_nightly → analyze_results`
-
-## Data Engineering QA
-
-Use the readiness audit and benchmark check after changing ingest, normalization, snapshot building, or training inputs:
-
-```bash
-python3.11 -m pytest -q
-python3.11 scripts/audit_data_readiness.py --root <run-root> --labels data/labels.csv --lightcurves-dir data/lightcurves
-python3.11 scripts/check_data_benchmarks.py --root <run-root> --labels data/labels.csv --lightcurves-dir data/lightcurves
-```
-
-Edit `benchmarks/data_engineering.toml` as the project benchmark tightens. Recurring failures and fixes are tracked in `troubleshooting.md`.
-
-For the full pre-ML build order, use:
-
-```bash
-python3.11 scripts/run_preml_pipeline.py --root tmp/preml_run --labels data/labels.csv --lightcurves-dir data/lightcurves
-python3.11 scripts/check_preml_readiness.py --root tmp/preml_run --labels data/labels.csv --lightcurves-dir data/lightcurves
-```
-
-If you have curated truth, validate it before building the canonical truth layer:
-
-```bash
-python3.11 scripts/validate_truth_table.py path/to/curated_truth.parquet --require-strong
-```
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `DEBASS_ROOT` | Project root on SCC | `/projectnb/pi-brout/rubin_hackathon` |
+| `LASAIR_TOKEN` | Lasair API token ([get here](https://lasair.lsst.ac.uk)) | `abc123...` |
+| `LASAIR_ENDPOINT` | Lasair LSST endpoint | `https://lasair.lsst.ac.uk` |
+| `TNS_API_KEY` | TNS API key (for `--update-tns`) | |
+| `TNS_TNS_ID` | TNS bot ID | |
+| `TNS_MARKER_NAME` | TNS marker name | |
 
 ## Output
 
 ### Primary Science Product: `expert_confidence` Payload
 
 The scoring pipeline (`score_nightly.py`) emits one JSONL record per
-(object, n_det) pair. Each record contains:
+(object, n_det) pair:
 
 ```json
 {
   "object_id": "ZTF21abcdef",
-  "n_det": 3,
+  "n_det": 4,
   "alert_jd": 2460170.91,
   "expert_confidence": {
-    "fink/snn":    {"available": true,  "trust": 0.92, "projected": {"p_snia": 0.87, "p_nonIa_snlike": 0.08, "p_other": 0.05, ...}},
-    "supernnova":  {"available": true,  "trust": 0.85, "projected": {"p_snia": 0.91, ...}},
-    "fink/rf_ia":  {"available": true,  "trust": 0.78, "projected": {"p_snia_scalar": 0.83, ...}},
-    "lasair/sherlock": {"available": true, "trust": null, "context_tag": "SN", "reason": "phase-1 context expert"},
-    "parsnip":     {"available": false, "reason": "expert unavailable at this epoch"}
+    "fink/snn": {
+      "available": true, "trust": 0.92,
+      "projected": {"p_snia": 0.87, "p_nonIa_snlike": 0.08, "p_other": 0.05}
+    },
+    "alerce/lc_classifier_BHRF_forced_phot_transient": {
+      "available": true, "trust": 0.78,
+      "projected": {"p_snia": 0.65, "p_nonIa_snlike": 0.30, "p_other": 0.05}
+    },
+    "alerce/stamp_classifier_rubin_beta": {
+      "available": true, "trust": 0.71,
+      "projected": {"p_snia": 0.0, "p_nonIa_snlike": 0.82, "p_other": 0.18}
+    },
+    "lasair/sherlock": {
+      "available": true, "trust": null,
+      "prediction_type": "context_only", "context_tag": "SN"
+    }
   },
   "ensemble": {
-    "p_follow_proxy": 0.94,
+    "p_snia_weighted": 0.74,
+    "p_nonIa_snlike_weighted": 0.19,
+    "p_other_weighted": 0.07,
+    "n_trusted_experts": 3,
+    "p_follow_proxy": 0.88,
     "recommended": true
   }
 }
 ```
 
-Per-expert fields:
-- `available` -- whether the expert produced output at this epoch
-- `trust` -- calibrated P(expert is correct) at this epoch (`q_{e,t}`)
-- `projected` -- full ternary probability distribution (p_snia, p_nonIa_snlike, p_other, top1_prob, margin, entropy)
-- `exactness` -- temporal correctness: `exact_alert`, `static_safe`, or `latest_object_unsafe`
+**Per-expert fields:**
+- `trust` — calibrated P(expert is correct at this epoch)
+- `projected` — ternary probability distribution
+- `exactness` — temporal correctness category
 
-Ensemble fields:
-- `p_follow_proxy` -- trust-weighted probability that this object deserves spectroscopic follow-up
-- `recommended` -- binary decision at configurable threshold (default 0.5)
-
-### Evaluation and Test-Set Metrics
-
-The pipeline uses a **three-way grouped split** (60% train / 20% calibration / 20% test)
-at the object level. All epochs of the same object stay together. The split is
-deterministic (seed=42) and saved to `models/trust/metadata.json` for reproducibility.
-
-Test-set results are written to:
-
-| File | Contents |
-|------|----------|
-| `reports/metrics/expert_trust_metrics.json` | Per-expert ROC-AUC, Brier score, n_test_rows on held-out test set |
-| `reports/metrics/followup_metrics.json` | Follow-up model ROC-AUC, Brier, positive_rate on held-out test set |
-| `reports/results_summary.json` | Machine-readable digest of all metrics, expert availability, temporal evolution |
-| `reports/results_summary.txt` | Human-readable summary |
-| `models/trust/metadata.json` | Exact train/cal/test object ID lists |
+**Ensemble fields:**
+- `p_snia_weighted` — transparent trust-weighted average across available experts
+- `p_follow_proxy` — learned follow-up probability (LightGBM)
+- `recommended` — binary decision at threshold (default 0.5)
 
 ### File Inventory
 
-Trust-aware pipeline outputs:
-
 | Stage | Output |
 |-------|--------|
-| Silver events | `data/silver/broker_events.parquet` |
-| Local expert scores | `data/silver/local_expert_outputs/<expert>/part-latest.parquet` |
+| Bronze (raw) | `data/bronze/*.parquet` |
+| Silver (events) | `data/silver/broker_events.parquet` |
+| Local experts | `data/silver/local_expert_outputs/<expert>/` |
 | TNS truth | `data/truth/object_truth.parquet` |
-| Epoch snapshots | `data/gold/object_epoch_snapshots.parquet` |
-| Trust-augmented snapshots | `data/gold/object_epoch_snapshots_trust.parquet` |
-| Expert helpfulness | `data/gold/expert_helpfulness.parquet` |
+| Gold snapshots | `data/gold/object_epoch_snapshots.parquet` |
+| Trust snapshots | `data/gold/object_epoch_snapshots_trust.parquet` |
+| Helpfulness | `data/gold/expert_helpfulness.parquet` |
 | Trust models | `models/trust/<expert>/model.pkl` + `metadata.json` |
 | Follow-up model | `models/followup/model.pkl` + `metadata.json` |
 | Score payloads | `reports/scores/scores_ndet{3,5,10}.jsonl` |
-| Metrics | `reports/metrics/expert_trust_metrics.json`, `reports/metrics/followup_metrics.json` |
-| Summary | `reports/results_summary.txt`, `reports/results_summary.json` |
-
-Baseline outputs:
-
-- `models/early_meta/early_meta.pkl`
-- `reports/metrics/early_meta_metrics.json`
-
-## Brokers
-
-| Expert key | Type | Phase-1 trust head | Notes |
-|------------|------|--------------------|-------|
-| `fink/snn` | alert-level posterior-like | yes | exact alert history |
-| `fink/rf_ia` | alert-level scalar Ia score | yes | exact alert history |
-| `parsnip` | local rerun posterior | yes | rerun exact when weights exist |
-| `supernnova` | local rerun posterior | yes | Fink-trained LSTM; batch CPU inference via classify_lcs |
-| `alerce/lc_classifier_transient` | object snapshot | live-only | historical backfill is unsafe |
-| `alerce/stamp_classifier` | object snapshot | live-only | historical backfill is unsafe |
-| `lasair/sherlock` | context expert | context-only | static-safe, not calibrated posterior |
-
-## Repository Structure
-
-```
-src/debass_meta/
-  access/           Broker adapters
-  features/         No-leakage lightcurve feature extraction
-  ingest/           Bronze / broker-events / gold snapshot builders
-  models/           Trust heads, follow-up head, baseline model
-  projectors/       Expert-specific projections
-  experts/local/    Local rerunnable experts
-scripts/            Training and scoring entry points
-jobs/               SCC scripts
-schemas/            JSON schemas
-inventory/          Source and expert metadata
-docs/               Science contract
-```
+| Metrics | `reports/metrics/expert_trust_metrics.json` |
+| Summary | `reports/results_summary.txt` |
 
 ## Ternary Labels
 
 | Label | Meaning |
 |-------|---------|
 | `snia` | Type Ia supernova |
-| `nonIa_snlike` | Core-collapse SN (II, Ibc, SLSN, IIn, IIb) |
+| `nonIa_snlike` | Core-collapse SN (II, Ibc/SESN, SLSN, IIn, IIb) |
 | `other` | AGN, variable star, asteroid, bogus, TDE |
 
-## Follow-Up Proxy
+## Repository Structure
 
-Phase-1 uses a trust-weighted follow-up proxy head. If no operational follow-up
-truth is available yet, the default proxy target is:
-
-```text
-follow_proxy = 1{final_class_ternary == "snia"}
 ```
-
-That target should be described explicitly as a proxy, not as final operational truth.
+src/debass_meta/
+  access/           Broker adapters (ALeRCE ZTF+LSST, Fink, Lasair ZTF+LSST)
+  features/         Detection normalization + no-leakage LC feature extraction
+  ingest/           Bronze → silver → gold snapshot builders
+  models/           Trust heads, follow-up head, baseline model
+  projectors/       Expert-specific score → ternary projections
+  experts/local/    Local rerunnable experts (SNN, ParSNIP, ALeRCE LC)
+scripts/            Training and scoring entry points
+jobs/               SCC submission scripts
+tests/              pytest suite (139+ tests)
+schemas/            JSON schemas
+docs/               Science contract, feasibility notes
+```
 
 ## Citation
 
 If you use this code, please cite the relevant broker papers:
-- ALeRCE: Förster et al. 2021, AJ 161 242
-- Fink: Möller & de Boissière 2020, MNRAS 491 4277
-- SuperNNova: Möller & de Boissière 2020, MNRAS 491 4277
+- ALeRCE: Forster et al. 2021, AJ 161 242
+- Fink: Moller & de Boissiere 2020, MNRAS 491 4277
+- SuperNNova: Moller & de Boissiere 2020, MNRAS 491 4277
 - ParSNIP: Boone 2021, AJ 162 275
