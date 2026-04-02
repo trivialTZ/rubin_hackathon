@@ -34,9 +34,9 @@ ZTF-only expert scores. The model learns survey-specific trust patterns.
 │                                                                     │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐              │
 │  │   ALeRCE    │  │    Fink      │  │    Lasair     │              │
-│  │ (ZTF+LSST)  │  │  (ZTF only)  │  │ (ZTF+LSST)   │              │
-│  │ v2.1+ API   │  │  alerts API  │  │  Sherlock     │              │
-│  │ --parallel 8│  │              │  │  +LSST API    │              │
+│  │ (ZTF+LSST)  │  │ (ZTF+LSST)  │  │ (ZTF+LSST)   │              │
+│  │ v2.1+ API   │  │ per-alert!   │  │  Sherlock     │              │
+│  │ --parallel 8│  │ SNN/CATS/Ia  │  │  dual-mode    │              │
 │  └──────┬──────┘  └──────┬───────┘  └──────┬────────┘              │
 │         │                │                  │                       │
 │         ▼                ▼                  ▼                       │
@@ -56,11 +56,17 @@ ZTF-only expert scores. The model learns survey-specific trust patterns.
 ┌─────────────────────────┼───────────────────────────────────────────┐
 │                    TRUTH LABELS                                     │
 │                         │                                           │
-│  TNS bulk CSV ──► crossmatch_tns.py ──► data/truth/object_truth    │
-│  (160K objects)    (name match first,    .parquet                   │
-│                     positional fallback   (three-tier:              │
-│                     for LSST RA/Dec)       spectroscopic /          │
-│                                            consensus / weak)        │
+│  TNS bulk CSV ──► crossmatch_tns.py ──┐                            │
+│  (160K objects)    (name + positional)  │                            │
+│                                        ▼                            │
+│  Fink LSST xm_* ──────────────► build_truth_multisource.py         │
+│  (free: tns_type,                  → data/truth/object_truth        │
+│   simbad_otype,                       .parquet                      │
+│   photo-z, Gaia)                     (5-tier: spectroscopic /       │
+│                                       tns_untyped / consensus /     │
+│  Host context ────────────────►       context / weak)               │
+│  (SIMBAD=G → host galaxy,                                          │
+│   NOT contamination!)                                               │
 └─────────────────────────┬───────────────────────────────────────────┘
                           │
 ┌─────────────────────────┼───────────────────────────────────────────┐
@@ -81,7 +87,7 @@ ZTF-only expert scores. The model learns survey-specific trust patterns.
 │  │  │  For each (object_id, n_det=1..20):        │   │               │
 │  │  │    • 51 LC features (no-leakage truncated) │   │               │
 │  │  │    • survey flag (ZTF=0, LSST=1)           │   │               │
-│  │  │    • 13 expert projections (ternary probs)  │   │               │
+│  │  │    • 16 expert projections (ternary probs)  │   │               │
 │  │  │    • truth labels (if available)            │   │               │
 │  │  └────────────────────────────────────────────┘   │               │
 │  │  data/gold/object_epoch_snapshots.parquet          │               │
@@ -98,7 +104,7 @@ ZTF-only expert scores. The model learns survey-specific trust patterns.
 │        └────────────────┬────────────────┘                          │
 │                         │                                           │
 │        ┌────────────────▼────────────────┐                          │
-│        │  Per-Expert Trust Heads (×13)    │                          │
+│        │  Per-Expert Trust Heads (×16)    │                          │
 │        │  LightGBM binary classifier     │                          │
 │        │                                  │                          │
 │        │  Input:  51 LC features          │                          │
@@ -145,22 +151,26 @@ ZTF-only expert scores. The model learns survey-specific trust patterns.
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Registered Experts
+## Registered Experts (16)
 
-| Expert key | Survey | Type | Trust head | Notes |
-|------------|--------|------|------------|-------|
-| `fink/snn` | ZTF | alert-level posterior | yes | SuperNNova via Fink alerts |
-| `fink/rf_ia` | ZTF | alert-level scalar | yes | Random Forest Ia score |
-| `parsnip` | any | local rerun posterior | yes | when weights available |
-| `supernnova` | any | local rerun posterior | yes | Fink LSTM; batch CPU |
-| `alerce_lc` | any | local LC expert | yes | LightGBM trained on TNS |
-| `alerce/lc_classifier_transient` | ZTF | object snapshot | yes | legacy LC classifier |
-| `alerce/lc_classifier_BHRF_forced_phot_transient` | ZTF | object snapshot | yes | BHRF forced-phot (newer) |
-| `alerce/LC_classifier_ATAT_forced_phot(beta)` | ZTF | object snapshot | yes | transformer classifier |
-| `alerce/stamp_classifier` | ZTF | object snapshot | yes | legacy stamp |
-| `alerce/stamp_classifier_2025_beta` | ZTF | object snapshot | yes | updated stamp |
-| `alerce/stamp_classifier_rubin_beta` | LSST | object snapshot | yes | Rubin-specific stamp |
-| `lasair/sherlock` | any | context expert | context-only | static-safe crossmatch |
+| Expert key | Survey | Temporal | Notes |
+|------------|--------|----------|-------|
+| `fink/snn` | ZTF | exact_alert | SuperNNova per-alert (richest ZTF signal) |
+| `fink/rf_ia` | ZTF | exact_alert | Random Forest Ia per-alert |
+| `fink_lsst/snn` | LSST | exact_alert | Fink LSST SuperNNova per-alert (**richest LSST signal**) |
+| `fink_lsst/cats` | LSST | exact_alert | Fink LSST CATS per-alert |
+| `fink_lsst/early_snia` | LSST | exact_alert | Fink LSST EarlySNIa (when triggered) |
+| `alerce/lc_classifier_transient` | ZTF | latest_unsafe | ALeRCE legacy LC |
+| `alerce/lc_classifier_BHRF_forced_phot_transient` | ZTF | latest_unsafe | ALeRCE BHRF forced-phot |
+| `alerce/lc_classifier_BHRF_forced_phot_top` | ZTF | latest_unsafe | ALeRCE BHRF top-level |
+| `alerce/LC_classifier_ATAT_forced_phot(beta)` | ZTF | latest_unsafe | ALeRCE transformer |
+| `alerce/stamp_classifier` | ZTF | static_safe | ALeRCE stamp (first detection) |
+| `alerce/stamp_classifier_2025_beta` | ZTF | static_safe | ALeRCE stamp 2025 |
+| `alerce/stamp_classifier_rubin_beta` | LSST | static_safe | ALeRCE Rubin stamp |
+| `lasair/sherlock` | any | static_safe | Sherlock crossmatch context |
+| `parsnip` | any | rerun_exact | Local ParSNIP (needs weights) |
+| `supernnova` | any | rerun_exact | Local SuperNNova (needs weights) |
+| `alerce_lc` | any | rerun_exact | Local ALeRCE LC (CPU, works now) |
 
 ## ML Algorithm
 
@@ -212,52 +222,116 @@ python3 scripts/train_followup.py
 python3 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
 ```
 
-## Full Training (BU SCC)
+## Full Training on BU SCC
 
-See [README_scc.md](README_scc.md) for environment setup.
-
-### v2 Retrain (recommended)
+### Step 1: Environment Setup (one-time)
 
 ```bash
-export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
-cd $DEBASS_ROOT && git pull origin main
+export DEBASS_ROOT=/projectnb/pi-brout/rubin_hackathon
+cd $DEBASS_ROOT
 
-# Update venv (gets alerce v2.1+ for LSST)
-source ${DEBASS_VENV:-$HOME/debass_meta_env}/bin/activate
+# Create/update Python venv (needs Python >= 3.10 for ALeRCE LSST)
+module load python3/3.10.12
+python3 -m venv ~/debass_meta_env
+source ~/debass_meta_env/bin/activate
 pip install -r env/requirements.txt
 
-# Dry-run first (see what would be submitted)
-bash jobs/submit_retrain_v2.sh --update-alerce --dry-run
+# Download local expert weights (SuperNNova LSST, RAPID, ORACLE)
+bash jobs/setup_local_experts.sh --all
 
-# Submit (re-fetches ALeRCE for BHRF/ATAT/Rubin classifiers, then retrains)
-bash jobs/submit_retrain_v2.sh --update-alerce
-
-# Full: also refresh TNS truth
-bash jobs/submit_retrain_v2.sh --update-alerce --update-tns
+# Set up credentials in .env
+cat > ${DEBASS_ROOT}/.env << 'EOF'
+LASAIR_TOKEN=your_lasair_token_here
+TNS_API_KEY=your_tns_key
+TNS_TNS_ID=your_tns_bot_id
+TNS_MARKER_NAME=your_marker_name
+EOF
 ```
 
-The `--update-alerce` flag re-queries ALeRCE using 8 parallel threads (~5 min
-for 2000 objects) to pick up BHRF/ATAT/Rubin classifiers. Without it, existing
-cached data is reused.
+Get your Lasair token from https://lasair.lsst.ac.uk (My Profile -> API Token).
+Same token works for both ZTF and LSST Lasair.
 
-### Nightly scoring pipeline
+### Step 2: Get Training Data (~2400 objects)
 
 ```bash
-bash jobs/submit_nightly.sh                      # today's date
-bash jobs/submit_nightly.sh --date 2026-04-02    # specific date
-bash jobs/submit_nightly.sh --local              # run locally (no SGE)
+source ~/debass_meta_env/bin/activate
+cd $DEBASS_ROOT
+
+# A. Get 2000 ZTF seed objects from ALeRCE (if not already done)
+python3 scripts/download_alerce_training.py --limit 2000 --resume
+
+# B. Discover 400 LSST objects (representative: SN + bogus + AGN + VS + asteroid)
+#    No token needed — uses ALeRCE public API
+python3 scripts/discover_lsst_training.py \
+    --sn 200 --bogus 100 --agn 50 --vs 50 --asteroid 20 \
+    --min-detections 3 \
+    --output data/lsst_candidates.csv
+
+# C. Merge LSST candidates into labels.csv (safe to run multiple times)
+python3 scripts/merge_labels.py --new data/lsst_candidates.csv
+
+# Check: should show ~2000 ZTF + ~400 LSST
+wc -l data/labels.csv
 ```
 
-### Environment variables
+### Step 3: Fetch All Broker Data
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `DEBASS_ROOT` | Project root on SCC | `/projectnb/pi-brout/rubin_hackathon` |
-| `LASAIR_TOKEN` | Lasair API token ([get here](https://lasair.lsst.ac.uk)) | `abc123...` |
-| `LASAIR_ENDPOINT` | Lasair LSST endpoint | `https://lasair.lsst.ac.uk` |
-| `TNS_API_KEY` | TNS API key (for `--update-tns`) | |
-| `TNS_TNS_ID` | TNS bot ID | |
-| `TNS_MARKER_NAME` | TNS marker name | |
+```bash
+# Fetch lightcurves (ZTF from ALeRCE, LSST from Lasair)
+python3 scripts/fetch_lightcurves.py --from-labels data/labels.csv
+
+# Fetch ALL broker scores (parallel, dual-survey for LSST objects)
+# This gets: Fink ZTF per-alert + Fink LSST per-alert + ALeRCE ZTF+LSST
+#           + Lasair ZTF+LSST Sherlock + Fink xm_tns truth fields
+python3 scripts/backfill.py --broker all --from-labels data/labels.csv --parallel 8
+```
+
+### Step 4: Submit Training Pipeline
+
+```bash
+# Dry-run first (see what SGE jobs would be submitted)
+bash jobs/submit_retrain_v2.sh --update-tns --dry-run
+
+# Submit for real
+bash jobs/submit_retrain_v2.sh --update-tns
+
+# Or run everything locally (no SGE queue, ~30 min)
+bash jobs/submit_retrain_v2.sh --update-tns --local
+```
+
+The pipeline runs: normalize → multi-source truth → local expert epochs →
+gold snapshots (51 features, 16 experts) → train trust (16 heads) →
+train followup → score (n_det=3,5,10) → analyze.
+
+### Step 5: Check Results
+
+```bash
+cat $DEBASS_ROOT/reports/results_summary.txt
+ls $DEBASS_ROOT/models/trust/
+head -1 $DEBASS_ROOT/reports/scores/scores_ndet3.jsonl | python3 -m json.tool
+```
+
+### Growing the Training Set
+
+Run discovery again anytime — it deduplicates automatically:
+```bash
+# Get more LSST objects (appends to existing, never duplicates)
+python3 scripts/discover_lsst_training.py --max-candidates 800
+python3 scripts/merge_labels.py --new data/lsst_candidates.csv
+
+# Re-run pipeline with larger dataset
+bash jobs/submit_retrain_v2.sh --update-tns --local
+```
+
+### Environment Variables
+
+| Variable | Purpose | Required? |
+|----------|---------|-----------|
+| `DEBASS_ROOT` | Project root | Yes |
+| `LASAIR_TOKEN` | Lasair ZTF+LSST API token | For Lasair data |
+| `TNS_API_KEY` | TNS API key | For `--update-tns` |
+| `TNS_TNS_ID` | TNS bot ID | For `--update-tns` |
+| `TNS_MARKER_NAME` | TNS marker name | For `--update-tns` |
 
 ## Output
 

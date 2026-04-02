@@ -288,13 +288,18 @@ if ${UPDATE_TNS}; then
     HOLD_PREV="-hold_jid ${JID2}"
 fi
 
-# Step 3: Normalize
-JID3=$(submit_or_echo "normalize" $COMMON ${HOLD_PREV} \
-    -pe omp 1 -l mem_per_core=4G -l h_rt=00:30:00 \
+# Step 3: Normalize + multi-source truth + collect local expert epochs
+JID3=$(submit_or_echo "normalize_truth" $COMMON ${HOLD_PREV} \
+    -pe omp 1 -l mem_per_core=4G -l h_rt=01:00:00 \
     -N debass_v2_normalize -j y -o "logs/v2_normalize.\$JOB_ID.log" \
     -b y "cd $DEBASS_ROOT && ${PYSETUP} && \
-          python3 scripts/normalize.py")
-echo "Step 3: Normalize             → Job ${JID3}"
+          echo 'Normalizing...' && \
+          python3 scripts/normalize.py && \
+          echo 'Building multi-source truth...' && \
+          python3 scripts/build_truth_multisource.py --labels ${LABELS} --silver-dir data/silver && \
+          echo 'Collecting local expert epoch history...' && \
+          python3 scripts/collect_epoch_history.py --from-labels ${LABELS} --max-n-det 20")
+echo "Step 3: Normalize + truth     → Job ${JID3}"
 
 # Step 4: Rebuild gold tables
 JID4=$(submit_or_echo "rebuild_gold" $COMMON -hold_jid "${JID3}" \
