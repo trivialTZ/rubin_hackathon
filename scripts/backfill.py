@@ -17,12 +17,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from debass_meta.access import ALL_ADAPTERS
 from debass_meta.access.associations import (
+    ResolvedObjectReference,
     apply_reference_metadata,
     load_lsst_ztf_associations,
     resolve_object_reference,
 )
 from debass_meta.access.identifiers import infer_identifier_kind
 from debass_meta.ingest.bronze import write_bronze
+
+# Brokers that support BOTH ZTF and LSST natively.
+# For LSST objects with ZTF counterparts, we query BOTH endpoints
+# to get the richest possible data (LSST per-alert + ZTF per-alert).
+_DUAL_SURVEY_BROKERS = {"alerce", "fink"}
 
 # Default test objects (known ZTF transients)
 _DEFAULT_OBJECTS = [
@@ -49,11 +55,19 @@ def _fetch_with_reference(
     *,
     associations: dict[str, dict[str, object]] | None = None,
 ):
+    """Fetch broker data for one object. Returns list of (BrokerOutput, reference) pairs.
+
+    For dual-survey brokers (Fink, ALeRCE) querying an LSST object with a ZTF
+    counterpart, fetches BOTH — the LSST native endpoint AND the ZTF counterpart —
+    to get the richest possible data.
+    """
     reference = resolve_object_reference(
         object_id,
         broker=adapter.name,
         associations=associations,
     )
+    results = []
+
     if not reference.can_query:
         out = adapter.unavailable_output(
             object_id,
@@ -68,10 +82,40 @@ def _fetch_with_reference(
                 "association_sep_arcsec": reference.association_sep_arcsec,
             },
         )
-        return apply_reference_metadata(out, reference), reference
+        results.append((apply_reference_metadata(out, reference), reference))
+        return results
 
     out = adapter.fetch_object(reference.requested_object_id)
-    return apply_reference_metadata(out, reference), reference
+    results.append((apply_reference_metadata(out, reference), reference))
+
+    # For dual-survey brokers: also query the ZTF counterpart if available.
+    # This gives us ZTF per-alert scores alongside LSST per-alert scores.
+    if (adapter.name in _DUAL_SURVEY_BROKERS
+            and infer_identifier_kind(object_id) == "lsst_dia_object_id"
+            and associations):
+        assoc = associations.get(object_id)
+        if assoc and assoc.get("ztf_object_id"):
+            ztf_id = str(assoc["ztf_object_id"])
+            try:
+                ztf_out = adapter.fetch_object(ztf_id)
+                # Stamp the LSST primary object_id on the ZTF result
+                ztf_ref = ResolvedObjectReference(
+                    primary_object_id=object_id,
+                    requested_object_id=ztf_id,
+                    primary_identifier_kind="lsst_dia_object_id",
+                    requested_identifier_kind="ztf_object_id",
+                    survey="ZTF",
+                    resolution_status="crossmatched_ztf_supplement",
+                    associated_object_id=ztf_id,
+                    association_kind=str(assoc.get("association_kind", "position_crossmatch")),
+                    association_source=str(assoc.get("association_source", "alerce_conesearch")),
+                    association_sep_arcsec=float(assoc["sep_arcsec"]) if assoc.get("sep_arcsec") else None,
+                )
+                results.append((apply_reference_metadata(ztf_out, ztf_ref), ztf_ref))
+            except Exception:
+                pass  # ZTF supplement is best-effort
+
+    return results
 
 
 def main() -> None:
@@ -111,20 +155,26 @@ def main() -> None:
             continue
 
         def _do_fetch(oid: str):
-            out, reference = _fetch_with_reference(
+            pairs = _fetch_with_reference(
                 adapter, oid, associations=associations,
             )
-            if not out.availability:
-                status = out.raw_payload.get("reason", "unavailable")
-            else:
-                status = "fixture" if out.fixture_used else "live"
-            route = (
-                f"{oid} <- {reference.requested_object_id}"
-                if reference.requested_object_id and reference.requested_object_id != oid
-                else oid
-            )
-            kind = infer_identifier_kind(oid)
-            return out, f"  [{adapter.name}] {route}: {len(out.fields)} fields ({kind}, {status})"
+            fetch_outputs = []
+            messages = []
+            for out, reference in pairs:
+                if not out.availability:
+                    status = out.raw_payload.get("reason", "unavailable")
+                else:
+                    status = "fixture" if out.fixture_used else "live"
+                route = (
+                    f"{oid} <- {reference.requested_object_id}"
+                    if reference.requested_object_id and reference.requested_object_id != oid
+                    else oid
+                )
+                kind = infer_identifier_kind(oid)
+                survey_tag = f", {reference.survey}" if reference.survey != "ZTF" else ""
+                messages.append(f"  [{adapter.name}] {route}: {len(out.fields)} fields ({kind}, {status}{survey_tag})")
+                fetch_outputs.append(out)
+            return fetch_outputs, messages
 
         outputs = []
         if n_workers > 1:
@@ -134,17 +184,19 @@ def main() -> None:
                 for future in as_completed(futures):
                     oid = futures[future]
                     try:
-                        out, msg = future.result()
-                        outputs.append(out)
-                        print(msg)
+                        fetch_outputs, messages = future.result()
+                        outputs.extend(fetch_outputs)
+                        for msg in messages:
+                            print(msg)
                     except Exception as exc:
                         print(f"  [{adapter.name}] {oid}: ERROR — {exc}")
         else:
             for oid in object_ids:
                 try:
-                    out, msg = _do_fetch(oid)
-                    outputs.append(out)
-                    print(msg)
+                    fetch_outputs, messages = _do_fetch(oid)
+                    outputs.extend(fetch_outputs)
+                    for msg in messages:
+                        print(msg)
                 except Exception as exc:
                     print(f"  [{adapter.name}] {oid}: ERROR — {exc}")
 

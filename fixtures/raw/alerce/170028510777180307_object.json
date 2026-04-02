@@ -1,0 +1,39 @@
+{
+  "probabilities": [
+    {
+      "classifier_name": "stamp_classifier_rubin_beta",
+      "classifier_version": 201,
+      "class_name": "SN",
+      "probability": 0.92296386,
+      "ranking": 1
+    },
+    {
+      "classifier_name": "stamp_classifier_rubin_beta",
+      "classifier_version": 201,
+      "class_name": "AGN",
+      "probability": 0.036890037,
+      "ranking": 3
+    },
+    {
+      "classifier_name": "stamp_classifier_rubin_beta",
+      "classifier_version": 201,
+      "class_name": "VS",
+      "probability": 0.0006640898,
+      "ranking": 5
+    },
+    {
+      "classifier_name": "stamp_classifier_rubin_beta",
+      "classifier_version": 201,
+      "class_name": "asteroid",
+      "probability": 0.0019053192,
+      "ranking": 4
+    },
+    {
+      "classifier_name": "stamp_classifier_rubin_beta",
+      "classifier_version": 201,
+      "class_name": "bogus",
+      "probability": 0.037576735,
+      "ranking": 2
+    }
+  ]
+}

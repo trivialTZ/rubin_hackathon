@@ -7,7 +7,11 @@ from pathlib import Path
 from .base import BrokerOutput
 from .identifiers import IdentifierKind, infer_identifier_kind
 
-_ZTF_ASSOCIATION_BROKERS = {"alerce", "fink", "alerce_history"}
+# Brokers that ONLY support ZTF and need association routing for LSST objects.
+# Fink and ALeRCE now support LSST natively — they should NOT be routed
+# through the association table for LSST objects (they query LSST directly).
+# Only alerce_history (which fetches ZTF lightcurves) still needs routing.
+_ZTF_ONLY_ASSOCIATION_BROKERS = {"alerce_history"}
 
 
 @dataclass(frozen=True)
@@ -29,11 +33,25 @@ class ResolvedObjectReference:
         return bool(self.requested_object_id)
 
 
+_DEFAULT_MAX_SEP_ARCSEC = 2.0  # Conservative: 2 arcsec max separation for high confidence
+
+
 def load_lsst_ztf_associations(
     path: Path | None,
     *,
-    max_sep_arcsec: float | None = None,
+    max_sep_arcsec: float | None = _DEFAULT_MAX_SEP_ARCSEC,
 ) -> dict[str, dict[str, object]]:
+    """Load LSST→ZTF association table with confidence filtering.
+
+    Only associations with ``match_status='matched'`` and separation
+    within *max_sep_arcsec* are accepted.  The default 2 arcsec threshold
+    ensures high-confidence positional matches (typical LSST astrometric
+    error is ~0.01 arcsec; ZTF is ~0.1 arcsec; galaxy offsets can be
+    larger, but >2 arcsec risks confusion with neighboring objects).
+
+    Each accepted association records its separation so downstream
+    components can weight by confidence (closer = more confident).
+    """
     if path is None or not Path(path).exists():
         return {}
 
@@ -44,6 +62,7 @@ def load_lsst_ztf_associations(
         return {}
 
     lookup: dict[str, dict[str, object]] = {}
+    n_rejected = 0
     for _, row in df.iterrows():
         object_id = _to_text(row.get("lsst_object_id"))
         if not object_id:
@@ -54,6 +73,7 @@ def load_lsst_ztf_associations(
         if match_status != "matched" or not ztf_object_id:
             continue
         if max_sep_arcsec is not None and sep_arcsec is not None and sep_arcsec > max_sep_arcsec:
+            n_rejected += 1
             continue
         lookup[object_id] = {
             "ztf_object_id": ztf_object_id,
@@ -62,6 +82,8 @@ def load_lsst_ztf_associations(
             "association_source": _to_text(row.get("association_source")) or "alerce_conesearch",
             "match_count": _to_int(row.get("match_count")),
         }
+    if n_rejected > 0:
+        print(f"  associations: {n_rejected} rejected (sep > {max_sep_arcsec} arcsec)")
     return lookup
 
 
@@ -75,7 +97,7 @@ def resolve_object_reference(
     primary_identifier_kind = infer_identifier_kind(primary_object_id)
     survey = "LSST" if primary_identifier_kind == "lsst_dia_object_id" else "ZTF"
 
-    if broker not in _ZTF_ASSOCIATION_BROKERS or primary_identifier_kind != "lsst_dia_object_id":
+    if broker not in _ZTF_ONLY_ASSOCIATION_BROKERS or primary_identifier_kind != "lsst_dia_object_id":
         return ResolvedObjectReference(
             primary_object_id=primary_object_id,
             requested_object_id=primary_object_id,

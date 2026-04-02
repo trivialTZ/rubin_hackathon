@@ -72,19 +72,17 @@ def test_lasair_adapter_fetches_lsst_objects_via_api(monkeypatch) -> None:
 
 
 def test_ztf_only_brokers_reject_lsst_identifiers() -> None:
-    """Fink still rejects LSST IDs; ALeRCE v2.1+ accepts them via survey param."""
+    """Both Fink and ALeRCE now support LSST objects."""
     object_id = "170032882292621441"
 
+    # Fink LSST: queries api.lsst.fink-portal.org
     fink = FinkAdapter().fetch_object(object_id)
-    assert fink.availability is False
-    assert fink.fixture_used is False
-    assert fink.raw_payload["reason"] == "unsupported_identifier_for_broker"
-    assert fink.raw_payload["expected_identifier_kind"] == "ztf_object_id"
+    assert fink.survey == "LSST"
+    assert "unsupported_identifier_for_broker" not in str(fink.raw_payload.get("reason", ""))
 
-    # ALeRCE now supports LSST objects (v2.1+ with survey="lsst")
+    # ALeRCE LSST: queries with survey="lsst"
     alerce = AlerceAdapter()
     if alerce._has_survey_param:
         out = alerce.fetch_object(object_id)
         assert out.survey == "LSST"
-        # Should either get data or fail gracefully (not reject)
         assert "unsupported_identifier_for_broker" not in str(out.raw_payload.get("reason", ""))

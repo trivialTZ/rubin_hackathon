@@ -148,6 +148,10 @@ class AlerceAdapter(BrokerAdapter):
                 prob_val = entry.get("probability")
                 classifier = entry.get("classifier_name", "unknown")
                 classifier_version = entry.get("classifier_version")
+                # Stamp classifiers score the first detection image only — they
+                # don't change with more detections, so they are static_safe.
+                # LC classifiers are object-level snapshots — temporally unsafe.
+                is_stamp = "stamp" in classifier.lower()
                 fields.append({
                     "field": f"{classifier}_{cls_name}",
                     "raw_label_or_score": prob_val,
@@ -157,8 +161,8 @@ class AlerceAdapter(BrokerAdapter):
                     "class_name": cls_name,
                     "classifier_version": classifier_version,
                     "expert_key": f"alerce/{classifier}",
-                    "event_scope": "object_snapshot",
-                    "temporal_exactness": "latest_object_unsafe",
+                    "event_scope": "object_snapshot" if not is_stamp else "static_context",
+                    "temporal_exactness": "static_safe" if is_stamp else "latest_object_unsafe",
                     "event_time_jd": None,
                     "n_det": None,
                 })

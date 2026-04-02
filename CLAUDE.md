@@ -7,38 +7,63 @@ This file tells Claude Code how to work with this repository.
 DEBASS (Detection-Based Astronomical Source Spectroscopic) meta-classifier.
 Fuses heterogeneous broker outputs (ALeRCE, Fink, Lasair) + per-epoch lightcurve
 features to classify transients as **SN Ia / non-Ia SN-like / other** after only
-3–5 detections, for spectroscopic follow-up prioritisation with Rubin/LSST.
+3-5 detections, for spectroscopic follow-up prioritisation with Rubin/LSST.
+
+Supports **mixed ZTF + LSST training**. Both surveys flow through the same
+pipeline with a union feature set (51 LC features across ugrizy bands).
 
 ## Key Design Decisions
 
 - **No-leakage epoch table**: features at n_det=N are computed from lightcurve
   truncated to exactly N detections. Never use future detections.
-- **broker scores are object-level** (ALeRCE doesn't expose per-alert probs).
-  The same score is repeated across all n_det rows for a given object.
-  Only SuperNNova/ParSNIP (GPU path) and the local ALeRCE LC expert (CPU)
-  provide true per-epoch scores.
-- **Local classifiers** can replace broker API calls for ALeRCE LC scores.
-  `AlerceLCExpert` trains a balanced random forest on TNS spectroscopic
-  labels and produces per-epoch probabilities. Use `--local-classifiers`
-  with `submit_cpu_prep.sh` or `--skip-backfill --local-classifiers` for
-  fully offline mode (no API calls at all).
+- **Mixed-survey support**: ZTF (g,r) and LSST (ugrizy) detections are normalised
+  to a common schema via `features/detection.py`. Missing bands are NaN —
+  LightGBM handles this natively. `survey_is_lsst` flag lets models learn
+  survey-specific trust patterns.
+- **16 registered experts** across both surveys. Each gets a per-expert trust
+  head (LightGBM binary) and projection to ternary (p_snia, p_nonIa, p_other).
+- **Fink LSST gives per-alert scores** (`api.lsst.fink-portal.org/api/v1/sources`
+  with `diaObjectId`). SNN/CATS/EarlySNIa scores genuinely evolve per detection —
+  the richest signal for LSST trust training.
+- **Dual-survey broker queries**: For LSST objects with ZTF counterparts,
+  backfill queries BOTH endpoints (LSST native + ZTF supplement via association).
+  Associations filtered at 2 arcsec max separation for high confidence.
 - **LightGBM (not RandomForest)** for all classifiers. Native NaN handling
   means missing broker scores are passed through directly — no imputation.
-  Leaf-wise gradient boosting with regularisation (learning_rate=0.05,
-  num_leaves=31, reg_alpha/lambda=0.1, feature_fraction=0.8).
-  EarlyMeta uses early stopping on a held-out cal set; binary models use
-  `is_unbalance=True` for class-weight correction.
-- **Three-way train/cal/test split** for EarlyMeta (calibration on cal,
-  metrics on test — no data leakage). Trust and followup models use
-  grouped object-level splits via `GroupSplit`.
-- **Column names must match exactly** between `features/lightcurve.py:FEATURE_NAMES`,
-  `models/early_meta.py:DEFAULT_FEATURES`, and `build_epoch_table_from_lc.py:_BROKER_SCORE_COLS`.
+- **Three-way train/cal/test split** with grouped object-level splits.
+- **Multi-source truth**: TNS spectroscopic + Fink crossmatch (free) +
+  broker consensus + host galaxy context (SIMBAD + photo-z + Gaia).
+
+## Expert Registry (16 experts)
+
+| Expert Key | Survey | Temporal | Source |
+|---|---|---|---|
+| `fink/snn` | ZTF | exact_alert | Fink ZTF SuperNNova |
+| `fink/rf_ia` | ZTF | exact_alert | Fink ZTF Random Forest |
+| `fink_lsst/snn` | LSST | exact_alert | Fink LSST SuperNNova |
+| `fink_lsst/cats` | LSST | exact_alert | Fink LSST CATS |
+| `fink_lsst/early_snia` | LSST | exact_alert | Fink LSST EarlySNIa |
+| `alerce/lc_classifier_transient` | ZTF | latest_unsafe | ALeRCE legacy LC |
+| `alerce/lc_classifier_BHRF_forced_phot_transient` | ZTF | latest_unsafe | ALeRCE BHRF |
+| `alerce/lc_classifier_BHRF_forced_phot_top` | ZTF | latest_unsafe | ALeRCE BHRF top-level |
+| `alerce/LC_classifier_ATAT_forced_phot(beta)` | ZTF | latest_unsafe | ALeRCE transformer |
+| `alerce/stamp_classifier` | ZTF | static_safe | ALeRCE stamp (ZTF) |
+| `alerce/stamp_classifier_2025_beta` | ZTF | static_safe | ALeRCE stamp 2025 |
+| `alerce/stamp_classifier_rubin_beta` | LSST | static_safe | ALeRCE Rubin stamp |
+| `lasair/sherlock` | any | static_safe | Lasair Sherlock context |
+| `parsnip` | any | rerun_exact | Local ParSNIP |
+| `supernnova` | any | rerun_exact | Local SuperNNova |
+| `alerce_lc` | any | rerun_exact | Local ALeRCE LC |
+
+Defined in `src/debass_meta/projectors/base.py:EXPERT_REGISTRY`.
 
 ## Python Environment
 
 ```bash
-# Local dev (macOS)
-python3.11 -m pip install -r env/requirements.txt
+# Requires Python >= 3.10 (for ALeRCE LSST support)
+# Local dev (macOS — use venv with Python 3.13)
+source ~/.venvs/debass_py313/bin/activate
+pip install -r env/requirements.txt
 
 # SCC
 python3 -m venv ~/debass_meta_env
@@ -46,172 +71,136 @@ source ~/debass_meta_env/bin/activate
 pip install -r env/requirements.txt
 ```
 
-Always use `python3.11` locally (pyarrow is installed there).
-
-## Running the Trust Pipeline Locally (smoke test)
+## Full Pipeline (recommended)
 
 ```bash
-# 1. Download 20 weakly labelled seed objects
-python3.11 scripts/download_alerce_training.py --limit 20
-
-# 2. Fetch broker payloads → bronze/silver
-python3.11 scripts/backfill.py --broker all --from-labels data/labels.csv
-python3.11 scripts/normalize.py
-
-# 3. Build truth table (bulk CSV mode — fast, no API calls)
-#    First download TNS bulk CSV on SCC (requires TNS credentials):
-python3.11 scripts/download_tns_bulk.py
-#    Then crossmatch locally:
-python3.11 scripts/crossmatch_tns.py --labels data/labels.csv \
-    --bulk-csv data/tns_public_objects.csv
-
-# 4. Build gold tables
-python3.11 scripts/build_object_epoch_snapshots.py
-python3.11 scripts/build_expert_helpfulness.py
-
-# 5. Train trust-aware models
-python3.11 scripts/train_expert_trust.py
-python3.11 scripts/train_followup.py
-
-# 6. Score
-python3.11 scripts/score_nightly.py --from-labels data/labels.csv --n-det 4
+bash jobs/submit_retrain_v2.sh --discover-lsst 400 --update-tns --local
 ```
 
-## TNS Crossmatch: Bulk CSV vs API Mode
+Steps:
+1. Discover 400 LSST candidates from ALeRCE (representative: SN/bogus/AGN/VS/asteroid)
+2. Merge into labels.csv (deduplicates)
+3. Fetch lightcurves + backfill all brokers (parallel, dual-survey)
+4. TNS crossmatch (name + positional fallback)
+5. Normalize bronze → silver (with dedup)
+6. Build multi-source truth (TNS + Fink xm + host context)
+7. Collect per-epoch local expert history
+8. Build gold tables (51 LC features + 16 expert projections + survey flag)
+9. Train expert trust + followup
+10. Score + analyze
 
-**Bulk CSV mode (recommended for 2000+ objects):**
-- Download TNS bulk CSV once on SCC: `python3.11 scripts/download_tns_bulk.py`
-- Crossmatch locally (instant, no API calls): `--bulk-csv data/tns_public_objects.csv`
-- The CSV has ~160K objects, regenerated daily by TNS
-- Spectra detection: prefix="SN" + non-empty type (100% accurate on our test set)
+## Truth Sources (5 tiers)
 
-**API mode (for small runs or when you need fresh data):**
-- Queries TNS API: 2 calls per object (search + get_object)
-- Rate limited: ~60s rolling window
-- Use for <100 objects or when TNS CSV is stale
-- Requires: TNS_API_KEY, TNS_TNS_ID, TNS_MARKER_NAME in .env
+| Tier | Source | Quality | How |
+|---|---|---|---|
+| 1 | TNS spectroscopic type | `spectroscopic` | crossmatch_tns.py + Fink `xm_tns_type` |
+| 2 | TNS name (AT prefix) | `tns_untyped` | Fink `xm_tns_fullname` |
+| 3 | Broker consensus | `consensus` | >=2 experts agree on class |
+| 4 | Host galaxy context | `context` | SIMBAD=G + pstar<0.1 (SN come from galaxies) |
+| 5 | ALeRCE stamp class | `weak` | Discovery label |
 
-## Running the Baseline (benchmark only)
+Fink LSST provides `xm_tns_type`, `xm_simbad_otype`, `xm_legacydr8_zphot`,
+`xm_gaiadr3_Plx` for free in every query. `build_truth_multisource.py` merges all.
 
-```bash
-# NOTE: labels.csv is a weak/self-label seed set, not canonical science truth.
-python3.11 scripts/build_epoch_table_from_lc.py
-python3.11 scripts/train_early.py --n-estimators 500
-python3.11 scripts/score_early.py --from-labels data/labels.csv --n-det 4
+## Lightcurve Features (51)
+
+```
+Detection counts (7): n_det, n_det_{u,g,r,i,z,y}
+Temporal (2):         t_since_first, t_baseline
+All-band (8):         mag_first/last/min/mean/std/range, dmag_dt, dmag_first_last
+Per-band (24):        mag_{first,last,mean,std}_{u,g,r,i,z,y}
+Colours (8):          color_{gr,ri,iz,zy} + slopes
+Quality (1):          mean_quality (rb/drb for ZTF, reliability for LSST)
+Survey (1):           survey_is_lsst (0.0 = ZTF, 1.0 = LSST)
 ```
 
-## Running on SCC
+Defined in `src/debass_meta/features/lightcurve.py:FEATURE_NAMES`.
 
-```bash
-export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
-bash jobs/submit_all.sh --limit 2000 --gpu
-```
+## Association Table (LSST ↔ ZTF)
 
-See `README_scc.md` for full SCC setup.
+For LSST objects with ZTF counterparts, the association table maps
+diaObjectId → ZTF object ID. Used by:
+- `fetch_lightcurves.py`: source ZTF lightcurve for LSST objects
+- `backfill.py`: query ZTF brokers as supplement (dual-fetch)
 
-## Local Classifiers (no broker API calls)
+**Confidence**: Default max separation 2 arcsec (conservative).
+Each association records `sep_arcsec` so downstream can weight by confidence.
 
-Instead of calling ALeRCE/Fink/Lasair APIs during backfill, you can train
-and run classifiers locally on SCC:
+## Critical Column Name Contract
 
-```bash
-# Fully offline CPU pipeline (no API calls at all):
-bash jobs/submit_cpu_prep.sh --skip-backfill --local-classifiers
+If you add a new expert:
+1. Add to `EXPERT_REGISTRY` in `src/debass_meta/projectors/base.py`
+2. Write a projector in `src/debass_meta/projectors/` (maps raw → ternary)
+3. `ALL_EXPERT_KEYS` auto-updates. Gold/helpfulness/scoring auto-discover.
 
-# Or with backfill + local classifiers (local scores override API scores):
-bash jobs/submit_cpu_prep.sh --skip-download --local-classifiers
-```
-
-**What runs locally:**
-- `AlerceLCExpert`: balanced random forest trained on TNS labels → replaces
-  `alerce_SNIa`, `alerce_SNIbc`, `alerce_SNII`, `alerce_SLSN`, `alerce_top_Transient`
-- SuperNNova (GPU): replaces `fink_snn_snia`, `fink_snn_sn` (already implemented)
-- ParSNIP (GPU): additional SN typing (already implemented)
-
-**What stays NaN (infeasible locally):**
-- `alerce_stamp_SN` — needs ZTF cutout images
-- `fink_rf_snia` — no public weights/code
-- Lasair Sherlock — needs 4.5TB catalog database
-
-LightGBM handles NaN natively, so missing columns are not a problem.
-
-**Manual workflow:**
-```bash
-# 1. Train the local ALeRCE classifier
-python3 scripts/train_alerce_lc.py --from-labels data/labels.csv
-
-# 2. Run CPU-only local inference
-python3 scripts/local_infer.py --expert alerce_lc --cpu-only \
-    --from-labels data/labels.csv
-
-# 3. Rebuild epoch table (local scores override API scores)
-python3 scripts/build_epoch_table_from_lc.py
-```
+If you add a new LC feature:
+1. Add to `FEATURE_NAMES` in `src/debass_meta/features/lightcurve.py`
+2. Add to `DEFAULT_FEATURES` in `src/debass_meta/models/early_meta.py`
 
 ## File Map
 
 ```
 src/debass_meta/
-  access/         Broker adapters (ALeRCE, Fink, Lasair + stubs)
-  features/       Lightcurve feature extractor — FEATURE_NAMES list is authoritative
-  ingest/         Bronze → silver → gold Parquet transforms
-  models/         EarlyMetaClassifier (LightGBM) + baselines + calibration
-  experts/local/  SuperNNova, ParSNIP, ALeRCE LC wrappers (local classifiers)
+  access/         Broker adapters (ALeRCE ZTF+LSST, Fink ZTF+LSST, Lasair dual-mode)
+  features/       Detection normalization + no-leakage LC feature extraction (51 features)
+  ingest/         Bronze → silver (with dedup) → gold snapshot builders
+  models/         Trust heads (per-expert LightGBM) + follow-up head + baseline
+  projectors/     Expert-specific score → ternary projections (16 experts)
+  experts/local/  Local rerunnable experts (SNN, ParSNIP, ALeRCE LC)
 
 scripts/
-  download_alerce_training.py   Step 1: get weakly labelled seed objects + lightcurves
-  backfill.py                   Step 2: fetch broker scores → bronze
-  normalize.py                  Step 3: bronze → silver
-  build_epoch_table_from_lc.py  Step 4: build (object, n_det) feature table
-  local_infer.py                Step 4b: GPU — SNN/ParSNIP per epoch
-  build_truth_table.py          Step 3: build weak/external truth table
-  build_object_epoch_snapshots.py Step 4: build exact gold table
-  build_expert_helpfulness.py   Step 4b: build helpfulness rows
-  train_expert_trust.py         Step 5: train trust heads
-  train_followup.py             Step 5b: train follow-up head
-  score_nightly.py              Step 6: emit expert_confidence payload
-  train_alerce_lc.py             Train local ALeRCE-style LC classifier (CPU)
-  train_early.py                Baseline benchmark only
-  score_early.py                Baseline benchmark only
+  discover_lsst_training.py   Discover LSST candidates from ALeRCE (no token needed)
+  merge_labels.py             Safely merge LSST candidates into labels.csv (dedup)
+  backfill.py                 Fetch broker scores → bronze (--parallel 8, dual-survey)
+  normalize.py                Bronze → silver (with dedup)
+  crossmatch_tns.py           TNS crossmatch (name + positional fallback)
+  build_truth_multisource.py  Multi-source truth (TNS + Fink xm + context + consensus)
+  collect_epoch_history.py    Per-epoch local expert scores for LSST trust training
+  build_object_epoch_snapshots.py  Build gold table (51 features + 16 experts)
+  build_expert_helpfulness.py Build helpfulness rows for ALL 16 experts
+  train_expert_trust.py       Train trust heads (auto-discovers experts from helpfulness)
+  train_followup.py           Train follow-up head
+  score_nightly.py            Emit expert_confidence + trust-weighted ensemble
+  fetch_lightcurves.py        Fetch + cache lightcurves (ZTF + LSST)
 
 jobs/
-  submit_all.sh   Master SGE submission script
-  *.sh            Individual SGE job scripts
+  submit_retrain_v2.sh        Full pipeline (discover → train → score)
+  submit_nightly.sh           Nightly scoring pipeline
+  setup_local_experts.sh      Download SNN/RAPID/ORACLE weights for SCC
 
-data/            (gitignored — generated by scripts)
-  labels.csv                          (weak self-labels, NOT canonical truth)
-  lightcurves/*.json
-  bronze/*.parquet
-  silver/broker_events.parquet        (primary trust-aware output)
-  silver/broker_outputs.parquet       (legacy compat)
-  silver/local_expert_outputs/
-  truth/object_truth.parquet
-  gold/object_epoch_snapshots.parquet
-  gold/expert_helpfulness.parquet
-  epochs/epoch_features.parquet       (baseline only)
+data/            (gitignored)
+  labels.csv                          Object list (ZTF + LSST)
+  lsst_candidates.csv                 LSST discovery output
+  lightcurves/*.json                  Cached lightcurves
+  bronze/*.parquet                    Raw broker payloads
+  silver/broker_events.parquet        Event-level (with dedup)
+  silver/local_expert_outputs/        Per-epoch local expert scores
+  truth/object_truth.parquet          Multi-source truth table
+  gold/object_epoch_snapshots.parquet 51 features + 16 expert projections
+  gold/expert_helpfulness.parquet     Per-expert training rows (ALL 16)
 
-models/          (gitignored — generated by training scripts)
-  trust/<expert>/model.pkl
-  followup/model.pkl
-  early_meta/early_meta.pkl           (baseline only)
+models/          (gitignored)
+  trust/<expert>/model.pkl + metadata.json
+  followup/model.pkl + metadata.json
 ```
 
-## Critical Column Name Contract
+## Environment Variables
 
-If you add a new LC feature:
-1. Add to `FEATURE_NAMES` in `src/debass_meta/features/lightcurve.py`
-2. Add to `DEFAULT_FEATURES` in `src/debass_meta/models/early_meta.py`
-3. The epoch table is rebuilt automatically by `build_epoch_table_from_lc.py`
-
-If you add a new broker score feature:
-1. Add to `_BROKER_SCORE_COLS` in `scripts/build_epoch_table_from_lc.py`
-2. Add to `DEFAULT_FEATURES` in `src/debass_meta/models/early_meta.py`
-3. Re-run `backfill.py` + `normalize.py` + `build_epoch_table_from_lc.py`
+```bash
+# In $DEBASS_ROOT/.env
+LASAIR_TOKEN=your_token_here          # Works for both ZTF + LSST Lasair
+# Optional per-endpoint:
+# LASAIR_ZTF_TOKEN=...
+# LASAIR_LSST_TOKEN=...
+# TNS credentials (for --update-tns):
+# TNS_API_KEY=...
+# TNS_TNS_ID=...
+# TNS_MARKER_NAME=...
+```
 
 ## Known Limitations
 
-- Fink scores are 100% NaN for most ZTF objects (sparse stream coverage)
-- Forced-phot ALeRCE classifiers (ATAT, BHRF beta) only cover ~20% of objects
-- Stamp classifier is ZTF-trained; Rubin-native version not yet released
-- SuperNNova/ParSNIP are stubs until weights are placed in `artifacts/local_experts/`
-- 19-object smoke test overfits (F1=1.0) — need 2000+ objects for real metrics
+- Fink LSST EarlySNIa shows -1.0 for most objects (not triggered — needs min 7 epochs)
+- ALeRCE LSST only has stamp classifier; no LC classifiers yet (ATAT coming)
+- SuperNNova/ParSNIP local experts need LSST-trained weights (ELAsTiCC)
+- Association table quality depends on crossmatch source and sky density

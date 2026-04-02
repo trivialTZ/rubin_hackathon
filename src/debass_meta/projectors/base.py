@@ -26,6 +26,10 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     "alerce/stamp_classifier_2025_beta":               ("ztf", "alerce"),
     # --- ALeRCE Rubin/LSST classifiers ---
     "alerce/stamp_classifier_rubin_beta":              ("lsst", "alerce"),
+    # --- Fink LSST classifiers (per-alert, exact_alert!) ---
+    "fink_lsst/snn":                                   ("lsst", "fink_lsst"),
+    "fink_lsst/cats":                                  ("lsst", "fink_lsst"),
+    "fink_lsst/early_snia":                            ("lsst", "fink_lsst"),
     # --- Lasair (both surveys) ---
     "lasair/sherlock":                 ("any",  "lasair"),
 }
@@ -120,8 +124,26 @@ def collect_projected_columns(expert_key: str, projected: dict[str, Any]) -> dic
 
 
 def project_expert_events(expert_key: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Route events to the appropriate projector. Returns ternary projection dict.
+
+    Never raises — returns an error dict on failure so the gold builder
+    can mark the expert as unavailable without crashing the pipeline.
+    """
+    if not events:
+        return {"prediction_type": "unknown", "reason": "no events"}
+    try:
+        return _dispatch_projector(expert_key, events)
+    except Exception as exc:
+        return {"prediction_type": "unknown", "reason": f"projector error: {exc}"}
+
+
+def _dispatch_projector(expert_key: str, events: list[dict[str, Any]]) -> dict[str, Any]:
     if expert_key == "fink/snn" or expert_key == "fink/rf_ia":
         from .fink import project_events
+
+        return project_events(expert_key, events)
+    if expert_key.startswith("fink_lsst/"):
+        from .fink_lsst import project_events
 
         return project_events(expert_key, events)
     if expert_key.startswith("alerce/"):

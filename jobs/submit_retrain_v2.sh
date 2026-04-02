@@ -153,12 +153,27 @@ if ${LOCAL_MODE}; then
     python3 scripts/fetch_lightcurves.py --from-labels "${LABELS}"
     python3 scripts/backfill.py --broker all --from-labels "${LABELS}" --parallel "${PARALLEL}"
 
-    # Step 5: Normalize bronze → silver (picks up new ALeRCE classifiers)
-    echo "[5/8] Normalizing bronze → silver..."
+    # Step 5a: Normalize bronze → silver (picks up new ALeRCE classifiers)
+    echo "[5a/9] Normalizing bronze → silver..."
     python3 scripts/normalize.py
 
+    # Step 5b: Build multi-source truth (TNS + Fink xm + host context + labels)
+    echo "[5b/9] Building multi-source truth table..."
+    python3 scripts/build_truth_multisource.py \
+        --labels "${LABELS}" \
+        --silver-dir data/silver
+
+    # Step 5c: Collect per-epoch classification history from local experts
+    #          This is the key to learning epoch-dependent trust for LSST objects
+    #          where broker APIs only give static snapshots.
+    echo "[5b/9] Collecting per-epoch local expert history..."
+    python3 scripts/collect_epoch_history.py \
+        --from-labels "${LABELS}" \
+        --lc-dir data/lightcurves \
+        --max-n-det 20
+
     # Step 6: Rebuild gold tables (51 LC features + 13 experts + survey flag)
-    echo "[6/8] Rebuilding gold tables..."
+    echo "[6/9] Rebuilding gold tables..."
     python3 scripts/build_object_epoch_snapshots.py \
         --objects-csv "${LABELS}" \
         --allow-unsafe-latest-snapshot

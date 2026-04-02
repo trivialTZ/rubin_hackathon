@@ -72,10 +72,11 @@ def test_resolve_object_reference_keeps_direct_ztf_requests() -> None:
     assert resolved.primary_identifier_kind == "ztf_object_id"
 
 
-def test_resolve_object_reference_crossmatches_lsst_for_ztf_brokers() -> None:
+def test_resolve_object_reference_crossmatches_lsst_for_ztf_only_brokers() -> None:
+    """alerce_history (ZTF-only) still routes through association table."""
     resolved = resolve_object_reference(
         "170032882292621441",
-        broker="fink",
+        broker="alerce_history",
         associations={
             "170032882292621441": {
                 "ztf_object_id": "ZTF23abcegjv",
@@ -93,8 +94,22 @@ def test_resolve_object_reference_crossmatches_lsst_for_ztf_brokers() -> None:
     assert resolved.association_sep_arcsec == 0.21
 
 
-def test_resolve_object_reference_blocks_unmatched_lsst_for_ztf_brokers() -> None:
-    resolved = resolve_object_reference("170032882292621441", broker="alerce")
+def test_resolve_object_reference_dual_survey_brokers_go_direct() -> None:
+    """Fink and ALeRCE support LSST natively — they should NOT route via ZTF association."""
+    for broker in ("fink", "alerce"):
+        resolved = resolve_object_reference(
+            "170032882292621441",
+            broker=broker,
+            associations={
+                "170032882292621441": {"ztf_object_id": "ZTF23abcegjv", "sep_arcsec": 0.21}
+            },
+        )
+        assert resolved.resolution_status == "direct", f"{broker} should go direct for LSST"
+        assert resolved.requested_object_id == "170032882292621441"
+
+
+def test_resolve_object_reference_ztf_only_broker_blocks_unmatched_lsst() -> None:
+    resolved = resolve_object_reference("170032882292621441", broker="alerce_history")
 
     assert resolved.resolution_status == "unresolved"
     assert resolved.resolution_reason == "missing_crossmatch_association"

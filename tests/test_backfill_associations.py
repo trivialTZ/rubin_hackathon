@@ -25,8 +25,8 @@ class _StubAdapter:
             query_time=1000.0,
             raw_payload={"ok": True},
             semantic_type=self.semantic_type,
-            survey="ZTF",
-            fields=[],
+            survey="ZTF" if object_id.startswith("ZTF") else "LSST",
+            fields=[{"expert_key": "alerce/stamp"}],
             events=[],
             availability=True,
             fixture_used=False,
@@ -47,10 +47,16 @@ class _StubAdapter:
         )
 
 
-def test_fetch_with_reference_routes_lsst_objects_through_associated_ztf_id() -> None:
+class _StubZTFOnlyAdapter(_StubAdapter):
+    """Simulates alerce_history which only supports ZTF."""
+    name = "alerce_history"
+
+
+def test_dual_survey_broker_queries_lsst_directly() -> None:
+    """ALeRCE (dual-survey) queries LSST objects directly, not via ZTF association."""
     adapter = _StubAdapter()
 
-    out, reference = _fetch_with_reference(
+    results = _fetch_with_reference(
         adapter,
         "170032882292621441",
         associations={
@@ -63,19 +69,63 @@ def test_fetch_with_reference_routes_lsst_objects_through_associated_ztf_id() ->
         },
     )
 
-    assert adapter.queries == ["ZTF23abcegjv"]
-    assert reference.resolution_status == "crossmatched"
+    # Should query LSST ID directly, PLUS ZTF counterpart as supplement
+    assert "170032882292621441" in adapter.queries
+    assert "ZTF23abcegjv" in adapter.queries
+    assert len(results) == 2  # LSST native + ZTF supplement
+
+    # Primary result uses LSST ID
+    out, ref = results[0]
     assert out.object_id == "170032882292621441"
-    assert out.requested_object_id == "ZTF23abcegjv"
-    assert out.associated_object_id == "ZTF23abcegjv"
+    assert ref.resolution_status == "direct"
+
+    # Supplement uses ZTF ID but stamps primary as LSST
+    out2, ref2 = results[1]
+    assert out2.object_id == "170032882292621441"  # apply_reference_metadata
+    assert ref2.requested_object_id == "ZTF23abcegjv"
 
 
-def test_fetch_with_reference_returns_unavailable_when_crossmatch_is_missing() -> None:
+def test_ztf_only_broker_routes_through_association() -> None:
+    """alerce_history (ZTF-only) routes LSST objects through association table."""
+    adapter = _StubZTFOnlyAdapter()
+
+    results = _fetch_with_reference(
+        adapter,
+        "170032882292621441",
+        associations={
+            "170032882292621441": {
+                "ztf_object_id": "ZTF23abcegjv",
+                "sep_arcsec": 0.21,
+            }
+        },
+    )
+
+    assert len(results) == 1
+    assert adapter.queries == ["ZTF23abcegjv"]
+    out, ref = results[0]
+    assert out.object_id == "170032882292621441"
+    assert ref.resolution_status == "crossmatched"
+
+
+def test_ztf_only_broker_blocks_unmatched_lsst() -> None:
+    adapter = _StubZTFOnlyAdapter()
+
+    results = _fetch_with_reference(adapter, "170032882292621441", associations={})
+
+    assert len(results) == 1
+    out, ref = results[0]
+    assert ref.resolution_status == "unresolved"
+    assert out.availability is False
+
+
+def test_dual_survey_broker_without_association_still_queries_lsst() -> None:
+    """ALeRCE should still query LSST directly even without association table."""
     adapter = _StubAdapter()
 
-    out, reference = _fetch_with_reference(adapter, "170032882292621441", associations={})
+    results = _fetch_with_reference(adapter, "170032882292621441", associations={})
 
-    assert adapter.queries == []
-    assert reference.resolution_status == "unresolved"
-    assert out.availability is False
-    assert out.raw_payload["reason"] == "missing_crossmatch_association"
+    assert len(results) == 1  # Just the direct LSST query
+    assert adapter.queries == ["170032882292621441"]
+    out, ref = results[0]
+    assert ref.resolution_status == "direct"
+    assert out.availability is True

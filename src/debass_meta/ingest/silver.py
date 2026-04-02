@@ -152,6 +152,16 @@ def bronze_to_silver(
     silver_df = pd.DataFrame(event_rows)
     if "raw_label_or_score" in silver_df.columns:
         silver_df["raw_label_or_score"] = silver_df["raw_label_or_score"].astype("string")
+
+    # Dedup: running backfill + normalize twice should not create duplicate silver rows.
+    # Key: (object_id, expert_key, event_time_jd, field, payload_hash). Keep last (freshest query).
+    dedup_cols = ["object_id", "expert_key", "event_time_jd", "field", "payload_hash"]
+    n_before = len(silver_df)
+    silver_df = silver_df.drop_duplicates(subset=dedup_cols, keep="last")
+    n_dropped = n_before - len(silver_df)
+    if n_dropped > 0:
+        print(f"  silver dedup: {n_before:,} → {len(silver_df):,} ({n_dropped:,} duplicates removed)")
+
     silver_df.to_parquet(out_path, index=False)
 
     legacy_df = pd.DataFrame(legacy_rows)

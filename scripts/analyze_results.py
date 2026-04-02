@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import numpy as np
 import pandas as pd
 
-from debass_meta.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
+from debass_meta.projectors import ALL_EXPERT_KEYS, PHASE1_EXPERT_KEYS, sanitize_expert_key
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ def _pct(num, denom):
 def expert_availability_table(snapshot_df: pd.DataFrame) -> pd.DataFrame:
     """For each expert × n_det, count available rows and mean trust."""
     records = []
-    for expert_key in PHASE1_EXPERT_KEYS:
+    for expert_key in ALL_EXPERT_KEYS:
         san = sanitize_expert_key(expert_key)
         avail_col = f"avail__{san}"
         trust_col = f"q__{san}"
@@ -160,7 +160,7 @@ def followup_analysis(scores_path: Path) -> dict:
             "mean_trust": round(expert_trust_sums[expert_key] / expert_trust_counts[expert_key], 4)
                 if expert_trust_counts[expert_key] > 0 else None,
         }
-        for expert_key in PHASE1_EXPERT_KEYS
+        for expert_key in ALL_EXPERT_KEYS
     }
     return result
 
@@ -207,7 +207,7 @@ def temporal_evolution(snapshot_df: pd.DataFrame) -> dict:
         entry = {"n_objects": len(group)}
         # Count experts available
         expert_counts = {}
-        for expert_key in PHASE1_EXPERT_KEYS:
+        for expert_key in ALL_EXPERT_KEYS:
             san = sanitize_expert_key(expert_key)
             avail_col = f"avail__{san}"
             if avail_col in group.columns:
@@ -215,7 +215,7 @@ def temporal_evolution(snapshot_df: pd.DataFrame) -> dict:
         entry["experts_available"] = expert_counts
         # Mean trust per expert
         trust_means = {}
-        for expert_key in PHASE1_EXPERT_KEYS:
+        for expert_key in ALL_EXPERT_KEYS:
             san = sanitize_expert_key(expert_key)
             trust_col = f"q__{san}"
             avail_col = f"avail__{san}"
@@ -407,7 +407,7 @@ def main() -> None:
         if n_det_target in temporal:
             entry = temporal[n_det_target]
             lines.append(f"  n_det = {n_det_target}:")
-            for expert_key in PHASE1_EXPERT_KEYS:
+            for expert_key in ALL_EXPERT_KEYS:
                 n_avail = entry["experts_available"].get(expert_key, 0)
                 n_total = entry["n_objects"]
                 trust_val = entry["mean_trust"].get(expert_key)

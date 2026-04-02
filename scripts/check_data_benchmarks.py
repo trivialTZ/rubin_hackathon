@@ -19,7 +19,7 @@ sys.path.insert(0, str(_THIS_DIR))
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from audit_data_readiness import audit_data_readiness
-from debass_meta.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
+from debass_meta.projectors import ALL_EXPERT_KEYS, PHASE1_EXPERT_KEYS, sanitize_expert_key
 
 
 DEFAULT_BENCHMARKS: dict[str, Any] = {

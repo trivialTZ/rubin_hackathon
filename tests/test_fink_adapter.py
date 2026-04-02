@@ -11,7 +11,7 @@ from debass_meta.access.fink import FinkAdapter
 def test_fink_extract_fields_preserves_alert_id_and_n_det() -> None:
     adapter = FinkAdapter()
 
-    fields = adapter._extract_fields(
+    fields = adapter._extract_ztf_fields(
         {
             "alerts": [
                 {

@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from debass_meta.features.lightcurve import FEATURE_NAMES
-from debass_meta.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
+from debass_meta.projectors import ALL_EXPERT_KEYS, sanitize_expert_key
 
 
 def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
@@ -22,7 +22,7 @@ def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
     print(f"  helpfulness: processing {len(snapshot_records):,} snapshot rows ...", flush=True)
 
     for row in snapshot_records:
-        for expert_key in PHASE1_EXPERT_KEYS:
+        for expert_key in ALL_EXPERT_KEYS:
             san = sanitize_expert_key(expert_key)
             if not bool(row.get(f"avail__{san}", 0)):
                 continue
