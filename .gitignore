@@ -23,6 +23,7 @@ output/
 reports/
 
 # EXCEPTION: published_results/ IS tracked (curated for public release)
+# Contains trained models (~6 MB), test-set metrics, and sample scores.
 !published_results/
 
 # Temporary / scratch

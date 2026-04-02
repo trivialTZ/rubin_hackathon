@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Export publishable results from a completed pipeline run.
+"""Export publishable results + trained models from a completed pipeline run.
 
-Copies key metrics, a sample score payload, and split metadata into
+Copies trained models, metrics, sample scores, and split metadata into
 `published_results/` — a git-tracked directory suitable for public release.
-Does NOT export full data, model weights, or lightcurves.
+People can clone the repo and score new objects immediately.
 
 Usage (on SCC after pipeline completes):
     python3 scripts/export_results.py
 
 Output:
     published_results/
+        models/trust/<expert>/model.pkl + metadata.json
+        models/followup/model.pkl + metadata.json
         phase1_metrics.json           — all test-set metrics in one file
         sample_scores_ndet3.jsonl     — first 50 score payloads at n_det=3
         sample_scores_ndet5.jsonl     — first 50 score payloads at n_det=5
@@ -20,6 +22,7 @@ Output:
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -91,7 +94,47 @@ def main() -> None:
         json.dump(metrics, fh, indent=2)
     print(f"  → {RESULTS_DIR / 'phase1_metrics.json'}")
 
-    # ── 2. Sample score payloads ─────────────────────────────────────────
+    # ── 2. Copy trained model weights ──────────────────────────────────────
+    print("Exporting trained models...")
+    model_dirs = [
+        ("models/trust/fink__snn", "models/trust/fink__snn"),
+        ("models/trust/fink__rf_ia", "models/trust/fink__rf_ia"),
+        ("models/trust/supernnova", "models/trust/supernnova"),
+        ("models/followup", "models/followup"),
+    ]
+    for src_dir, dst_rel in model_dirs:
+        src = Path(src_dir)
+        dst = RESULTS_DIR / dst_rel
+        if not src.exists():
+            print(f"  SKIP {src} (not found)")
+            continue
+        dst.mkdir(parents=True, exist_ok=True)
+        for f in src.iterdir():
+            if f.suffix in (".pkl", ".json"):
+                shutil.copy2(f, dst / f.name)
+        print(f"  → {dst}/")
+
+    # Copy trust-level metadata (split info without full object IDs)
+    trust_meta_src = Path("models/trust/metadata.json")
+    if trust_meta_src.exists():
+        trust_meta_dst = RESULTS_DIR / "models/trust/metadata.json"
+        trust_meta_dst.parent.mkdir(parents=True, exist_ok=True)
+        # Strip full object ID lists (privacy), keep counts and expert list
+        with open(trust_meta_src) as fh:
+            meta = json.load(fh)
+        meta_public = {
+            "experts": meta.get("experts", []),
+            "n_train": len(meta.get("train_ids", [])),
+            "n_cal": len(meta.get("cal_ids", [])),
+            "n_test": len(meta.get("test_ids", [])),
+            "allow_unsafe_alerce": meta.get("allow_unsafe_alerce"),
+            "contains_weak_labels": meta.get("contains_weak_labels"),
+        }
+        with open(trust_meta_dst, "w") as fh:
+            json.dump(meta_public, fh, indent=2)
+        print(f"  → {trust_meta_dst}")
+
+    # ── 3. Sample score payloads ─────────────────────────────────────────
     print("Exporting sample score payloads...")
     for n_det in [3, 5]:
         src = Path(f"reports/scores/scores_ndet{n_det}.jsonl")
@@ -105,22 +148,6 @@ def main() -> None:
         with open(dst, "w") as fh:
             fh.writelines(lines)
         print(f"  → {dst} ({len(lines)} payloads)")
-
-    # ── 3. Split summary (counts only, not object IDs) ───────────────────
-    print("Exporting split summary...")
-    meta = _safe_load_json(Path("models/trust/metadata.json"))
-    if meta:
-        split_summary = {
-            "n_train": len(meta.get("train_ids", [])),
-            "n_cal": len(meta.get("cal_ids", [])),
-            "n_test": len(meta.get("test_ids", [])),
-            "experts_trained": meta.get("experts", []),
-            "contains_weak_labels": meta.get("contains_weak_labels"),
-            "allow_unsafe_alerce": meta.get("allow_unsafe_alerce"),
-        }
-        with open(RESULTS_DIR / "split_summary.json", "w") as fh:
-            json.dump(split_summary, fh, indent=2)
-        print(f"  → {RESULTS_DIR / 'split_summary.json'}")
 
     # ── 4. Expert coverage table ─────────────────────────────────────────
     print("Exporting expert coverage...")
@@ -137,7 +164,7 @@ def main() -> None:
             json.dump(coverage, fh, indent=2)
         print(f"  → {RESULTS_DIR / 'expert_coverage.json'}")
 
-    # ── 5. Human-readable summary ────────────────────────────────────────
+    # ── 5. Human-readable summary ─────────────────────────────────────────
     print("Exporting summary text...")
     txt = _safe_read_text(Path("reports/results_summary.txt"))
     if txt:
