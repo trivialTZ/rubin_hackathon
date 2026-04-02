@@ -97,42 +97,30 @@ if ${LOCAL_MODE}; then
     python3 --version
     pip install -q -r env/requirements.txt
 
-    # Step 1: (Optional) Discover LSST transient candidates
+    # Step 1: (Optional) Discover LSST transient candidates + merge into labels
     if [ "${DISCOVER_LSST}" -gt 0 ] 2>/dev/null; then
-        echo "[1/8] Discovering ${DISCOVER_LSST} LSST candidates from Lasair..."
+        echo "[1/8] Discovering ${DISCOVER_LSST} LSST candidates from ALeRCE..."
         LSST_CSV="${DEBASS_ROOT}/data/lsst_candidates.csv"
         python3 scripts/discover_lsst_training.py \
             --max-candidates "${DISCOVER_LSST}" \
             --min-detections 2 \
             --output "${LSST_CSV}"
-        # Append to labels.csv (deduplicate by object_id)
-        if [ -f "${LSST_CSV}" ]; then
-            python3 -c "
-import csv, sys
-existing = set()
-with open('${LABELS}') as f:
-    reader = csv.DictReader(f)
-    existing_fields = reader.fieldnames
-    for row in reader:
-        existing.add(row['object_id'])
 
-new_count = 0
-with open('${LSST_CSV}') as f:
-    reader = csv.DictReader(f)
-with open('${LABELS}', 'a') as out:
-    with open('${LSST_CSV}') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['object_id'] not in existing:
-                # Write minimal row compatible with labels.csv
-                out.write(','.join([row.get(h, '') for h in existing_fields]) + '\n')
-                new_count += 1
-                existing.add(row['object_id'])
-print(f'Appended {new_count} new LSST objects to labels.csv')
-"
-        fi
+        echo "[1/8] Merging LSST candidates into labels.csv..."
+        python3 scripts/merge_labels.py \
+            --new "${LSST_CSV}" \
+            --labels "${LABELS}"
     else
         echo "[1/8] Skipping LSST discovery (use --discover-lsst N to enable)"
+    fi
+
+    # Always merge lsst_candidates.csv if it exists (from a previous run)
+    LSST_CSV="${DEBASS_ROOT}/data/lsst_candidates.csv"
+    if [ -f "${LSST_CSV}" ] && [ "${DISCOVER_LSST}" -eq 0 ] 2>/dev/null; then
+        echo "[1/8] Found existing lsst_candidates.csv — merging into labels..."
+        python3 scripts/merge_labels.py \
+            --new "${LSST_CSV}" \
+            --labels "${LABELS}"
     fi
 
     # Step 2: (Optional) Re-fetch ALeRCE to get BHRF/ATAT/Rubin classifiers
@@ -237,17 +225,38 @@ submit_or_echo() {
     fi
 }
 
-# Step 1: (Optional) Re-fetch ALeRCE
+# Step 0: Discover LSST + merge into labels (always runs if lsst_candidates.csv exists)
 HOLD_PREV=""
-if ${UPDATE_ALERCE}; then
-    JID1=$(submit_or_echo "alerce_refetch" $COMMON \
-        -pe omp 1 -l mem_per_core=4G -l h_rt=01:00:00 \
-        -N debass_v2_alerce_refetch -j y -o "logs/v2_alerce_refetch.\$JOB_ID.log" \
-        -b y "cd $DEBASS_ROOT && ${PYSETUP} && \
-              python3 scripts/backfill.py --broker alerce --from-labels ${LABELS} --parallel ${PARALLEL}")
-    echo "Step 1: ALeRCE re-fetch       → Job ${JID1}"
-    HOLD_PREV="-hold_jid ${JID1}"
+LSST_CSV="${DEBASS_ROOT}/data/lsst_candidates.csv"
+DISCOVER_CMD=""
+if [ "${DISCOVER_LSST}" -gt 0 ] 2>/dev/null; then
+    DISCOVER_CMD="python3 scripts/discover_lsst_training.py \
+        --max-candidates ${DISCOVER_LSST} --min-detections 2 \
+        --output ${LSST_CSV} && "
 fi
+# Always merge if lsst_candidates.csv exists (idempotent)
+JID0=$(submit_or_echo "discover_merge" $COMMON \
+    -pe omp 1 -l mem_per_core=4G -l h_rt=01:00:00 \
+    -N debass_v2_discover -j y -o "logs/v2_discover.\$JOB_ID.log" \
+    -b y "cd $DEBASS_ROOT && ${PYSETUP} && \
+          ${DISCOVER_CMD} \
+          if [ -f ${LSST_CSV} ]; then \
+              python3 scripts/merge_labels.py --new ${LSST_CSV} --labels ${LABELS}; \
+          else \
+              echo 'No lsst_candidates.csv — skipping merge'; \
+          fi")
+echo "Step 0: Discover + merge      → Job ${JID0}"
+HOLD_PREV="-hold_jid ${JID0}"
+
+# Step 1: Fetch lightcurves + backfill all brokers (for any new objects from merge)
+JID1=$(submit_or_echo "fetch_backfill" $COMMON ${HOLD_PREV} \
+    -pe omp 1 -l mem_per_core=4G -l h_rt=02:00:00 \
+    -N debass_v2_fetch -j y -o "logs/v2_fetch_backfill.\$JOB_ID.log" \
+    -b y "cd $DEBASS_ROOT && ${PYSETUP} && \
+          python3 scripts/fetch_lightcurves.py --from-labels ${LABELS} && \
+          python3 scripts/backfill.py --broker all --from-labels ${LABELS} --parallel ${PARALLEL}")
+echo "Step 1: Fetch + backfill      → Job ${JID1}  (hold on ${JID0})"
+HOLD_PREV="-hold_jid ${JID1}"
 
 # Step 2: (Optional) TNS update
 if ${UPDATE_TNS}; then
