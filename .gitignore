@@ -22,6 +22,9 @@ data/
 output/
 reports/
 
+# EXCEPTION: published_results/ IS tracked (curated for public release)
+!published_results/
+
 # Temporary / scratch
 tmp/
 
