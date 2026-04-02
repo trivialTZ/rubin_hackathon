@@ -4,11 +4,13 @@ Usage:
     python scripts/backfill.py --broker alerce --limit 50
     python scripts/backfill.py --broker fink --objects ZTF21abbzjeq ZTF20aajnksq
     python scripts/backfill.py --broker all --limit 20
+    python scripts/backfill.py --broker alerce --from-labels data/labels.csv --parallel 8
 """
 from __future__ import annotations
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -80,6 +82,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=5, help="Max objects when using default list")
     parser.add_argument("--association-csv", default=None, help="Optional LSST→ZTF association CSV")
     parser.add_argument("--bronze-dir", default="data/bronze", help="Bronze output directory")
+    parser.add_argument("--parallel", type=int, default=1,
+                        help="Number of parallel threads for API calls (default: 1 = sequential)")
     args = parser.parse_args()
 
     if args.objects:
@@ -99,32 +103,51 @@ def main() -> None:
         print(f"No adapter found for broker '{args.broker}'")
         sys.exit(1)
 
+    n_workers = max(1, args.parallel)
+
     for adapter in adapters:
         if adapter.phase > 1:
             print(f"[{adapter.name}] skipping (phase {adapter.phase} stub)")
             continue
+
+        def _do_fetch(oid: str):
+            out, reference = _fetch_with_reference(
+                adapter, oid, associations=associations,
+            )
+            if not out.availability:
+                status = out.raw_payload.get("reason", "unavailable")
+            else:
+                status = "fixture" if out.fixture_used else "live"
+            route = (
+                f"{oid} <- {reference.requested_object_id}"
+                if reference.requested_object_id and reference.requested_object_id != oid
+                else oid
+            )
+            kind = infer_identifier_kind(oid)
+            return out, f"  [{adapter.name}] {route}: {len(out.fields)} fields ({kind}, {status})"
+
         outputs = []
-        for oid in object_ids:
-            try:
-                out, reference = _fetch_with_reference(
-                    adapter,
-                    oid,
-                    associations=associations,
-                )
-                outputs.append(out)
-                if not out.availability:
-                    status = out.raw_payload.get("reason", "unavailable")
-                else:
-                    status = "fixture" if out.fixture_used else "live"
-                route = (
-                    f"{oid} <- {reference.requested_object_id}"
-                    if reference.requested_object_id and reference.requested_object_id != oid
-                    else oid
-                )
-                kind = infer_identifier_kind(oid)
-                print(f"  [{adapter.name}] {route}: {len(out.fields)} fields ({kind}, {status})")
-            except Exception as exc:
-                print(f"  [{adapter.name}] {oid}: ERROR — {exc}")
+        if n_workers > 1:
+            print(f"  [{adapter.name}] fetching {len(object_ids)} objects with {n_workers} threads...")
+            with ThreadPoolExecutor(max_workers=n_workers) as pool:
+                futures = {pool.submit(_do_fetch, oid): oid for oid in object_ids}
+                for future in as_completed(futures):
+                    oid = futures[future]
+                    try:
+                        out, msg = future.result()
+                        outputs.append(out)
+                        print(msg)
+                    except Exception as exc:
+                        print(f"  [{adapter.name}] {oid}: ERROR — {exc}")
+        else:
+            for oid in object_ids:
+                try:
+                    out, msg = _do_fetch(oid)
+                    outputs.append(out)
+                    print(msg)
+                except Exception as exc:
+                    print(f"  [{adapter.name}] {oid}: ERROR — {exc}")
+
         if outputs:
             path = write_bronze(outputs, bronze_dir=bronze_dir)
             print(f"  [{adapter.name}] wrote {len(outputs)} records → {path}")
