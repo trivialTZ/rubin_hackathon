@@ -14,6 +14,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from debass_meta.access import ALL_ADAPTERS
+from debass_meta.access.associations import (
+    apply_reference_metadata,
+    load_lsst_ztf_associations,
+    resolve_object_reference,
+)
+from debass_meta.access.identifiers import infer_identifier_kind
 from debass_meta.ingest.bronze import write_bronze
 
 # Default test objects (known ZTF transients)
@@ -35,12 +41,44 @@ def _load_from_labels(path: str) -> list[str]:
     return oids
 
 
+def _fetch_with_reference(
+    adapter,
+    object_id: str,
+    *,
+    associations: dict[str, dict[str, object]] | None = None,
+):
+    reference = resolve_object_reference(
+        object_id,
+        broker=adapter.name,
+        associations=associations,
+    )
+    if not reference.can_query:
+        out = adapter.unavailable_output(
+            object_id,
+            survey=reference.survey,
+            identifier_kind=reference.primary_identifier_kind,
+            reason=reference.resolution_reason or "unresolved_object_association",
+            raw_payload_extra={
+                "requested_object_id": reference.requested_object_id,
+                "associated_object_id": reference.associated_object_id,
+                "association_kind": reference.association_kind,
+                "association_source": reference.association_source,
+                "association_sep_arcsec": reference.association_sep_arcsec,
+            },
+        )
+        return apply_reference_metadata(out, reference), reference
+
+    out = adapter.fetch_object(reference.requested_object_id)
+    return apply_reference_metadata(out, reference), reference
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill broker outputs to bronze layer")
     parser.add_argument("--broker", default="all", help="Broker name or 'all'")
     parser.add_argument("--objects", nargs="+", default=None, help="Object IDs to fetch")
     parser.add_argument("--from-labels", default=None, help="CSV file with object_id column")
     parser.add_argument("--limit", type=int, default=5, help="Max objects when using default list")
+    parser.add_argument("--association-csv", default=None, help="Optional LSST→ZTF association CSV")
     parser.add_argument("--bronze-dir", default="data/bronze", help="Bronze output directory")
     args = parser.parse_args()
 
@@ -51,6 +89,7 @@ def main() -> None:
     else:
         object_ids = _DEFAULT_OBJECTS[: args.limit]
     bronze_dir = Path(args.bronze_dir)
+    associations = load_lsst_ztf_associations(Path(args.association_csv)) if args.association_csv else {}
 
     adapters = [
         cls() for cls in ALL_ADAPTERS
@@ -67,10 +106,23 @@ def main() -> None:
         outputs = []
         for oid in object_ids:
             try:
-                out = adapter.fetch_object(oid)
+                out, reference = _fetch_with_reference(
+                    adapter,
+                    oid,
+                    associations=associations,
+                )
                 outputs.append(out)
-                label = "(fixture)" if out.fixture_used else "(live)"
-                print(f"  [{adapter.name}] {oid}: {len(out.fields)} fields {label}")
+                if not out.availability:
+                    status = out.raw_payload.get("reason", "unavailable")
+                else:
+                    status = "fixture" if out.fixture_used else "live"
+                route = (
+                    f"{oid} <- {reference.requested_object_id}"
+                    if reference.requested_object_id and reference.requested_object_id != oid
+                    else oid
+                )
+                kind = infer_identifier_kind(oid)
+                print(f"  [{adapter.name}] {route}: {len(out.fields)} fields ({kind}, {status})")
             except Exception as exc:
                 print(f"  [{adapter.name}] {oid}: ERROR — {exc}")
         if outputs:

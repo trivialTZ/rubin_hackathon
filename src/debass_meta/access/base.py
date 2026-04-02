@@ -38,6 +38,14 @@ class BrokerOutput:
     source_endpoint: str | None = None
     request_params: dict[str, Any] = field(default_factory=dict)
     status_code: int | None = None
+    primary_object_id: str | None = None
+    requested_object_id: str | None = None
+    primary_identifier_kind: IdentifierKind | None = None
+    requested_identifier_kind: IdentifierKind | None = None
+    associated_object_id: str | None = None
+    association_kind: str | None = None
+    association_source: str | None = None
+    association_sep_arcsec: float | None = None
     # Per-field breakdowns (list of dicts with keys: field, raw_label_or_score,
     # semantic_type, canonical_projection)
     fields: list[dict[str, Any]] = field(default_factory=list)
@@ -109,6 +117,46 @@ class BrokerAdapter(ABC):
             survey=survey,
             source_endpoint=source_endpoint,
             request_params=request_params or {},
+            primary_object_id=object_id,
+            requested_object_id=object_id,
+            primary_identifier_kind=identifier_kind,
+            requested_identifier_kind=identifier_kind,
+            fields=[],
+            events=[],
+            availability=False,
+            fixture_used=False,
+        )
+
+    def unavailable_output(
+        self,
+        object_id: str,
+        *,
+        source_endpoint: str | None = None,
+        request_params: dict[str, Any] | None = None,
+        survey: str = "ZTF",
+        identifier_kind: IdentifierKind = "unknown",
+        reason: str = "unavailable",
+        raw_payload_extra: dict[str, Any] | None = None,
+    ) -> BrokerOutput:
+        raw_payload: dict[str, Any] = {
+            "reason": reason,
+            "identifier_kind": identifier_kind,
+        }
+        if raw_payload_extra:
+            raw_payload.update(raw_payload_extra)
+        return BrokerOutput(
+            broker=self.name,
+            object_id=object_id,
+            query_time=self.now(),
+            raw_payload=raw_payload,
+            semantic_type=self.semantic_type,
+            survey=survey,
+            source_endpoint=source_endpoint,
+            request_params=request_params or {},
+            primary_object_id=object_id,
+            requested_object_id=None,
+            primary_identifier_kind=identifier_kind,
+            requested_identifier_kind=None,
             fields=[],
             events=[],
             availability=False,

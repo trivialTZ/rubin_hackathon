@@ -25,6 +25,11 @@ def main() -> None:
     parser.add_argument("--truth-input", default=None, help="Optional curated truth CSV/parquet")
     parser.add_argument("--lightcurves-dir", default="data/lightcurves")
     parser.add_argument("--broker", default="all")
+    parser.add_argument(
+        "--association-csv",
+        default=None,
+        help="Optional LSST→ZTF association CSV for broker routing and lightcurve sourcing",
+    )
     parser.add_argument("--max-n-det", type=int, default=20)
     parser.add_argument("--skip-local-infer", action="store_true")
     parser.add_argument("--local-expert", default="all")
@@ -64,6 +69,11 @@ def main() -> None:
             str(labels_path),
             "--bronze-dir",
             str(bronze_dir),
+            *(
+                ["--association-csv", str(args.association_csv)]
+                if args.association_csv
+                else []
+            ),
         ],
         cwd=repo_root,
     )
@@ -117,11 +127,16 @@ def main() -> None:
             str(gold_dir),
             "--truth",
             str(truth_path),
-            "--objects-csv",
-            str(labels_path),
-            "--max-n-det",
-            str(args.max_n_det),
-        ],
+                "--objects-csv",
+                str(labels_path),
+                "--max-n-det",
+                str(args.max_n_det),
+                *(
+                    ["--association-csv", str(args.association_csv)]
+                    if args.association_csv
+                    else []
+                ),
+            ],
         cwd=repo_root,
     )
     _run(
@@ -156,6 +171,11 @@ def main() -> None:
                 "--allow-unsafe-latest-snapshot",
                 "--output",
                 str(gold_dir / "object_epoch_snapshots_scoring.parquet"),
+                *(
+                    ["--association-csv", str(args.association_csv)]
+                    if args.association_csv
+                    else []
+                ),
             ],
             cwd=repo_root,
         )

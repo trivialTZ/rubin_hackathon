@@ -1,1 +1,1 @@
-"""Script module namespace for test imports."""
+"""Repository script entry points and helper modules."""

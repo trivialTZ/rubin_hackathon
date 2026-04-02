@@ -25,6 +25,11 @@ def main() -> None:
     parser.add_argument("--gold-dir", default="data/gold")
     parser.add_argument("--truth", default="data/truth/object_truth.parquet")
     parser.add_argument("--objects-csv", default="data/labels.csv", help="Optional object filter")
+    parser.add_argument(
+        "--association-csv",
+        default=None,
+        help="Optional LSST→ZTF association CSV for lightcurve sourcing",
+    )
     parser.add_argument("--max-n-det", type=int, default=20)
     parser.add_argument("--exclude-unsafe-latest-snapshot", action="store_true",
                         help="Exclude broker snapshots marked latest_object_unsafe (e.g. ALeRCE API)")
@@ -44,6 +49,7 @@ def main() -> None:
         truth_path=Path(args.truth),
         max_n_det=args.max_n_det,
         object_ids=_load_object_ids(Path(args.objects_csv)) if args.objects_csv else None,
+        association_path=Path(args.association_csv) if args.association_csv else None,
         allow_unsafe_latest_snapshot=include_unsafe,
         output_path=Path(args.output) if args.output else None,
     )

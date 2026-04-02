@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from debass_meta.access.associations import load_lsst_ztf_associations, resolve_object_reference
+from debass_meta.access.identifiers import infer_identifier_kind
 from debass_meta.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
 from debass_meta.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
 
@@ -79,6 +81,7 @@ def build_object_epoch_snapshots(
     truth_path: Path = _TRUTH_PATH,
     max_n_det: int = 20,
     object_ids: list[str] | None = None,
+    association_path: Path | None = None,
     allow_unsafe_latest_snapshot: bool = False,
     output_path: Path | None = None,
 ) -> Path:
@@ -90,6 +93,7 @@ def build_object_epoch_snapshots(
 
     truth_lookup = _load_truth_lookup(truth_path)
     events_df = _load_all_event_rows(silver_dir)
+    associations = load_lsst_ztf_associations(association_path)
 
     # Pre-group events by (object_id, expert_key) for O(1) lookup
     # instead of O(N) full-DataFrame scan per query
@@ -102,15 +106,22 @@ def build_object_epoch_snapshots(
 
     rows: list[dict[str, Any]] = []
     object_filter = set(object_ids or [])
-    lc_paths = sorted(Path(lc_dir).glob("*.json"))
     if object_filter:
-        lc_paths = [p for p in lc_paths if p.stem in object_filter]
-    n_total = len(lc_paths)
+        object_queue = sorted(object_filter)
+    else:
+        object_queue = sorted(path.stem for path in Path(lc_dir).glob("*.json"))
+    n_total = len(object_queue)
 
-    for i, lc_path in enumerate(lc_paths):
+    for i, object_id in enumerate(object_queue):
         if i % 1000 == 0:
             print(f"  snapshot: {i:,}/{n_total:,} objects ...", flush=True)
-        object_id = lc_path.stem
+        lc_path, lightcurve_source = _resolve_lightcurve_path(
+            Path(lc_dir),
+            object_id=object_id,
+            associations=associations,
+        )
+        if lc_path is None:
+            continue
         detections = _load_lightcurve(lc_path)
         if not detections:
             continue
@@ -126,6 +137,11 @@ def build_object_epoch_snapshots(
                 "object_id": object_id,
                 "n_det": n_det,
                 "alert_jd": alert_jd,
+                "lightcurve_source_object_id": lightcurve_source["object_id"],
+                "lightcurve_source_identifier_kind": lightcurve_source["identifier_kind"],
+                "lightcurve_association_kind": lightcurve_source["association_kind"],
+                "lightcurve_association_source": lightcurve_source["association_source"],
+                "lightcurve_association_sep_arcsec": lightcurve_source["association_sep_arcsec"],
             }
             for feature_name in FEATURE_NAMES:
                 base_row[feature_name] = feats.get(feature_name)
@@ -373,6 +389,65 @@ def _load_lightcurve(path: Path) -> list[dict[str, Any]]:
             return json.load(fh)
     except Exception:
         return []
+
+
+def _resolve_lightcurve_path(
+    lc_dir: Path,
+    *,
+    object_id: str,
+    associations: dict[str, dict[str, object]] | None = None,
+) -> tuple[Path | None, dict[str, Any]]:
+    reference = resolve_object_reference(
+        object_id,
+        broker="alerce_history",
+        associations=associations,
+    )
+    if reference.requested_object_id is not None and reference.requested_object_id != object_id:
+        requested_path = lc_dir / f"{reference.requested_object_id}.json"
+        if requested_path.exists():
+            return requested_path, {
+                "object_id": reference.requested_object_id,
+                "identifier_kind": reference.requested_identifier_kind,
+                "association_kind": reference.association_kind,
+                "association_source": reference.association_source,
+                "association_sep_arcsec": reference.association_sep_arcsec,
+            }
+
+    direct_path = lc_dir / f"{object_id}.json"
+    if direct_path.exists():
+        return direct_path, {
+            "object_id": object_id,
+            "identifier_kind": infer_identifier_kind(object_id),
+            "association_kind": None,
+            "association_source": None,
+            "association_sep_arcsec": None,
+        }
+
+    if not reference.can_query:
+        return None, {
+            "object_id": object_id,
+            "identifier_kind": infer_identifier_kind(object_id),
+            "association_kind": None,
+            "association_source": None,
+            "association_sep_arcsec": None,
+        }
+
+    if reference.requested_object_id is None:
+        return None, {
+            "object_id": object_id,
+            "identifier_kind": infer_identifier_kind(object_id),
+            "association_kind": reference.association_kind,
+            "association_source": reference.association_source,
+            "association_sep_arcsec": reference.association_sep_arcsec,
+        }
+
+    return None, {
+        "object_id": reference.requested_object_id,
+        "identifier_kind": reference.requested_identifier_kind,
+        "association_kind": reference.association_kind,
+        "association_source": reference.association_source,
+        "association_sep_arcsec": reference.association_sep_arcsec,
+    }
 
 
 def _to_jd(value: float) -> float:

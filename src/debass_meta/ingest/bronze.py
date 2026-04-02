@@ -41,9 +41,31 @@ def write_bronze(
 
     rows = []
     for o in outputs:
+        has_association_metadata = any(
+            value is not None
+            for value in (
+                o.primary_object_id,
+                o.primary_identifier_kind,
+                o.associated_object_id,
+                o.association_kind,
+                o.association_source,
+                o.association_sep_arcsec,
+            )
+        )
+        requested_object_id = o.requested_object_id
+        if requested_object_id is None and not has_association_metadata:
+            requested_object_id = o.object_id
         rows.append({
             "broker": o.broker,
             "object_id": o.object_id,
+            "primary_object_id": o.primary_object_id or o.object_id,
+            "requested_object_id": requested_object_id,
+            "primary_identifier_kind": o.primary_identifier_kind,
+            "requested_identifier_kind": o.requested_identifier_kind,
+            "associated_object_id": o.associated_object_id,
+            "association_kind": o.association_kind,
+            "association_source": o.association_source,
+            "association_sep_arcsec": o.association_sep_arcsec,
             "query_time": o.query_time,
             "survey": o.survey,
             "source_endpoint": o.source_endpoint,

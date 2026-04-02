@@ -56,6 +56,8 @@ def bronze_to_silver(
     for bf in bronze_files:
         df = pd.read_parquet(bf)
         for _, row in df.iterrows():
+            requested_object_id = row["requested_object_id"] if "requested_object_id" in row.index else row["object_id"]
+            primary_object_id = row["primary_object_id"] if "primary_object_id" in row.index else row["object_id"]
             raw_payload = json.loads(row["raw_payload"]) if isinstance(row["raw_payload"], str) else row["raw_payload"]
             events = raw_payload.get("_events") or raw_payload.get("_fields", [])
             if isinstance(row.get("events_json"), str) and not events:
@@ -77,6 +79,14 @@ def bronze_to_silver(
 
                 event_row = {
                     "object_id": row["object_id"],
+                    "primary_object_id": primary_object_id,
+                    "requested_object_id": requested_object_id,
+                    "primary_identifier_kind": row.get("primary_identifier_kind"),
+                    "requested_identifier_kind": row.get("requested_identifier_kind"),
+                    "associated_object_id": row.get("associated_object_id"),
+                    "association_kind": row.get("association_kind"),
+                    "association_source": row.get("association_source"),
+                    "association_sep_arcsec": row.get("association_sep_arcsec"),
                     "broker": row["broker"],
                     "classifier": event.get("classifier"),
                     "classifier_version": event.get("classifier_version"),
@@ -102,6 +112,14 @@ def bronze_to_silver(
                             "broker": row["broker"],
                             "source_endpoint": row.get("source_endpoint"),
                             "request_params_json": row.get("request_params_json"),
+                            "primary_object_id": primary_object_id,
+                            "requested_object_id": requested_object_id,
+                            "primary_identifier_kind": row.get("primary_identifier_kind"),
+                            "requested_identifier_kind": row.get("requested_identifier_kind"),
+                            "associated_object_id": row.get("associated_object_id"),
+                            "association_kind": row.get("association_kind"),
+                            "association_source": row.get("association_source"),
+                            "association_sep_arcsec": row.get("association_sep_arcsec"),
                         },
                         sort_keys=True,
                     ),
