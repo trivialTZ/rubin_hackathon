@@ -1,0 +1,65 @@
+========================================================================
+DEBASS Trust-Aware Meta-Classifier — Results Summary
+========================================================================
+
+Objects:      6958
+Epoch rows:   111597
+n_det range:  1 – 20
+
+── Truth Labels ──
+  spectroscopic           508 objects
+  weak                   6450 objects
+
+  nonIa_snlike           3241 objects
+  other                   575 objects
+  snia                   3142 objects
+
+── Expert Trust Models (test-set performance) ──
+  fink/rf_ia                                AUC=0.887  Brier=0.1332  (n_test=19573)
+  fink/snn                                  AUC=0.939  Brier=0.0877  (n_test=19573)
+  supernnova                                AUC=0.909  Brier=0.1210  (n_test=21931)
+
+── Follow-Up Recommendation Model ──
+  ROC-AUC:       0.914
+  Brier:         0.11646826917543074
+  Positive rate: 0.43919565911267155
+  Test rows:     21931
+
+── Expert Coverage at Key Epochs ──
+  n_det = 3:
+    fink/snn                                 5626/6739  ( 83.5%)  trust=0.112
+    fink/rf_ia                               5626/6739  ( 83.5%)  trust=0.461
+    parsnip                                     0/6739  (  0.0%)  trust=n/a
+    supernnova                               6739/6739  (100.0%)  trust=0.481
+    alerce/lc_classifier_transient              0/6739  (  0.0%)  trust=n/a
+    alerce/stamp_classifier                     0/6739  (  0.0%)  trust=n/a
+    lasair/sherlock                             0/6739  (  0.0%)  trust=n/a
+
+  n_det = 5:
+    fink/snn                                 5879/6493  ( 90.5%)  trust=0.172
+    fink/rf_ia                               5879/6493  ( 90.5%)  trust=0.467
+    parsnip                                     0/6493  (  0.0%)  trust=n/a
+    supernnova                               6493/6493  (100.0%)  trust=0.474
+    alerce/lc_classifier_transient              0/6493  (  0.0%)  trust=n/a
+    alerce/stamp_classifier                     0/6493  (  0.0%)  trust=n/a
+    lasair/sherlock                             0/6493  (  0.0%)  trust=n/a
+
+  n_det = 10:
+    fink/snn                                 5410/5705  ( 94.8%)  trust=0.357
+    fink/rf_ia                               5410/5705  ( 94.8%)  trust=0.524
+    parsnip                                     0/5705  (  0.0%)  trust=n/a
+    supernnova                               5705/5705  (100.0%)  trust=0.464
+    alerce/lc_classifier_transient              0/5705  (  0.0%)  trust=n/a
+    alerce/stamp_classifier                     0/5705  (  0.0%)  trust=n/a
+    lasair/sherlock                             0/5705  (  0.0%)  trust=n/a
+
+── Science Significance ──
+This pipeline demonstrates trust-aware fusion of heterogeneous
+transient classifiers for Rubin/LSST spectroscopic follow-up
+prioritisation. Key innovations:
+  1. Per-expert, per-epoch trust calibration (q_e,t)
+  2. No-leakage temporal snapshots (features at n_det=k use only k detections)
+  3. Native NaN handling — missing broker scores are not imputed
+  4. Three-way grouped split prevents object-level data leakage
+  5. Works with 3–5 detections — actionable before peak brightness
+

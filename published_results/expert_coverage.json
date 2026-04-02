@@ -1,0 +1,342 @@
+{
+  "1": {
+    "n_objects": 6958,
+    "experts_available": {
+      "fink/snn": 3823,
+      "fink/rf_ia": 3823,
+      "parsnip": 0,
+      "supernnova": 6958,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.1233,
+      "fink/rf_ia": 0.4647,
+      "supernnova": 0.4918
+    }
+  },
+  "2": {
+    "n_objects": 6880,
+    "experts_available": {
+      "fink/snn": 5083,
+      "fink/rf_ia": 5083,
+      "parsnip": 0,
+      "supernnova": 6880,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.102,
+      "fink/rf_ia": 0.4748,
+      "supernnova": 0.4752
+    }
+  },
+  "3": {
+    "n_objects": 6739,
+    "experts_available": {
+      "fink/snn": 5626,
+      "fink/rf_ia": 5626,
+      "parsnip": 0,
+      "supernnova": 6739,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.1123,
+      "fink/rf_ia": 0.461,
+      "supernnova": 0.4809
+    }
+  },
+  "4": {
+    "n_objects": 6616,
+    "experts_available": {
+      "fink/snn": 5827,
+      "fink/rf_ia": 5827,
+      "parsnip": 0,
+      "supernnova": 6616,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.1404,
+      "fink/rf_ia": 0.4632,
+      "supernnova": 0.477
+    }
+  },
+  "5": {
+    "n_objects": 6493,
+    "experts_available": {
+      "fink/snn": 5879,
+      "fink/rf_ia": 5879,
+      "parsnip": 0,
+      "supernnova": 6493,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.1715,
+      "fink/rf_ia": 0.4665,
+      "supernnova": 0.4736
+    }
+  },
+  "6": {
+    "n_objects": 6330,
+    "experts_available": {
+      "fink/snn": 5840,
+      "fink/rf_ia": 5840,
+      "parsnip": 0,
+      "supernnova": 6330,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.2363,
+      "fink/rf_ia": 0.4687,
+      "supernnova": 0.4723
+    }
+  },
+  "7": {
+    "n_objects": 6183,
+    "experts_available": {
+      "fink/snn": 5752,
+      "fink/rf_ia": 5752,
+      "parsnip": 0,
+      "supernnova": 6183,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.2735,
+      "fink/rf_ia": 0.4698,
+      "supernnova": 0.4717
+    }
+  },
+  "8": {
+    "n_objects": 6028,
+    "experts_available": {
+      "fink/snn": 5652,
+      "fink/rf_ia": 5652,
+      "parsnip": 0,
+      "supernnova": 6028,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.314,
+      "fink/rf_ia": 0.4944,
+      "supernnova": 0.4701
+    }
+  },
+  "9": {
+    "n_objects": 5853,
+    "experts_available": {
+      "fink/snn": 5518,
+      "fink/rf_ia": 5518,
+      "parsnip": 0,
+      "supernnova": 5853,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.3436,
+      "fink/rf_ia": 0.5143,
+      "supernnova": 0.4655
+    }
+  },
+  "10": {
+    "n_objects": 5705,
+    "experts_available": {
+      "fink/snn": 5410,
+      "fink/rf_ia": 5410,
+      "parsnip": 0,
+      "supernnova": 5705,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.3568,
+      "fink/rf_ia": 0.5244,
+      "supernnova": 0.4642
+    }
+  },
+  "11": {
+    "n_objects": 5513,
+    "experts_available": {
+      "fink/snn": 5254,
+      "fink/rf_ia": 5254,
+      "parsnip": 0,
+      "supernnova": 5513,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.3782,
+      "fink/rf_ia": 0.5265,
+      "supernnova": 0.4618
+    }
+  },
+  "12": {
+    "n_objects": 5339,
+    "experts_available": {
+      "fink/snn": 5098,
+      "fink/rf_ia": 5098,
+      "parsnip": 0,
+      "supernnova": 5339,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.3895,
+      "fink/rf_ia": 0.5311,
+      "supernnova": 0.457
+    }
+  },
+  "13": {
+    "n_objects": 5172,
+    "experts_available": {
+      "fink/snn": 4950,
+      "fink/rf_ia": 4950,
+      "parsnip": 0,
+      "supernnova": 5172,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4038,
+      "fink/rf_ia": 0.5287,
+      "supernnova": 0.4518
+    }
+  },
+  "14": {
+    "n_objects": 5017,
+    "experts_available": {
+      "fink/snn": 4810,
+      "fink/rf_ia": 4810,
+      "parsnip": 0,
+      "supernnova": 5017,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4086,
+      "fink/rf_ia": 0.5264,
+      "supernnova": 0.4479
+    }
+  },
+  "15": {
+    "n_objects": 4857,
+    "experts_available": {
+      "fink/snn": 4661,
+      "fink/rf_ia": 4661,
+      "parsnip": 0,
+      "supernnova": 4857,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4152,
+      "fink/rf_ia": 0.5236,
+      "supernnova": 0.4447
+    }
+  },
+  "16": {
+    "n_objects": 4706,
+    "experts_available": {
+      "fink/snn": 4522,
+      "fink/rf_ia": 4522,
+      "parsnip": 0,
+      "supernnova": 4706,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4216,
+      "fink/rf_ia": 0.5224,
+      "supernnova": 0.4417
+    }
+  },
+  "17": {
+    "n_objects": 4538,
+    "experts_available": {
+      "fink/snn": 4371,
+      "fink/rf_ia": 4371,
+      "parsnip": 0,
+      "supernnova": 4538,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4267,
+      "fink/rf_ia": 0.5189,
+      "supernnova": 0.44
+    }
+  },
+  "18": {
+    "n_objects": 4378,
+    "experts_available": {
+      "fink/snn": 4226,
+      "fink/rf_ia": 4226,
+      "parsnip": 0,
+      "supernnova": 4378,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4294,
+      "fink/rf_ia": 0.5179,
+      "supernnova": 0.4359
+    }
+  },
+  "19": {
+    "n_objects": 4229,
+    "experts_available": {
+      "fink/snn": 4085,
+      "fink/rf_ia": 4085,
+      "parsnip": 0,
+      "supernnova": 4229,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4348,
+      "fink/rf_ia": 0.5187,
+      "supernnova": 0.4307
+    }
+  },
+  "20": {
+    "n_objects": 4063,
+    "experts_available": {
+      "fink/snn": 3926,
+      "fink/rf_ia": 3926,
+      "parsnip": 0,
+      "supernnova": 4063,
+      "alerce/lc_classifier_transient": 0,
+      "alerce/stamp_classifier": 0,
+      "lasair/sherlock": 0
+    },
+    "mean_trust": {
+      "fink/snn": 0.4375,
+      "fink/rf_ia": 0.5178,
+      "supernnova": 0.4257
+    }
+  }
+}

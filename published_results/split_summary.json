@@ -1,0 +1,12 @@
+{
+  "n_train": 4175,
+  "n_cal": 1391,
+  "n_test": 1392,
+  "experts_trained": [
+    "fink/rf_ia",
+    "fink/snn",
+    "supernnova"
+  ],
+  "contains_weak_labels": true,
+  "allow_unsafe_alerce": false
+}

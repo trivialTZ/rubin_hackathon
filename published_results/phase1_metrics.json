@@ -1,0 +1,119 @@
+{
+  "expert_trust": {
+    "fink/rf_ia": {
+      "n_rows": 19573,
+      "positive_rate": 0.5019159045624074,
+      "brier": 0.13319844058738325,
+      "roc_auc": 0.8869030259263206,
+      "n_train_rows": 60512,
+      "n_cal_rows": 20228,
+      "n_test_rows": 19573
+    },
+    "fink/snn": {
+      "n_rows": 19573,
+      "positive_rate": 0.2649568282838604,
+      "brier": 0.0876680103437594,
+      "roc_auc": 0.9387301858592346,
+      "n_train_rows": 60512,
+      "n_cal_rows": 20228,
+      "n_test_rows": 19573
+    },
+    "supernnova": {
+      "n_rows": 21931,
+      "positive_rate": 0.43919565911267155,
+      "brier": 0.12095336241173955,
+      "roc_auc": 0.9086817014267158,
+      "n_train_rows": 67371,
+      "n_cal_rows": 22295,
+      "n_test_rows": 21931
+    }
+  },
+  "followup": {
+    "n_rows": 21931,
+    "positive_rate": 0.43919565911267155,
+    "brier": 0.11646826917543074,
+    "roc_auc": 0.9137045958143154
+  },
+  "baseline_early_meta": {
+    "all_epochs": {
+      "n_val": 1475,
+      "macro_f1": 0.9674,
+      "bal_acc": 0.9558,
+      "nll": 0.0993,
+      "brier": 0.0547,
+      "probabilities": "calibrated"
+    },
+    "early_epochs": {
+      "n_val": 487,
+      "macro_f1": 0.9842,
+      "bal_acc": 0.9826,
+      "nll": 0.0756,
+      "brier": 0.0398,
+      "probabilities": "calibrated",
+      "n_det_max": 5
+    },
+    "raw_all_epochs": {
+      "n_val": 1475,
+      "macro_f1": 0.9674,
+      "bal_acc": 0.9558,
+      "nll": 0.2048,
+      "brier": 0.0645,
+      "probabilities": "raw"
+    },
+    "raw_early_epochs": {
+      "n_val": 487,
+      "macro_f1": 0.9842,
+      "bal_acc": 0.9826,
+      "nll": 0.1549,
+      "brier": 0.0438,
+      "probabilities": "raw",
+      "n_det_max": 5
+    },
+    "calibration": {
+      "enabled": true,
+      "method": "temperature_scaling",
+      "temperature": 2.886521,
+      "fit_split": "validation",
+      "note": "Calibrator is fit on the held-out validation split used above; calibrated validation metrics are optimistic and should be refreshed on a new hold-out set for science reporting."
+    },
+    "training_weights": {
+      "n_objects": 591,
+      "class_object_counts": {
+        "nonIa_snlike": 212,
+        "other": 368,
+        "snia": 11
+      },
+      "class_weights": {
+        "nonIa_snlike": 0.9292452830188679,
+        "other": 0.5353260869565217,
+        "snia": 17.90909090909091
+      },
+      "min_weight": 0.27241847826086957,
+      "mean_weight": 1.0000000000000002,
+      "max_weight": 9.113636363636365
+    },
+    "train_val_split": {
+      "train_objects": 591,
+      "val_objects": 148,
+      "val_frac": 0.2,
+      "max_n_det": 20
+    }
+  },
+  "dataset": {
+    "n_objects": 6958,
+    "n_epoch_rows": 111597,
+    "n_det_range": [
+      1,
+      20
+    ],
+    "truth_quality": {
+      "weak": 6450,
+      "spectroscopic": 508
+    },
+    "class_distribution": {
+      "nonIa_snlike": 3241,
+      "snia": 3142,
+      "other": 575
+    }
+  }
+}
