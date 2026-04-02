@@ -1,7 +1,10 @@
-"""Train a local ALeRCE-style light-curve classifier (balanced random forest).
+"""Train a local ALeRCE-style light-curve classifier (LightGBM).
 
 Uses our cached lightcurves + TNS spectroscopic labels to produce a model
 that replaces the ALeRCE API LC classification scores.  Runs on CPU.
+
+Consistent with the rest of the DEBASS pipeline: LightGBM with native NaN
+handling, regularisation, is_unbalance=True for class-weight correction.
 
 Usage:
     python scripts/train_alerce_lc.py
@@ -227,27 +230,28 @@ def main() -> None:
     print(f"  Train: {len(X_train)} samples ({len(unique_oids) - n_val} objects)")
     print(f"  Val:   {len(X_val)} samples ({n_val} objects)")
 
-    # Train balanced random forest
-    try:
-        from imblearn.ensemble import BalancedRandomForestClassifier
-        clf = BalancedRandomForestClassifier(
-            n_estimators=args.n_estimators,
-            random_state=args.seed,
-            n_jobs=args.n_jobs,
-            max_features="sqrt",
-        )
-        print(f"\nTraining BalancedRandomForestClassifier (n_estimators={args.n_estimators})...")
-    except ImportError:
-        from sklearn.ensemble import RandomForestClassifier
-        print("  imbalanced-learn not installed — using sklearn RandomForestClassifier with class_weight='balanced'")
-        clf = RandomForestClassifier(
-            n_estimators=args.n_estimators,
-            random_state=args.seed,
-            n_jobs=args.n_jobs,
-            class_weight="balanced",
-            max_features="sqrt",
-        )
-        print(f"\nTraining RandomForestClassifier (n_estimators={args.n_estimators})...")
+    # Train LightGBM multiclass classifier — consistent with all other
+    # DEBASS models (native NaN handling, regularisation, leaf-wise boosting).
+    from lightgbm import LGBMClassifier
+
+    clf = LGBMClassifier(
+        objective="multiclass",
+        num_class=len(set(y_train)),
+        n_estimators=args.n_estimators,
+        learning_rate=0.05,
+        num_leaves=31,
+        min_child_samples=5,
+        feature_fraction=0.8,
+        bagging_fraction=0.8,
+        bagging_freq=1,
+        reg_alpha=0.1,
+        reg_lambda=0.1,
+        is_unbalance=True,
+        random_state=args.seed,
+        n_jobs=args.n_jobs,
+        verbose=-1,
+    )
+    print(f"\nTraining LGBMClassifier (n_estimators={args.n_estimators})...")
 
     clf.fit(X_train, y_train)
 

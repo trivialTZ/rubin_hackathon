@@ -1,7 +1,9 @@
 """ALeRCE light-curve classifier — local expert wrapper.
 
 Replaces the ALeRCE API for LC classification scores.  Runs on CPU
-(balanced random forest) so it slots into the CPU pipeline stage.
+(LightGBM multiclass) so it slots into the CPU pipeline stage.
+Consistent with all other DEBASS models: native NaN handling,
+regularisation, is_unbalance=True.
 
 Two feature-extraction tiers:
   1. **Full mode** — uses ``lc_classifier`` (turbofats + P4J + mhps)
@@ -11,7 +13,7 @@ Two feature-extraction tiers:
      not installed.
 
 Trained model artifact:
-    artifacts/local_experts/alerce_lc/model.pkl   (sklearn / imbalanced-learn BRF)
+    artifacts/local_experts/alerce_lc/model.pkl   (LightGBM via train_alerce_lc.py)
 
 Training script: ``scripts/train_alerce_lc.py``
 """
