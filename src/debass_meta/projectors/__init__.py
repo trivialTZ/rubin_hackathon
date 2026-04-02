@@ -1,4 +1,5 @@
 from .base import (
+    ALL_EXPERT_KEYS,
     EXPERT_REGISTRY,
     PHASE1_EXPERT_KEYS,
     collect_projected_columns,
@@ -8,6 +9,7 @@ from .base import (
 )
 
 __all__ = [
+    "ALL_EXPERT_KEYS",
     "EXPERT_REGISTRY",
     "PHASE1_EXPERT_KEYS",
     "collect_projected_columns",

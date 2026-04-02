@@ -1,10 +1,16 @@
 """ALeRCE broker adapter.
 
-Uses the public alerce Python client. No credentials required.
-Returns explicit multiclass posteriors from both stamp and LC classifiers.
+Uses the public alerce Python client (v2.3+). Supports both ZTF and LSST surveys
+via the ``survey`` parameter.
+
+Classifiers returned depend on the object era and survey:
+  ZTF (older objects):  lc_classifier_transient, stamp_classifier
+  ZTF (newer objects):  lc_classifier_BHRF_forced_phot_transient, ATAT, stamp_classifier_2025_beta
+  LSST:                 stamp_classifier_rubin_beta (+ LC classifiers when available)
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,10 +18,6 @@ from .base import BrokerAdapter, BrokerOutput, SemanticType
 from .identifiers import infer_identifier_kind
 
 _FIXTURE_DIR = Path("fixtures/raw/alerce")
-
-# Canonical probability fields from ALeRCE LC classifier
-_LC_CLASSES = ["SNIa", "SNIbc", "SNII", "SLSN", "AGN", "VS", "asteroid", "bogus"]
-_STAMP_CLASSES = ["AGN", "SN", "VS", "asteroid", "bogus"]
 
 
 class AlerceAdapter(BrokerAdapter):
@@ -27,8 +29,13 @@ class AlerceAdapter(BrokerAdapter):
         try:
             from alerce.core import Alerce
             self._client = Alerce()
+            # Check if client supports survey param (v2.1+)
+            import inspect
+            sig = inspect.signature(self._client.query_probabilities)
+            self._has_survey_param = "survey" in sig.parameters
         except ImportError:
             self._client = None
+            self._has_survey_param = False
 
     # ------------------------------------------------------------------ #
     # Interface                                                            #
@@ -38,16 +45,23 @@ class AlerceAdapter(BrokerAdapter):
         if self._client is None:
             return {"broker": self.name, "status": "unavailable", "reason": "alerce not installed"}
         try:
-            # Query a known ZTF object to verify connectivity
-            result = self._client.query_objects(format="pandas", page=1, page_size=1)
+            kwargs: dict[str, Any] = {"format": "pandas", "page": 1, "page_size": 1}
+            if self._has_survey_param:
+                kwargs["survey"] = "ztf"
+            result = self._client.query_objects(**kwargs)
             ok = result is not None and len(result) > 0
-            return {"broker": self.name, "status": "ok" if ok else "empty", "rows": len(result) if result is not None else 0}
+            return {"broker": self.name, "status": "ok" if ok else "empty",
+                    "rows": len(result) if result is not None else 0,
+                    "lsst_support": self._has_survey_param}
         except Exception as exc:
             return {"broker": self.name, "status": "error", "reason": str(exc)}
 
     def fetch_object(self, object_id: str) -> BrokerOutput:
         identifier_kind = infer_identifier_kind(object_id)
-        if identifier_kind == "lsst_dia_object_id":
+        is_lsst = identifier_kind == "lsst_dia_object_id"
+
+        # LSST objects require survey param (alerce >=2.1)
+        if is_lsst and not self._has_survey_param:
             return self.unsupported_identifier_output(
                 object_id,
                 source_endpoint="alerce.query_probabilities",
@@ -55,9 +69,10 @@ class AlerceAdapter(BrokerAdapter):
                 survey="LSST",
                 identifier_kind=identifier_kind,
                 expected_identifier_kind="ztf_object_id",
-                reason="unsupported_identifier_for_broker",
+                reason="alerce_client_too_old_for_lsst (need >=2.1.0)",
             )
 
+        survey_str = "lsst" if is_lsst else "ztf"
         fixture_path = _FIXTURE_DIR / f"{object_id}_object.json"
         raw: dict[str, Any] = {}
         fixture_used = False
@@ -65,7 +80,10 @@ class AlerceAdapter(BrokerAdapter):
 
         if self._client is not None:
             try:
-                probs_df = self._client.query_probabilities(oid=object_id, format="pandas")
+                kwargs: dict[str, Any] = {"oid": object_id, "format": "pandas"}
+                if self._has_survey_param:
+                    kwargs["survey"] = survey_str
+                probs_df = self._client.query_probabilities(**kwargs)
                 probs = probs_df.to_dict(orient="records")
                 raw = {"probabilities": probs}
                 self.save_fixture(raw, fixture_path)
@@ -87,9 +105,9 @@ class AlerceAdapter(BrokerAdapter):
             query_time=self.now(),
             raw_payload=raw,
             semantic_type=self.semantic_type,
-            survey="ZTF",
+            survey="LSST" if is_lsst else "ZTF",
             source_endpoint="alerce.query_probabilities",
-            request_params={"oid": object_id},
+            request_params={"oid": object_id, "survey": survey_str},
             status_code=status_code,
             fields=fields,
             events=fields,
@@ -98,12 +116,17 @@ class AlerceAdapter(BrokerAdapter):
         )
 
     def fetch_lightcurve(self, object_id: str) -> dict[str, Any]:
-        if infer_identifier_kind(object_id) == "lsst_dia_object_id":
-            return {}
+        identifier_kind = infer_identifier_kind(object_id)
+        is_lsst = identifier_kind == "lsst_dia_object_id"
+        survey_str = "lsst" if is_lsst else "ztf"
+
         fixture_path = _FIXTURE_DIR / f"{object_id}_lc.json"
         if self._client is not None:
             try:
-                lc = self._client.query_lightcurve(oid=object_id, format="json")
+                kwargs: dict[str, Any] = {"oid": object_id, "format": "json"}
+                if self._has_survey_param:
+                    kwargs["survey"] = survey_str
+                lc = self._client.query_lightcurve(**kwargs)
                 self.save_fixture(lc, fixture_path)
                 return lc
             except Exception:

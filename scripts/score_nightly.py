@@ -14,7 +14,7 @@ import pandas as pd
 
 from debass_meta.models.expert_trust import ExpertTrustArtifact
 from debass_meta.models.followup import FollowupArtifact
-from debass_meta.projectors import PHASE1_EXPERT_KEYS, sanitize_expert_key
+from debass_meta.projectors import ALL_EXPERT_KEYS, PHASE1_EXPERT_KEYS, sanitize_expert_key
 
 
 def _clean_scalar(value):
@@ -69,7 +69,7 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
     }
     row_df = pd.DataFrame([row.to_dict()])
 
-    for expert_key in PHASE1_EXPERT_KEYS:
+    for expert_key in ALL_EXPERT_KEYS:
         san = sanitize_expert_key(expert_key)
         available = bool(row.get(f"avail__{san}", 0))
         block = {
@@ -114,7 +114,7 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
     tw_p_snia: list[float] = []
     tw_p_nonia: list[float] = []
     tw_p_other: list[float] = []
-    for expert_key in PHASE1_EXPERT_KEYS:
+    for expert_key in ALL_EXPERT_KEYS:
         block = payload["expert_confidence"].get(expert_key, {})
         if not block.get("available"):
             continue

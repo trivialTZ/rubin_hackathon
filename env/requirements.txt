@@ -4,8 +4,8 @@
 #   source ~/debass_meta_env/bin/activate
 #   pip install -r env/requirements.txt
 
-# Broker clients
-alerce>=2.3.0,<3
+# Broker clients (alerce >=2.1 for LSST survey param; requires Python >=3.10)
+alerce>=2.1.0,<3
 fink-client>=7.0
 lasair>=0.1.0,<1
 requests>=2.31

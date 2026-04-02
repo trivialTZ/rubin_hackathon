@@ -9,18 +9,40 @@ from typing import Any
 #                 "lsst" = only applies to LSST objects
 #                 "any"  = applies to any survey
 EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
+    # --- Fink (ZTF alerts only for now) ---
     "fink/snn":                        ("ztf",  "fink"),
     "fink/rf_ia":                      ("ztf",  "fink"),
+    # --- Local experts (any survey) ---
     "parsnip":                         ("any",  "local"),
     "supernnova":                      ("any",  "local"),
     "alerce_lc":                       ("any",  "local"),
+    # --- ALeRCE legacy (ZTF, older objects) ---
     "alerce/lc_classifier_transient":  ("ztf",  "alerce"),
     "alerce/stamp_classifier":         ("ztf",  "alerce"),
+    # --- ALeRCE BHRF/ATAT (ZTF, newer objects with forced photometry) ---
+    "alerce/lc_classifier_BHRF_forced_phot_transient": ("ztf", "alerce"),
+    "alerce/LC_classifier_ATAT_forced_phot(beta)":     ("ztf", "alerce"),
+    "alerce/stamp_classifier_2025_beta":               ("ztf", "alerce"),
+    # --- ALeRCE Rubin/LSST classifiers ---
+    "alerce/stamp_classifier_rubin_beta":              ("lsst", "alerce"),
+    # --- Lasair (both surveys) ---
     "lasair/sherlock":                 ("any",  "lasair"),
 }
 
-# Backward-compatible flat list (order matches original PHASE1_EXPERT_KEYS)
-PHASE1_EXPERT_KEYS = list(EXPERT_REGISTRY.keys())
+# Backward-compatible flat list — Phase 1 experts (original 8)
+PHASE1_EXPERT_KEYS = [
+    "fink/snn",
+    "fink/rf_ia",
+    "parsnip",
+    "supernnova",
+    "alerce_lc",
+    "alerce/lc_classifier_transient",
+    "alerce/stamp_classifier",
+    "lasair/sherlock",
+]
+
+# All registered experts (Phase 1 + new ALeRCE classifiers)
+ALL_EXPERT_KEYS = list(EXPERT_REGISTRY.keys())
 
 
 def get_expert_keys(survey: str | None = None) -> list[str]:
