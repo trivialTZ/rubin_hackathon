@@ -8,7 +8,7 @@ from typing import Any
 from debass_meta.access.associations import load_lsst_ztf_associations, resolve_object_reference
 from debass_meta.access.identifiers import infer_identifier_kind
 from debass_meta.features.lightcurve import FEATURE_NAMES, extract_features_at_each_epoch
-from debass_meta.projectors import PHASE1_EXPERT_KEYS, project_expert_events, sanitize_expert_key
+from debass_meta.projectors import PHASE1_EXPERT_KEYS, get_expert_keys, project_expert_events, sanitize_expert_key
 
 _SILVER_DIR = Path("data/silver")
 _GOLD_DIR = Path("data/gold")
@@ -129,6 +129,10 @@ def build_object_epoch_snapshots(
 
         truth = truth_lookup.get(object_id, {})
 
+        # Infer survey from lightcurve content or object identifier
+        id_kind = infer_identifier_kind(object_id)
+        survey = "LSST" if id_kind == "lsst_dia_object_id" else "ZTF"
+
         for feats in epoch_features:
             n_det = int(feats["n_det"])
             alert_value = float(feats.pop("alert_mjd"))
@@ -137,6 +141,7 @@ def build_object_epoch_snapshots(
                 "object_id": object_id,
                 "n_det": n_det,
                 "alert_jd": alert_jd,
+                "survey": survey,
                 "lightcurve_source_object_id": lightcurve_source["object_id"],
                 "lightcurve_source_identifier_kind": lightcurve_source["identifier_kind"],
                 "lightcurve_association_kind": lightcurve_source["association_kind"],
@@ -151,6 +156,8 @@ def build_object_epoch_snapshots(
             base_row["label_source"] = truth.get("label_source")
             base_row["label_quality"] = truth.get("label_quality")
 
+            # Attach all experts (maintains consistent parquet schema).
+            # For ZTF-only experts on LSST objects, avail=0 naturally.
             for expert_key in PHASE1_EXPERT_KEYS:
                 _attach_expert_projection(
                     base_row,

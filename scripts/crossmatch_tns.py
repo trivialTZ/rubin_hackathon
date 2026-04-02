@@ -119,24 +119,146 @@ def load_object_ids(labels_path: Path) -> list[str]:
     return ids
 
 
+def _load_tns_bulk_csv(bulk_csv_path: Path) -> pd.DataFrame:
+    """Load the TNS bulk CSV, handling the optional timestamp header row."""
+    tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"')
+    if "internal_names" not in tns_df.columns:
+        tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"', skiprows=1)
+    return tns_df
+
+
+def _tns_row_to_result(
+    object_id: str, row: Any, *, source: str = "bulk_csv"
+) -> TNSResult:
+    """Convert a TNS bulk CSV row to a TNSResult."""
+    tns_name = str(row.get("objname") or "").strip() or None
+    tns_prefix = str(row.get("name_prefix") or "").strip() or None
+    type_name = str(row.get("type") or "").strip() or None
+    has_spectra = bool(tns_prefix == "SN" and type_name)
+
+    redshift = row.get("redshift")
+    redshift = float(redshift) if pd.notna(redshift) else None
+
+    ra = row.get("ra")
+    ra = float(ra) if pd.notna(ra) else None
+
+    dec = row.get("declination")
+    dec = float(dec) if pd.notna(dec) else None
+
+    discovery_date = str(row.get("discoverydate") or "").strip() or None
+
+    return TNSResult(
+        object_id=object_id,
+        tns_name=tns_name,
+        tns_prefix=tns_prefix,
+        type_name=type_name,
+        has_spectra=has_spectra,
+        redshift=redshift,
+        ra=ra,
+        dec=dec,
+        discovery_date=discovery_date,
+        raw={"source": source},
+    )
+
+
+def _no_match_result(object_id: str, *, source: str = "bulk_csv") -> TNSResult:
+    return TNSResult(
+        object_id=object_id,
+        tns_name=None,
+        tns_prefix=None,
+        type_name=None,
+        has_spectra=False,
+        redshift=None,
+        ra=None,
+        dec=None,
+        discovery_date=None,
+        raw={"source": source, "status": "no_match"},
+    )
+
+
+def crossmatch_bulk_csv_positional(
+    *,
+    object_ids: list[str],
+    object_coords: dict[str, tuple[float, float]],
+    tns_df: pd.DataFrame,
+    match_radius_arcsec: float = 3.0,
+) -> list[TNSResult]:
+    """Positional crossmatch against TNS bulk CSV using astropy SkyCoord.
+
+    For each object with coordinates, finds the nearest TNS object within
+    ``match_radius_arcsec``.  This handles Rubin-only transients that have
+    no ZTF counterpart and thus no internal_name match.
+
+    Parameters
+    ----------
+    object_ids : list[str]
+        Object IDs to crossmatch (only those present in object_coords are matched).
+    object_coords : dict
+        Mapping of object_id → (ra_deg, dec_deg).
+    tns_df : DataFrame
+        Pre-loaded TNS bulk CSV (must have ``ra`` and ``declination`` columns).
+    match_radius_arcsec : float
+        Maximum separation for a valid match (default 3 arcsec).
+    """
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+
+    # Filter TNS rows with valid coordinates
+    tns_pos = tns_df.dropna(subset=["ra", "declination"]).copy()
+    if len(tns_pos) == 0:
+        return [_no_match_result(oid, source="bulk_csv_positional") for oid in object_ids]
+
+    tns_catalog = SkyCoord(
+        ra=tns_pos["ra"].values, dec=tns_pos["declination"].values, unit="deg"
+    )
+
+    results = []
+    for oid in object_ids:
+        if oid not in object_coords:
+            results.append(_no_match_result(oid, source="bulk_csv_positional"))
+            continue
+
+        ra, dec = object_coords[oid]
+        obj_coord = SkyCoord(ra=ra, dec=dec, unit="deg")
+        sep = obj_coord.separation(tns_catalog)
+        min_idx = sep.argmin()
+        min_sep_arcsec = sep[min_idx].to(u.arcsec).value
+
+        if min_sep_arcsec > match_radius_arcsec:
+            results.append(_no_match_result(oid, source="bulk_csv_positional"))
+            continue
+
+        tns_row = tns_pos.iloc[min_idx]
+        result = _tns_row_to_result(oid, tns_row, source="bulk_csv_positional")
+        # Inject separation metadata into raw dict
+        result.raw["match_sep_arcsec"] = round(min_sep_arcsec, 4)
+        result.raw["match_method"] = "positional"
+        results.append(result)
+
+    return results
+
+
 def crossmatch_bulk_csv(
     *,
     object_ids: list[str],
     bulk_csv_path: Path,
+    object_coords: dict[str, tuple[float, float]] | None = None,
+    positional_radius_arcsec: float = 3.0,
 ) -> list[TNSResult]:
     """Crossmatch against TNS bulk CSV (fast, no API calls).
 
     The TNS bulk CSV has columns: objname, name_prefix, internal_names, type, ...
-    We match on internal_names (contains ZTF IDs as semicolon-separated list).
+    We first match on internal_names (contains ZTF IDs as semicolon-separated list).
+
+    If ``object_coords`` is provided, objects that fail name-matching are
+    retried with a positional cone search against the TNS catalog.
+    This handles Rubin-only transients with no ZTF counterpart.
 
     Proxy for has_spectra: name_prefix="SN" + non-empty type
     (verified 100% accurate on our 14 matched objects)
     """
     print(f"Loading TNS bulk CSV from {bulk_csv_path}")
-    # TNS bulk CSV may have a timestamp row before the real header
-    tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"')
-    if "internal_names" not in tns_df.columns:
-        tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"', skiprows=1)
+    tns_df = _load_tns_bulk_csv(bulk_csv_path)
     print(f"Loaded {len(tns_df)} TNS objects")
 
     # Explode internal_names (semicolon-separated) into one row per ZTF ID
@@ -155,66 +277,40 @@ def crossmatch_bulk_csv(
 
     print(f"Built lookup for {len(lookup)} ZTF IDs")
 
-    # Crossmatch
-    results = []
+    # Phase 1: Name-based crossmatch
+    results = {}
+    unmatched = []
     for oid in object_ids:
-        if oid not in lookup:
-            results.append(TNSResult(
-                object_id=oid,
-                tns_name=None,
-                tns_prefix=None,
-                type_name=None,
-                has_spectra=False,
-                redshift=None,
-                ra=None,
-                dec=None,
-                discovery_date=None,
-                raw={"source": "bulk_csv", "status": "no_match"},
-            ))
-            continue
-
-        row = lookup[oid]
-        tns_name = str(row.get("objname") or "").strip() or None
-        tns_prefix = str(row.get("name_prefix") or "").strip() or None
-        type_name = str(row.get("type") or "").strip() or None
-
-        # Proxy: prefix=SN + non-empty type → has_spectra=True
-        has_spectra = bool(tns_prefix == "SN" and type_name)
-
-        redshift = row.get("redshift")
-        if pd.notna(redshift):
-            redshift = float(redshift)
+        if oid in lookup:
+            results[oid] = _tns_row_to_result(oid, lookup[oid])
         else:
-            redshift = None
+            unmatched.append(oid)
 
-        ra = row.get("ra")
-        if pd.notna(ra):
-            ra = float(ra)
-        else:
-            ra = None
+    name_matched = len(object_ids) - len(unmatched)
+    print(f"Name-matched: {name_matched}/{len(object_ids)}")
 
-        dec = row.get("declination")
-        if pd.notna(dec):
-            dec = float(dec)
-        else:
-            dec = None
+    # Phase 2: Positional fallback for unmatched objects with coordinates
+    if unmatched and object_coords:
+        coords_available = {oid: object_coords[oid] for oid in unmatched if oid in object_coords}
+        if coords_available:
+            print(f"Positional fallback: {len(coords_available)} objects with coordinates")
+            positional_results = crossmatch_bulk_csv_positional(
+                object_ids=list(coords_available.keys()),
+                object_coords=coords_available,
+                tns_df=tns_df,
+                match_radius_arcsec=positional_radius_arcsec,
+            )
+            pos_matched = sum(1 for r in positional_results if r.tns_name is not None)
+            print(f"Positional matches: {pos_matched}/{len(coords_available)}")
+            for r in positional_results:
+                results[r.object_id] = r
 
-        discovery_date = str(row.get("discoverydate") or "").strip() or None
+    # Fill remaining unmatched
+    for oid in object_ids:
+        if oid not in results:
+            results[oid] = _no_match_result(oid)
 
-        results.append(TNSResult(
-            object_id=oid,
-            tns_name=tns_name,
-            tns_prefix=tns_prefix,
-            type_name=type_name,
-            has_spectra=has_spectra,
-            redshift=redshift,
-            ra=ra,
-            dec=dec,
-            discovery_date=discovery_date,
-            raw={"source": "bulk_csv"},
-        ))
-
-    return results
+    return [results[oid] for oid in object_ids]
 
 
 def crossmatch_tns(
@@ -364,11 +460,36 @@ def build_truth_from_crossmatch(
     return pd.DataFrame(rows)
 
 
+def _load_object_coords(labels_path: Path) -> dict[str, tuple[float, float]]:
+    """Load RA/Dec from a CSV with object_id, ra, dec columns.
+
+    Returns dict of object_id → (ra_deg, dec_deg) for rows with valid coords.
+    """
+    coords: dict[str, tuple[float, float]] = {}
+    with open(labels_path) as fh:
+        for row in csv.DictReader(fh):
+            oid = str(row.get("object_id") or "").strip()
+            if not oid:
+                continue
+            try:
+                ra = float(row["ra"])
+                dec = float(row["dec"])
+                if ra == ra and dec == dec:  # NaN check
+                    coords[oid] = (ra, dec)
+            except (KeyError, ValueError, TypeError):
+                continue
+    return coords
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Crossmatch objects against TNS")
     parser.add_argument("--labels", required=True, help="Labels CSV with object_id column")
     parser.add_argument("--output", default="data/truth/tns_crossmatch.parquet")
     parser.add_argument("--bulk-csv", help="TNS bulk CSV for fast local crossmatch (no API calls)")
+    parser.add_argument("--positional-fallback", action="store_true",
+                        help="Enable positional RA/Dec fallback for objects not matched by name")
+    parser.add_argument("--positional-radius", type=float, default=3.0,
+                        help="Cone search radius in arcsec for positional fallback (default: 3.0)")
     parser.add_argument("--cache-dir", default="data/tns_cache")
     parser.add_argument("--silver-dir", default=None, help="Silver dir for broker consensus")
     parser.add_argument("--consensus", action="store_true", help="Enable broker consensus tier")
@@ -389,6 +510,12 @@ def main() -> None:
         raise SystemExit("No object IDs found in labels file")
     print(f"Loaded {len(object_ids)} object IDs from {labels_path}")
 
+    # Load coordinates for positional fallback
+    object_coords: dict[str, tuple[float, float]] | None = None
+    if args.positional_fallback:
+        object_coords = _load_object_coords(labels_path)
+        print(f"Loaded coordinates for {len(object_coords)}/{len(object_ids)} objects")
+
     # Load existing labels as fallback
     existing_labels: dict[str, str] = {}
     with open(labels_path) as fh:
@@ -406,6 +533,8 @@ def main() -> None:
         tns_results = crossmatch_bulk_csv(
             object_ids=object_ids,
             bulk_csv_path=bulk_csv_path,
+            object_coords=object_coords,
+            positional_radius_arcsec=args.positional_radius,
         )
     else:
         # API mode

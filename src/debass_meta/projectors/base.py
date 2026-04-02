@@ -4,16 +4,41 @@ from __future__ import annotations
 from math import log
 from typing import Any
 
-PHASE1_EXPERT_KEYS = [
-    "fink/snn",
-    "fink/rf_ia",
-    "parsnip",
-    "supernnova",
-    "alerce_lc",
-    "alerce/lc_classifier_transient",
-    "alerce/stamp_classifier",
-    "lasair/sherlock",
-]
+# Expert registry: expert_key → (survey_scope, projector_module_name)
+#   survey_scope: "ztf"  = only applies to ZTF objects
+#                 "lsst" = only applies to LSST objects
+#                 "any"  = applies to any survey
+EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
+    "fink/snn":                        ("ztf",  "fink"),
+    "fink/rf_ia":                      ("ztf",  "fink"),
+    "parsnip":                         ("any",  "local"),
+    "supernnova":                      ("any",  "local"),
+    "alerce_lc":                       ("any",  "local"),
+    "alerce/lc_classifier_transient":  ("ztf",  "alerce"),
+    "alerce/stamp_classifier":         ("ztf",  "alerce"),
+    "lasair/sherlock":                 ("any",  "lasair"),
+}
+
+# Backward-compatible flat list (order matches original PHASE1_EXPERT_KEYS)
+PHASE1_EXPERT_KEYS = list(EXPERT_REGISTRY.keys())
+
+
+def get_expert_keys(survey: str | None = None) -> list[str]:
+    """Return expert keys applicable to a survey.
+
+    Parameters
+    ----------
+    survey : str or None
+        ``"ZTF"``, ``"LSST"``, or ``None`` (return all experts).
+    """
+    if survey is None:
+        return list(EXPERT_REGISTRY.keys())
+    survey_lower = survey.lower()
+    return [
+        key
+        for key, (scope, _) in EXPERT_REGISTRY.items()
+        if scope in ("any", survey_lower)
+    ]
 
 
 def sanitize_expert_key(expert_key: str) -> str:

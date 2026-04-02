@@ -96,14 +96,30 @@ if ${LOCAL_MODE}; then
         --bronze-dir "${BRONZE_DIR}" \
         --silver-dir "${SILVER_DIR}"
 
-    echo "[5/7] Building epoch snapshots..."
+    echo "[5/8] TNS crossmatch (with positional fallback)..."
+    TNS_BULK="${DEBASS_ROOT}/data/tns_public_objects.csv"
+    TRUTH_OUT="${NIGHTLY_DIR}/truth/tns_crossmatch.parquet"
+    if [ -f "${TNS_BULK}" ]; then
+        python3 scripts/crossmatch_tns.py \
+            --labels "${CANDIDATES}" \
+            --bulk-csv "${TNS_BULK}" \
+            --positional-fallback \
+            --positional-radius 3.0 \
+            --output "${TRUTH_OUT}"
+    else
+        echo "  TNS bulk CSV not found at ${TNS_BULK} — skipping crossmatch"
+    fi
+
+    echo "[6/8] Building epoch snapshots..."
+    TRUTH_ARG="${TRUTH_PATH}"
+    [ -f "${TRUTH_OUT}" ] && TRUTH_ARG="${TRUTH_OUT}"
     python3 scripts/build_object_epoch_snapshots.py \
         --lc-dir "${LC_DIR}" \
         --silver-dir "${SILVER_DIR}" \
         --gold-dir "${GOLD_DIR}" \
         --objects-csv "${CANDIDATES}" \
         --allow-unsafe-latest-snapshot \
-        --truth "${TRUTH_PATH}"
+        --truth "${TRUTH_ARG}"
 
     SNAPSHOT="${GOLD_DIR}/object_epoch_snapshots.parquet"
     if [ ! -f "${SNAPSHOT}" ]; then
@@ -111,7 +127,7 @@ if ${LOCAL_MODE}; then
         SNAPSHOT="${GOLD_DIR}/object_epoch_snapshots_trust.parquet"
     fi
 
-    echo "[6/7] Scoring (n_det=3,4,5)..."
+    echo "[7/8] Scoring (n_det=3,4,5)..."
     mkdir -p "${SCORES_DIR}"
     for N in 3 4 5; do
         python3 scripts/score_nightly.py \
@@ -122,7 +138,7 @@ if ${LOCAL_MODE}; then
             --output "${SCORES_DIR}/scores_ndet${N}.jsonl"
     done
 
-    echo "[7/7] Summarizing..."
+    echo "[8/8] Summarizing..."
     python3 scripts/summarize_nightly.py \
         --scores-dir "${SCORES_DIR}" \
         --output "${NIGHTLY_DIR}/summary.txt"

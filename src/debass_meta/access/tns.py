@@ -253,7 +253,34 @@ class TNSClient:
     def search_by_name(self, name: str) -> list[dict[str, Any]]:
         """Search TNS for an object by internal name (e.g. ZTF ID)."""
         data_obj = {"internal_name": name}
-        raw = self._post(self._search_url, data_obj, allow_no_results=True)
+        return self._parse_search_reply(
+            self._post(self._search_url, data_obj, allow_no_results=True)
+        )
+
+    def search_by_position(
+        self,
+        ra_deg: float,
+        dec_deg: float,
+        radius_arcsec: float = 3.0,
+    ) -> list[dict[str, Any]]:
+        """Search TNS by sky position (cone search).
+
+        TNS ``/api/get/search`` accepts ``ra``, ``dec``, ``radius``, ``units``
+        parameters.  Coordinates are decimal degrees; radius in arcseconds.
+        Cone searches are heavier on the TNS side — respect rate limits.
+        """
+        data_obj = {
+            "ra": str(ra_deg),
+            "dec": str(dec_deg),
+            "radius": str(radius_arcsec),
+            "units": "arcsec",
+        }
+        return self._parse_search_reply(
+            self._post(self._search_url, data_obj, allow_no_results=True)
+        )
+
+    @staticmethod
+    def _parse_search_reply(raw: dict[str, Any]) -> list[dict[str, Any]]:
         if int(raw.get("id_code", -1)) == 110:
             return []
         data = raw.get("data", None)
@@ -284,14 +311,28 @@ class TNSClient:
             return reply if isinstance(reply, dict) else data
         return data if isinstance(data, dict) else {}
 
-    def crossmatch_object(self, object_id: str) -> TNSResult:
-        """Full crossmatch pipeline for one ZTF object ID.
+    def crossmatch_object(
+        self,
+        object_id: str,
+        *,
+        ra_deg: float | None = None,
+        dec_deg: float | None = None,
+        positional_radius_arcsec: float = 3.0,
+    ) -> TNSResult:
+        """Full crossmatch pipeline for one object.
 
-        1. Search TNS by internal name
-        2. If found, fetch object detail (with spectra flag)
-        3. Return structured TNSResult
+        1. Search TNS by internal name (fast, exact)
+        2. If no match and ``ra_deg``/``dec_deg`` are provided, try cone search
+        3. If found, fetch object detail (with spectra flag)
+        4. Return structured TNSResult with match method metadata
         """
         hits = self.search_by_name(object_id)
+        match_method = "name"
+
+        if not hits and ra_deg is not None and dec_deg is not None:
+            hits = self.search_by_position(ra_deg, dec_deg, positional_radius_arcsec)
+            match_method = "positional"
+
         if not hits:
             return TNSResult(
                 object_id=object_id,
@@ -303,7 +344,7 @@ class TNSClient:
                 ra=None,
                 dec=None,
                 discovery_date=None,
-                raw={},
+                raw={"match_method": match_method},
             )
 
         # Take first match
@@ -333,6 +374,7 @@ class TNSClient:
         dec = _safe_float(detail.get("dec") or detail.get("decdeg"))
         discovery_date = str(detail.get("discoverydate") or "") or None
 
+        detail["match_method"] = match_method
         return TNSResult(
             object_id=object_id,
             tns_name=tns_name,

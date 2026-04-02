@@ -27,11 +27,13 @@ LABEL_MAP = {label: idx for idx, label in enumerate(LABEL_NAMES)}
 N_CLASSES = len(LABEL_NAMES)
 
 DEFAULT_FEATURES = [
+    # Detection counts (8)
     "n_det",
-    "n_det_g",
-    "n_det_r",
+    "n_det_u", "n_det_g", "n_det_r", "n_det_i", "n_det_z", "n_det_y",
+    # Temporal (2)
     "t_since_first",
     "t_baseline",
+    # All-band brightness (8)
     "mag_first",
     "mag_last",
     "mag_min",
@@ -40,9 +42,23 @@ DEFAULT_FEATURES = [
     "mag_range",
     "dmag_dt",
     "dmag_first_last",
-    "color_gr",
-    "color_gr_slope",
-    "mean_rb",
+    # Per-band brightness (24): u g r i z y × 4
+    "mag_first_u", "mag_last_u", "mag_mean_u", "mag_std_u",
+    "mag_first_g", "mag_last_g", "mag_mean_g", "mag_std_g",
+    "mag_first_r", "mag_last_r", "mag_mean_r", "mag_std_r",
+    "mag_first_i", "mag_last_i", "mag_mean_i", "mag_std_i",
+    "mag_first_z", "mag_last_z", "mag_mean_z", "mag_std_z",
+    "mag_first_y", "mag_last_y", "mag_mean_y", "mag_std_y",
+    # Colours (8)
+    "color_gr", "color_gr_slope",
+    "color_ri", "color_ri_slope",
+    "color_iz", "color_iz_slope",
+    "color_zy", "color_zy_slope",
+    # Quality (1)
+    "mean_quality",
+    # Survey flag (1)
+    "survey_is_lsst",
+    # Broker scores (11)
     "alerce_SNIa",
     "alerce_SNIbc",
     "alerce_SNII",

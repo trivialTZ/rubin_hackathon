@@ -6,6 +6,7 @@ import csv
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -108,7 +109,39 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
             block["projected"] = projected
         payload["expert_confidence"][expert_key] = block
 
-    ensemble = {"p_follow_proxy": None, "recommended": None}
+    # --- Explicit trust-weighted ensemble (interpretable) ---
+    tw_weights: list[float] = []
+    tw_p_snia: list[float] = []
+    tw_p_nonia: list[float] = []
+    tw_p_other: list[float] = []
+    for expert_key in PHASE1_EXPERT_KEYS:
+        block = payload["expert_confidence"].get(expert_key, {})
+        if not block.get("available"):
+            continue
+        trust_val = block.get("trust")
+        projected = block.get("projected", {})
+        if trust_val is None or not projected:
+            continue
+        w = float(trust_val)
+        if w <= 0:
+            continue
+        p_s = projected.get("p_snia")
+        p_n = projected.get("p_nonIa_snlike")
+        p_o = projected.get("p_other")
+        if p_s is not None:
+            tw_weights.append(w)
+            tw_p_snia.append(w * float(p_s))
+            tw_p_nonia.append(w * float(p_n or 0))
+            tw_p_other.append(w * float(p_o or 0))
+
+    ensemble: dict[str, Any] = {"p_follow_proxy": None, "recommended": None}
+    if tw_weights:
+        total_w = sum(tw_weights)
+        ensemble["p_snia_weighted"] = sum(tw_p_snia) / total_w
+        ensemble["p_nonIa_snlike_weighted"] = sum(tw_p_nonia) / total_w
+        ensemble["p_other_weighted"] = sum(tw_p_other) / total_w
+        ensemble["n_trusted_experts"] = len(tw_weights)
+
     if followup_model is not None:
         p_follow = float(followup_model.predict_followup(row_df)[0])
         ensemble["p_follow_proxy"] = p_follow
