@@ -9,6 +9,7 @@ PHASE1_EXPERT_KEYS = [
     "fink/rf_ia",
     "parsnip",
     "supernnova",
+    "alerce_lc",
     "alerce/lc_classifier_transient",
     "alerce/stamp_classifier",
     "lasair/sherlock",
@@ -83,7 +84,7 @@ def project_expert_events(expert_key: str, events: list[dict[str, Any]]) -> dict
         from .lasair import project_events
 
         return project_events(expert_key, events)
-    if expert_key in {"parsnip", "supernnova"}:
+    if expert_key in {"parsnip", "supernnova", "alerce_lc"}:
         from .local import project_events
 
         return project_events(expert_key, events)

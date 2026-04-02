@@ -127,6 +127,8 @@ def main() -> None:
                         help="Use lc_classifier for ~50+ features (requires lc_classifier package)")
     parser.add_argument("--val-frac", type=float, default=0.2,
                         help="Fraction of objects held out for validation")
+    parser.add_argument("--n-jobs", type=int, default=1,
+                        help="Number of threads for RF (must match -pe omp slots on SCC)")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -231,7 +233,7 @@ def main() -> None:
         clf = BalancedRandomForestClassifier(
             n_estimators=args.n_estimators,
             random_state=args.seed,
-            n_jobs=-1,
+            n_jobs=args.n_jobs,
             max_features="sqrt",
         )
         print(f"\nTraining BalancedRandomForestClassifier (n_estimators={args.n_estimators})...")
@@ -241,7 +243,7 @@ def main() -> None:
         clf = RandomForestClassifier(
             n_estimators=args.n_estimators,
             random_state=args.seed,
-            n_jobs=-1,
+            n_jobs=args.n_jobs,
             class_weight="balanced",
             max_features="sqrt",
         )
