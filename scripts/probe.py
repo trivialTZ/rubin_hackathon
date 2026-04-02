@@ -68,8 +68,10 @@ def main() -> None:
         if result.get("status") == "ok" and args.object:
             try:
                 out = adapter.fetch_object(args.object)
-                print(f"  [{adapter.name}] {args.object}: {len(out.fields)} fields extracted"
-                      f"{' (fixture)' if out.fixture_used else ''}")
+                state = "live" if out.availability else "unavailable"
+                if out.fixture_used:
+                    state = "fixture"
+                print(f"  [{adapter.name}] {args.object}: {len(out.fields)} fields extracted ({state})")
             except Exception as exc:
                 print(f"  [{adapter.name}] fetch_object error: {exc}")
 

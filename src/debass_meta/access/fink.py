@@ -13,6 +13,7 @@ import requests
 import urllib3
 
 from .base import BrokerAdapter, BrokerOutput, SemanticType
+from .identifiers import infer_identifier_kind
 
 _FIXTURE_DIR = Path("fixtures/raw/fink")
 _BASE_URL = "https://api.fink-portal.org"
@@ -59,6 +60,18 @@ class FinkAdapter(BrokerAdapter):
             return {"broker": self.name, "status": "error", "reason": str(exc)}
 
     def fetch_object(self, object_id: str) -> BrokerOutput:
+        identifier_kind = infer_identifier_kind(object_id)
+        if identifier_kind == "lsst_dia_object_id":
+            return self.unsupported_identifier_output(
+                object_id,
+                source_endpoint=f"{_BASE_URL}/api/v1/objects",
+                request_params={"objectId": object_id},
+                survey="LSST",
+                identifier_kind=identifier_kind,
+                expected_identifier_kind="ztf_object_id",
+                reason="unsupported_identifier_for_broker",
+            )
+
         fixture_path = _FIXTURE_DIR / f"{object_id}_object.json"
         raw: dict[str, Any] = {}
         fixture_used = False
@@ -106,6 +119,8 @@ class FinkAdapter(BrokerAdapter):
         )
 
     def fetch_lightcurve(self, object_id: str) -> dict[str, Any]:
+        if infer_identifier_kind(object_id) == "lsst_dia_object_id":
+            return {}
         fixture_path = _FIXTURE_DIR / f"{object_id}_lc.json"
         try:
             r = self._request(

@@ -43,6 +43,22 @@ def _load_trust_models(models_dir: Path) -> dict[str, ExpertTrustArtifact]:
     return models
 
 
+def _resolve_snapshot_path(snapshot_arg: str | None) -> Path:
+    if snapshot_arg:
+        return Path(snapshot_arg).resolve()
+    candidates = [
+        Path("data/gold/object_epoch_snapshots_scoring.parquet"),
+        Path("data/gold/object_epoch_snapshots_trust.parquet"),
+        Path("data/gold/object_epoch_snapshots.parquet"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    raise FileNotFoundError(
+        "No snapshot parquet found. Looked for scoring, trust, and canonical gold snapshots."
+    )
+
+
 def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], followup_model: FollowupArtifact | None, *, recommend_threshold: float = 0.5) -> dict:
     payload = {
         "object_id": row["object_id"],
@@ -103,7 +119,8 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Score trust-aware nightly payloads")
-    parser.add_argument("--snapshots", default="data/gold/object_epoch_snapshots_trust.parquet")
+    parser.add_argument("--snapshots", default=None,
+                        help="Snapshot parquet. If omitted, prefer scoring snapshots, then trust, then canonical gold.")
     parser.add_argument("--trust-models-dir", default="models/trust")
     parser.add_argument("--followup-model-dir", default="models/followup")
     parser.add_argument("--object", default=None)
@@ -113,7 +130,8 @@ def main() -> None:
     parser.add_argument("--recommend-threshold", type=float, default=0.5)
     args = parser.parse_args()
 
-    snapshot_df = pd.read_parquet(args.snapshots)
+    snapshot_path = _resolve_snapshot_path(args.snapshots)
+    snapshot_df = pd.read_parquet(snapshot_path)
     trust_models = _load_trust_models(Path(args.trust_models_dir))
     followup_model = FollowupArtifact.load(Path(args.followup_model_dir)) if (Path(args.followup_model_dir) / "metadata.json").exists() else None
 

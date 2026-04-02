@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from .identifiers import IdentifierKind
+
 SemanticType = Literal[
     "probability",
     "binary_score",
@@ -80,6 +82,38 @@ class BrokerAdapter(ABC):
     def load_fixture(self, path: Path) -> Any:
         with open(path) as fh:
             return json.load(fh)
+
+    def unsupported_identifier_output(
+        self,
+        object_id: str,
+        *,
+        source_endpoint: str | None = None,
+        request_params: dict[str, Any] | None = None,
+        survey: str = "ZTF",
+        identifier_kind: IdentifierKind = "unknown",
+        expected_identifier_kind: IdentifierKind | None = None,
+        reason: str = "unsupported_identifier",
+    ) -> BrokerOutput:
+        raw_payload: dict[str, Any] = {
+            "reason": reason,
+            "identifier_kind": identifier_kind,
+        }
+        if expected_identifier_kind is not None:
+            raw_payload["expected_identifier_kind"] = expected_identifier_kind
+        return BrokerOutput(
+            broker=self.name,
+            object_id=object_id,
+            query_time=self.now(),
+            raw_payload=raw_payload,
+            semantic_type=self.semantic_type,
+            survey=survey,
+            source_endpoint=source_endpoint,
+            request_params=request_params or {},
+            fields=[],
+            events=[],
+            availability=False,
+            fixture_used=False,
+        )
 
     @staticmethod
     def now() -> float:

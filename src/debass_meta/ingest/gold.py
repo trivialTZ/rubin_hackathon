@@ -169,7 +169,17 @@ def select_events_asof(
     alert_jd: float,
     allow_unsafe_latest_snapshot: bool = False,
 ) -> list[dict[str, Any]]:
-    """Select the latest event-safe rows for one expert/object pair."""
+    """Select the latest event-safe rows for one expert/object pair.
+
+    Priority order:
+      1. Timed events with event_time_jd <= alert_jd  (exact_alert / rerun_exact with JD)
+      2. static_safe events                             (e.g. Lasair Sherlock context)
+      3. rerun_exact events (without JD)                (local experts)
+      4. latest_object_unsafe events                    (ALeRCE API snapshots, opt-in)
+
+    The exact__{expert} column marks (4) as 0.0 so the trust model can
+    learn appropriate weighting for temporally unsafe scores.
+    """
     if len(event_rows) == 0:
         return []
     try:
@@ -186,6 +196,7 @@ def select_events_asof(
         if len(event_rows) == 0:
             return []
 
+    # 1. Timed events: latest event at or before alert_jd
     timed = event_rows[event_rows["event_time_jd"].notna()].copy()
     if len(timed) > 0:
         timed = timed[timed["event_time_jd"] <= alert_jd]
@@ -193,14 +204,18 @@ def select_events_asof(
             max_time = timed["event_time_jd"].max()
             return timed[timed["event_time_jd"] == max_time].to_dict(orient="records")
 
+    # 2. Static-safe context labels (e.g. Lasair Sherlock)
     static_safe = event_rows[event_rows["temporal_exactness"] == "static_safe"]
     if len(static_safe) > 0:
         return static_safe.to_dict(orient="records")
 
+    # 3. Local expert re-runs at exact epoch (without timed JD)
     rerun_exact = event_rows[event_rows["temporal_exactness"] == "rerun_exact"]
     if len(rerun_exact) > 0:
         return rerun_exact.to_dict(orient="records")
 
+    # 4. Latest object snapshot (ALeRCE API — temporally unsafe and
+    #    excluded by default unless explicitly requested for scoring/debugging)
     if allow_unsafe_latest_snapshot:
         unsafe = event_rows[event_rows["temporal_exactness"] == "latest_object_unsafe"]
         if len(unsafe) > 0:

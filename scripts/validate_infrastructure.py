@@ -195,6 +195,13 @@ def check_credentials():
     print("\nChecking credentials...")
     import os
 
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).parent.parent / ".env")
+    except Exception:
+        pass
+
     # Check .env file
     repo_root = Path(__file__).parent.parent
     env_file = repo_root / ".env"
@@ -212,10 +219,10 @@ def check_credentials():
         print("  ⚠ TNS credentials not configured (needed for bulk CSV download)")
 
     # Check Lasair
-    if os.getenv("LASAIR_API_TOKEN"):
-        print("  ✓ Lasair API token configured")
+    if os.getenv("LASAIR_TOKEN"):
+        print("  ✓ Lasair token configured")
     else:
-        print("  ⚠ Lasair API token not configured")
+        print("  ⚠ Lasair token not configured")
 
     return True
 

@@ -53,7 +53,7 @@ TNS_TNS_ID=your_id_here
 TNS_MARKER_NAME=your_name_here
 
 # Lasair (for broker backfill)
-LASAIR_API_TOKEN=your_token_here
+LASAIR_TOKEN=your_token_here
 ```
 
 ## Step 4: Download TNS Bulk CSV (One-Time)

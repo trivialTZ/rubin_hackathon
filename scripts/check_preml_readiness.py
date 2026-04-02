@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from pathlib import Path
@@ -27,6 +28,47 @@ def _phase1_snapshot_experts(report: dict[str, Any]) -> list[str]:
     return experts
 
 
+def _sample_object_ids(labels_path: Path | None, limit: int = 5) -> list[str]:
+    if labels_path is None or not labels_path.exists():
+        return []
+    object_ids: list[str] = []
+    with open(labels_path) as fh:
+        for row in csv.DictReader(fh):
+            object_id = str(row.get("object_id") or "").strip()
+            if not object_id:
+                continue
+            object_ids.append(object_id)
+            if len(object_ids) >= limit:
+                break
+    return object_ids
+
+
+def _probe_lasair_dataset(lasair: LasairAdapter, labels_path: Path | None) -> dict[str, Any]:
+    sample_ids = _sample_object_ids(labels_path)
+    if not sample_ids:
+        return {"status": "no_sample_objects", "sample_object_ids": []}
+
+    sample_results: list[dict[str, Any]] = []
+    for object_id in sample_ids:
+        out = lasair.fetch_object(object_id)
+        sample_results.append({
+            "object_id": object_id,
+            "availability": bool(out.availability),
+            "fixture_used": bool(out.fixture_used),
+            "field_count": len(out.fields),
+            "source_endpoint": out.source_endpoint,
+            "request_params": out.request_params,
+        })
+
+    any_live_payload = any(item["availability"] for item in sample_results)
+    any_live_fields = any(item["availability"] and item["field_count"] > 0 for item in sample_results)
+    return {
+        "status": "ok" if any_live_fields else "no_live_fields" if any_live_payload else "no_live_payload",
+        "sample_object_ids": sample_ids,
+        "sample_results": sample_results,
+    }
+
+
 def evaluate_preml_readiness(
     *,
     root: Path,
@@ -44,6 +86,7 @@ def evaluate_preml_readiness(
 
     lasair = LasairAdapter()
     lasair_probe = lasair.probe()
+    lasair_dataset_probe = _probe_lasair_dataset(lasair, labels_path)
     parsnip_meta = ParSNIPExpert().metadata()
     supernnova_meta = SuperNNovaExpert().metadata()
 
@@ -63,6 +106,10 @@ def evaluate_preml_readiness(
 
     if lasair_probe.get("status") != "ok":
         full_phase1_blockers.append(f"Lasair live access unavailable: {lasair_probe.get('reason') or lasair_probe.get('status')}")
+    elif lasair_dataset_probe.get("status") not in {"ok", "no_sample_objects"}:
+        full_phase1_blockers.append(
+            "Lasair dataset probe returned no live Sherlock context for sampled object_ids"
+        )
     if not parsnip_meta.get("model_loaded"):
         full_phase1_blockers.append("ParSNIP live model artifacts are not installed")
     if not supernnova_meta.get("available"):
@@ -89,6 +136,7 @@ def evaluate_preml_readiness(
         "phase1_safe_snapshot_experts": phase1_safe_experts,
         "phase1_inference_only_experts": inference_only_experts,
         "lasair_probe": lasair_probe,
+        "lasair_dataset_probe": lasair_dataset_probe,
         "local_experts": {
             "parsnip": {
                 "available": parsnip_meta.get("available"),

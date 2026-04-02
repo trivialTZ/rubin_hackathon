@@ -336,7 +336,7 @@ TNS_TNS_ID=your_id_here
 TNS_MARKER_NAME=your_name_here
 
 # Lasair (for broker backfill)
-LASAIR_API_TOKEN=your_token_here
+LASAIR_TOKEN=your_token_here
 
 # Fink (verify if needed)
 # FINK_API_TOKEN=your_token_here  # May not be required

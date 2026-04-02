@@ -26,9 +26,16 @@ def main() -> None:
     parser.add_argument("--truth", default="data/truth/object_truth.parquet")
     parser.add_argument("--objects-csv", default="data/labels.csv", help="Optional object filter")
     parser.add_argument("--max-n-det", type=int, default=20)
-    parser.add_argument("--allow-unsafe-latest-snapshot", action="store_true")
+    parser.add_argument("--exclude-unsafe-latest-snapshot", action="store_true",
+                        help="Exclude broker snapshots marked latest_object_unsafe (e.g. ALeRCE API)")
+    parser.add_argument("--allow-unsafe-latest-snapshot", action="store_true",
+                        help="Include latest_object_unsafe events for scoring/debugging")
     parser.add_argument("--output", default=None, help="Optional explicit parquet output path")
     args = parser.parse_args()
+
+    include_unsafe = (
+        args.allow_unsafe_latest_snapshot and not args.exclude_unsafe_latest_snapshot
+    )
 
     path = build_object_epoch_snapshots(
         lc_dir=Path(args.lc_dir),
@@ -37,7 +44,7 @@ def main() -> None:
         truth_path=Path(args.truth),
         max_n_det=args.max_n_det,
         object_ids=_load_object_ids(Path(args.objects_csv)) if args.objects_csv else None,
-        allow_unsafe_latest_snapshot=args.allow_unsafe_latest_snapshot,
+        allow_unsafe_latest_snapshot=include_unsafe,
         output_path=Path(args.output) if args.output else None,
     )
     print(f"Wrote object-epoch snapshots → {path}")

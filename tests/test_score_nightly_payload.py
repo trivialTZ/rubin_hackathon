@@ -8,7 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scripts.score_nightly import build_score_payload
+from scripts.score_nightly import _resolve_snapshot_path, build_score_payload
 
 
 def test_score_payload_contains_expert_confidence_block() -> None:
@@ -60,3 +60,31 @@ def test_score_payload_cleans_nan_scalars_for_unavailable_experts() -> None:
     assert parsnip["trust"] is None
     assert parsnip["prediction_type"] is None
     assert parsnip["exactness"] is None
+
+
+def test_resolve_snapshot_path_prefers_scoring_snapshot(tmp_path: Path, monkeypatch) -> None:
+    gold_dir = tmp_path / "data/gold"
+    gold_dir.mkdir(parents=True)
+    scoring = gold_dir / "object_epoch_snapshots_scoring.parquet"
+    trust = gold_dir / "object_epoch_snapshots_trust.parquet"
+    canonical = gold_dir / "object_epoch_snapshots.parquet"
+    scoring.write_text("")
+    trust.write_text("")
+    canonical.write_text("")
+
+    monkeypatch.chdir(tmp_path)
+
+    assert _resolve_snapshot_path(None) == scoring
+
+
+def test_resolve_snapshot_path_falls_back_when_scoring_missing(tmp_path: Path, monkeypatch) -> None:
+    gold_dir = tmp_path / "data/gold"
+    gold_dir.mkdir(parents=True)
+    trust = gold_dir / "object_epoch_snapshots_trust.parquet"
+    canonical = gold_dir / "object_epoch_snapshots.parquet"
+    trust.write_text("")
+    canonical.write_text("")
+
+    monkeypatch.chdir(tmp_path)
+
+    assert _resolve_snapshot_path(None) == trust

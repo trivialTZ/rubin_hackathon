@@ -8,10 +8,10 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scripts.check_preml_readiness import evaluate_preml_readiness
+import scripts.check_preml_readiness as readiness_module
 
 
-def test_evaluate_preml_readiness_surfaces_external_blockers(tmp_path: Path) -> None:
+def test_evaluate_preml_readiness_surfaces_external_blockers(tmp_path: Path, monkeypatch) -> None:
     run_root = tmp_path / "run"
     bronze_dir = run_root / "bronze"
     silver_dir = run_root / "silver"
@@ -105,7 +105,26 @@ def test_evaluate_preml_readiness_surfaces_external_blockers(tmp_path: Path) -> 
         ]
     ).to_parquet(local_dir / "part-latest.parquet", index=False)
 
-    result = evaluate_preml_readiness(
+    class FakeLasairAdapter:
+        def probe(self) -> dict[str, object]:
+            return {"broker": "lasair", "status": "ok"}
+
+        def fetch_object(self, object_id: str):
+            return type(
+                "FakeBrokerOutput",
+                (),
+                {
+                    "availability": False,
+                    "fixture_used": False,
+                    "fields": [],
+                    "source_endpoint": "https://lasair.lsst.ac.uk/api/object/",
+                    "request_params": {"objectId": object_id},
+                },
+            )()
+
+    monkeypatch.setattr(readiness_module, "LasairAdapter", FakeLasairAdapter)
+
+    result = readiness_module.evaluate_preml_readiness(
         root=run_root,
         labels_path=labels_path,
         lightcurve_dir=lightcurve_dir,
@@ -113,5 +132,6 @@ def test_evaluate_preml_readiness_surfaces_external_blockers(tmp_path: Path) -> 
 
     assert result["ready_for_trust_training_now"] is False
     assert result["phase1_safe_snapshot_experts"] == ["fink/snn", "fink/rf_ia"]
+    assert result["lasair_dataset_probe"]["status"] == "no_live_payload"
     assert any("no strong curated truth" in blocker for blocker in result["trust_training_blockers"])
-    assert any("Lasair live access unavailable" in blocker for blocker in result["full_phase1_blockers"])
+    assert any("Lasair dataset probe returned no live Sherlock context" in blocker for blocker in result["full_phase1_blockers"])

@@ -23,7 +23,10 @@ def main() -> None:
     parser.add_argument("--metrics-out", default=None)
     parser.add_argument("--n-splits", type=int, default=5)
     parser.add_argument("--strict-labels", action="store_true")
-    parser.add_argument("--allow-unsafe-alerce", action="store_true")
+    parser.add_argument("--allow-unsafe-alerce", action="store_true",
+                        help="Include ALeRCE latest_object_unsafe snapshots in trust training")
+    parser.add_argument("--exclude-unsafe-alerce", action="store_true",
+                        help="Exclude ALeRCE latest_object_unsafe snapshots from trust training")
     parser.add_argument("--n-jobs", type=int, default=1,
                         help="Number of threads for LightGBM (must match -pe omp slots)")
     args = parser.parse_args()
@@ -39,10 +42,12 @@ def main() -> None:
 
     if snapshot_df["label_quality"].fillna("").eq("weak").any():
         print("WARNING: weak-label truth is present in snapshots; trust metrics should be treated as weak-label results.")
-    if not args.allow_unsafe_alerce:
+    include_unsafe = args.allow_unsafe_alerce and not args.exclude_unsafe_alerce
+    if not include_unsafe:
         print("Excluding ALeRCE latest-object snapshots from trust training by default.")
     else:
-        print("WARNING: including latest_object_unsafe ALeRCE snapshots in trust training (--allow-unsafe-alerce).")
+        print("Including ALeRCE latest_object_unsafe snapshots in trust training. "
+              "The exact__ flag lets the trust model learn temporal reliability.")
 
     split = group_train_cal_test_split(object_to_label)
     _, metrics_report, metadata = train_expert_trust_suite(
@@ -52,7 +57,7 @@ def main() -> None:
         models_dir=Path(args.models_dir),
         output_snapshot_path=Path(args.output_snapshots),
         n_splits=args.n_splits,
-        allow_unsafe_latest_snapshot=args.allow_unsafe_alerce,
+        allow_unsafe_latest_snapshot=include_unsafe,
         n_jobs=args.n_jobs,
     )
 
@@ -60,7 +65,7 @@ def main() -> None:
     metrics_out.parent.mkdir(parents=True, exist_ok=True)
     with open(metrics_out, "w") as fh:
         json.dump(metrics_report, fh, indent=2)
-    metadata["allow_unsafe_alerce"] = bool(args.allow_unsafe_alerce)
+    metadata["allow_unsafe_alerce"] = include_unsafe
     metadata["contains_weak_labels"] = bool(snapshot_df["label_quality"].fillna("").eq("weak").any())
     with open(Path(args.models_dir) / "metadata.json", "w") as fh:
         json.dump(metadata, fh, indent=2)

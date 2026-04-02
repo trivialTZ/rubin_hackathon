@@ -28,12 +28,17 @@ def main() -> None:
     parser.add_argument("--max-n-det", type=int, default=20)
     parser.add_argument("--skip-local-infer", action="store_true")
     parser.add_argument("--local-expert", default="all")
-    parser.add_argument("--emit-scoring-snapshots", action="store_true")
+    parser.add_argument("--emit-scoring-snapshots", action="store_true",
+                        help="Deprecated; scoring snapshots are emitted by default.")
+    parser.add_argument("--skip-scoring-snapshots", action="store_true",
+                        help="Skip building scoring snapshots that include latest_object_unsafe broker rows.")
     parser.add_argument("--benchmarks", default="benchmarks/preml_data_engineering.toml")
     parser.add_argument("--skip-benchmarks", action="store_true")
     parser.add_argument("--require-trust-training-ready", action="store_true")
     parser.add_argument("--require-full-phase1-ready", action="store_true")
     args = parser.parse_args()
+
+    emit_scoring_snapshots = args.emit_scoring_snapshots or not args.skip_scoring_snapshots
 
     repo_root = Path(__file__).resolve().parent.parent
     root = Path(args.root)
@@ -131,7 +136,7 @@ def main() -> None:
         cwd=repo_root,
     )
 
-    if args.emit_scoring_snapshots:
+    if emit_scoring_snapshots:
         _run(
             [
                 py,
