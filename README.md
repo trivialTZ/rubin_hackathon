@@ -128,20 +128,51 @@ This baseline is useful for benchmarking, but it is not the primary science path
 
 See [README_scc.md](README_scc.md) for environment setup.
 
+### Phase 1: CPU-only pipeline (SuperNNova + LightGBM)
+
+The entire Phase 1 pipeline runs on CPU. SuperNNova uses Fink's pre-trained
+bidirectional LSTM weights via `classify_lcs`; all trust/follow-up models use
+LightGBM. No GPU queue is required.
+
 ```bash
 export DEBASS_ROOT=/projectnb/<yourproject>/rubin_hackathon
 
-# 1. CPU prep from a login node
+# 1. CPU prep: download + backfill + normalize + truth + gold tables
 bash jobs/submit_cpu_prep.sh --limit 2000
 
-# 2. After CPU prep finishes, resume from your GPU session/node
-bash -l jobs/run_gpu_resume.sh
+# 2. SuperNNova batch inference (~10 min for 7K objects)
+qsub -V -P pi-brout jobs/local_infer_snn.sh
+
+# 3. After SNN finishes, submit the full chain with SGE job dependencies:
+#    rebuild gold → train trust → train followup → score → analyze
+bash jobs/submit_phase1_chain.sh
+
+# Or hold on the SNN job if it's still running:
+bash jobs/submit_phase1_chain.sh --after-snn <SNN_JOB_ID>
 ```
 
-Recommended split:
-1. CPU prep: `download_training → backfill(array) → normalize → build_truth_table → build_object_epoch_snapshots → build_expert_helpfulness`
-2. GPU inference when enabled: `local_infer`
-3. CPU training: `train_expert_trust → train_followup → score_nightly`
+Monitor and read results:
+```bash
+qstat -u $USER
+cat $DEBASS_ROOT/reports/results_summary.txt
+cat $DEBASS_ROOT/reports/metrics/expert_trust_metrics.json
+```
+
+### Phase 2: GPU experts (ParSNIP — when weights available)
+
+```bash
+# Request an interactive GPU session
+qrsh -l gpus=1 -q l40s
+
+cd $DEBASS_ROOT
+bash -l jobs/run_gpu_resume.sh --experts=parsnip
+```
+
+### Pipeline stages
+
+1. CPU prep: `download_training → backfill(array) → normalize → crossmatch_tns → build_object_epoch_snapshots → build_expert_helpfulness`
+2. Local expert inference: `local_infer_snn.sh` (CPU), `local_infer_gpu.sh` (GPU, Phase 2)
+3. CPU training chain: `rebuild_gold → train_expert_trust → train_followup → score_nightly → analyze_results`
 
 ## Data Engineering QA
 
@@ -170,18 +201,73 @@ python3.11 scripts/validate_truth_table.py path/to/curated_truth.parquet --requi
 
 ## Output
 
-Trust-aware outputs:
+### Primary Science Product: `expert_confidence` Payload
 
-- `data/silver/broker_events.parquet`
-- `data/truth/object_truth.parquet`
-- `data/gold/object_epoch_snapshots.parquet`
-- `data/gold/expert_helpfulness.parquet`
-- `models/trust/<expert>/model.pkl`
-- `models/trust/<expert>/calibrator.pkl`
-- `models/followup/model.pkl`
-- `reports/metrics/expert_trust_metrics.json`
-- `reports/metrics/followup_metrics.json`
-- `reports/scores/*.jsonl`
+The scoring pipeline (`score_nightly.py`) emits one JSONL record per
+(object, n_det) pair. Each record contains:
+
+```json
+{
+  "object_id": "ZTF21abcdef",
+  "n_det": 3,
+  "alert_jd": 2460170.91,
+  "expert_confidence": {
+    "fink/snn":    {"available": true,  "trust": 0.92, "projected": {"p_snia": 0.87, "p_nonIa_snlike": 0.08, "p_other": 0.05, ...}},
+    "supernnova":  {"available": true,  "trust": 0.85, "projected": {"p_snia": 0.91, ...}},
+    "fink/rf_ia":  {"available": true,  "trust": 0.78, "projected": {"p_snia_scalar": 0.83, ...}},
+    "lasair/sherlock": {"available": true, "trust": null, "context_tag": "SN", "reason": "phase-1 context expert"},
+    "parsnip":     {"available": false, "reason": "expert unavailable at this epoch"}
+  },
+  "ensemble": {
+    "p_follow_proxy": 0.94,
+    "recommended": true
+  }
+}
+```
+
+Per-expert fields:
+- `available` -- whether the expert produced output at this epoch
+- `trust` -- calibrated P(expert is correct) at this epoch (`q_{e,t}`)
+- `projected` -- full ternary probability distribution (p_snia, p_nonIa_snlike, p_other, top1_prob, margin, entropy)
+- `exactness` -- temporal correctness: `exact_alert`, `static_safe`, or `latest_object_unsafe`
+
+Ensemble fields:
+- `p_follow_proxy` -- trust-weighted probability that this object deserves spectroscopic follow-up
+- `recommended` -- binary decision at configurable threshold (default 0.5)
+
+### Evaluation and Test-Set Metrics
+
+The pipeline uses a **three-way grouped split** (60% train / 20% calibration / 20% test)
+at the object level. All epochs of the same object stay together. The split is
+deterministic (seed=42) and saved to `models/trust/metadata.json` for reproducibility.
+
+Test-set results are written to:
+
+| File | Contents |
+|------|----------|
+| `reports/metrics/expert_trust_metrics.json` | Per-expert ROC-AUC, Brier score, n_test_rows on held-out test set |
+| `reports/metrics/followup_metrics.json` | Follow-up model ROC-AUC, Brier, positive_rate on held-out test set |
+| `reports/results_summary.json` | Machine-readable digest of all metrics, expert availability, temporal evolution |
+| `reports/results_summary.txt` | Human-readable summary |
+| `models/trust/metadata.json` | Exact train/cal/test object ID lists |
+
+### File Inventory
+
+Trust-aware pipeline outputs:
+
+| Stage | Output |
+|-------|--------|
+| Silver events | `data/silver/broker_events.parquet` |
+| Local expert scores | `data/silver/local_expert_outputs/<expert>/part-latest.parquet` |
+| TNS truth | `data/truth/object_truth.parquet` |
+| Epoch snapshots | `data/gold/object_epoch_snapshots.parquet` |
+| Trust-augmented snapshots | `data/gold/object_epoch_snapshots_trust.parquet` |
+| Expert helpfulness | `data/gold/expert_helpfulness.parquet` |
+| Trust models | `models/trust/<expert>/model.pkl` + `metadata.json` |
+| Follow-up model | `models/followup/model.pkl` + `metadata.json` |
+| Score payloads | `reports/scores/scores_ndet{3,5,10}.jsonl` |
+| Metrics | `reports/metrics/expert_trust_metrics.json`, `reports/metrics/followup_metrics.json` |
+| Summary | `reports/results_summary.txt`, `reports/results_summary.json` |
 
 Baseline outputs:
 
@@ -195,7 +281,7 @@ Baseline outputs:
 | `fink/snn` | alert-level posterior-like | yes | exact alert history |
 | `fink/rf_ia` | alert-level scalar Ia score | yes | exact alert history |
 | `parsnip` | local rerun posterior | yes | rerun exact when weights exist |
-| `supernnova` | local rerun posterior | pending | wrapper exists; needs package and weights |
+| `supernnova` | local rerun posterior | yes | Fink-trained LSTM; batch CPU inference via classify_lcs |
 | `alerce/lc_classifier_transient` | object snapshot | live-only | historical backfill is unsafe |
 | `alerce/stamp_classifier` | object snapshot | live-only | historical backfill is unsafe |
 | `lasair/sherlock` | context expert | context-only | static-safe, not calibrated posterior |

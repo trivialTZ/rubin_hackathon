@@ -70,9 +70,13 @@ ALeRCE and Fink require no credentials — they use public REST APIs.
 mkdir -p $DEBASS_ROOT/logs
 ```
 
-## 4. Recommended workflow
+## 4. Recommended workflow: Phase 1 (CPU-only)
 
-Run the CPU-safe stages first from a login node:
+The entire Phase 1 pipeline runs on CPU. SuperNNova uses Fink's pre-trained
+bidirectional LSTM via `classify_lcs` (batch mode, ~10 min for 7K objects).
+All trust/follow-up models use LightGBM. **No GPU queue required.**
+
+### Step 1: Data preparation
 
 ```bash
 cd $DEBASS_ROOT
@@ -80,101 +84,88 @@ cd $DEBASS_ROOT
 # One-command bootstrap: verify checkout, load Python, create venv,
 # install requirements, then submit CPU prep
 bash -l jobs/scc_bootstrap.sh --limit 2000
-```
 
-Recommended CPU-first order:
-
-```text
-download_training
-  → backfill (array)
-  → normalize
-  → build_truth_table
-  → build_object_epoch_snapshots
-  → build_expert_helpfulness
-```
-
-To watch both jobs with live progress bars:
-
-```bash
-$DEBASS_VENV/bin/python scripts/watch_cpu_prep.py
-```
-
-After CPU prep finishes, write a summary of what was downloaded and how the
-CPU-side artifacts are structured:
-
-```bash
-$DEBASS_VENV/bin/python scripts/summarize_cpu_prep.py \
-  --json-out reports/summary/cpu_prep_summary.json
-```
-
-That report should summarize:
-
-- `data/labels.csv` (weak self-label seed set)
-- `data/lightcurves/*.json`
-- `data/bronze/*.parquet`
-- `data/silver/broker_events.parquet`
-- `data/truth/object_truth.parquet`
-- `data/gold/object_epoch_snapshots.parquet`
-- `data/gold/expert_helpfulness.parquet`
-
-Use `--strict` if you want the command to exit nonzero when labelled objects
-are missing from lightcurves, silver, or the epoch table.
-
-If you already have the SCC environment set up and only want to resubmit the
-CPU stage, you can still run:
-
-```bash
+# Or if environment is already set up:
 bash jobs/submit_cpu_prep.sh --limit 2000
 ```
 
-After those finish, request an interactive GPU session and resume from the prepared checkpoint:
-
-```bash
-# Check currently available GPU queues
-qgpus -v -s
-
-# Request an interactive GPU shell
-# Example matching your current SCC usage:
-qrsh -l gpus=1 -q l40s
-
-# Once the qrsh session starts:
-cd $DEBASS_ROOT
-
-# Default GPU expert list is ParSNIP
-bash -l jobs/run_gpu_resume.sh
-
-# If you later enable more experts, override the list explicitly
-bash -l jobs/run_gpu_resume.sh --experts=parsnip,supernnova
-
-# Baseline benchmark only
-bash -l jobs/run_gpu_resume.sh --baseline
+This runs:
+```text
+download_training → backfill (array) → normalize
+  → crossmatch_tns → build_object_epoch_snapshots → build_expert_helpfulness
 ```
 
-GPU should be used only for local rerunnable experts. CPU is the default for:
+### Step 2: SuperNNova inference
 
-- silver/gold building
-- expert trust training
-- follow-up training
-- evaluation
-- scoring
+After CPU prep completes:
 
-The default expert list is `parsnip` because the repo now supports real
-ParSNIP inference when both `model.pt` and `classifier.pkl` are present in
-`artifacts/local_experts/parsnip/`. SuperNNova is still a stub path unless you
-complete its model loader. The GPU stage fails fast if a requested expert is
-missing its package, model, or classifier.
+```bash
+# Patch SuperNNova for pandas 2.x compatibility (run once):
+python3 scripts/patch_supernnova_pandas2.py
 
-Note: on SCC, `nvidia-smi` may show all physical GPUs on the node even when your
-job only owns one GPU. The DEBASS resume script now checks `torch.cuda.is_available()`
-and `torch.cuda.device_count()` instead of trusting the raw `nvidia-smi` count.
+# Submit batch SNN inference (~10 min for 7K objects × 20 epochs):
+qsub -V -P pi-brout jobs/local_infer_snn.sh
+```
 
-If you still want the single-submit batch flow, it now defaults to the trust-aware chain:
+SuperNNova artifacts must be placed in `artifacts/local_experts/supernnova/`:
+- `model.pt` -- state_dict from `fink-science/snn_snia_vs_nonia`
+- `cli_args.json` -- training settings (bidirectional LSTM, 32 hidden, g+r filters)
+- `data_norm.json` -- normalization constants
+
+### Step 3: Train, score, and analyze
+
+After SNN inference completes, submit the full pipeline chain with SGE
+job dependencies (each step holds on the previous):
+
+```bash
+# Submit all 5 steps at once:
+bash jobs/submit_phase1_chain.sh
+
+# Or hold on a still-running SNN job:
+bash jobs/submit_phase1_chain.sh --after-snn <SNN_JOB_ID>
+```
+
+The chain runs:
+```text
+rebuild_gold → train_expert_trust → train_followup → score (n_det=3,5,10) → analyze_results
+```
+
+### Step 4: Read results
+
+```bash
+# Human-readable summary of all metrics:
+cat reports/results_summary.txt
+
+# Test-set metrics (held-out 20% of objects):
+cat reports/metrics/expert_trust_metrics.json   # per-expert trust ROC-AUC
+cat reports/metrics/followup_metrics.json       # follow-up ROC-AUC
+
+# Score payloads (JSONL, one line per object):
+head -1 reports/scores/scores_ndet3.jsonl | python3 -m json.tool
+
+# Split reproducibility — exact object IDs in each partition:
+python3 -c "
+import json
+m = json.load(open('models/trust/metadata.json'))
+print(f'Train: {len(m[\"train_ids\"])}  Cal: {len(m[\"cal_ids\"])}  Test: {len(m[\"test_ids\"])}')
+"
+```
+
+### Phase 2: GPU experts (when weights available)
+
+GPU is only needed for ParSNIP (no public weights yet). SuperNNova runs on CPU.
+
+```bash
+qrsh -l gpus=1 -q l40s
+cd $DEBASS_ROOT
+bash -l jobs/run_gpu_resume.sh --experts=parsnip
+```
+
+### Legacy single-submit flow
 
 ```bash
 bash jobs/submit_all.sh --gpu --limit 2000
-
-# Baseline benchmark only
-bash jobs/submit_all.sh --gpu --baseline --limit 2000
+bash jobs/submit_all.sh --gpu --baseline --limit 2000  # baseline benchmark only
 ```
 
 ## 5. Manual stage control
@@ -242,17 +233,22 @@ export DEBASS_QSUB_GPU_ARGS="-q l40s"
 
 ## 8. Output locations
 
-| Stage | Output |
-|-------|--------|
-| backfill | `data/bronze/<broker>_<ts>.parquet` |
-| normalize | `data/silver/broker_events.parquet` |
-| truth | `data/truth/object_truth.parquet` |
-| snapshots | `data/gold/object_epoch_snapshots.parquet` |
-| helpfulness | `data/gold/expert_helpfulness.parquet` |
-| local_infer | `data/silver/local_expert_outputs/<expert>/part-*.parquet` |
-| trust | `models/trust/<expert>/model.pkl` |
-| followup | `models/followup/model.pkl` |
-| report | `reports/metrics/*.json`, `reports/scores/*.jsonl` |
+| Stage | Output | Description |
+|-------|--------|-------------|
+| backfill | `data/bronze/<broker>_<ts>.parquet` | Raw broker payloads |
+| normalize | `data/silver/broker_events.parquet` | Event-level silver with exactness metadata |
+| local_infer | `data/silver/local_expert_outputs/<expert>/part-latest.parquet` | Per-epoch local expert scores |
+| truth | `data/truth/object_truth.parquet` | TNS spectroscopic crossmatch (3-tier quality) |
+| snapshots | `data/gold/object_epoch_snapshots.parquet` | No-leakage epoch features + projected expert probs |
+| trust snapshots | `data/gold/object_epoch_snapshots_trust.parquet` | Above + trust scores (q_{e,t}) appended |
+| helpfulness | `data/gold/expert_helpfulness.parquet` | Per-expert correctness labels for trust training |
+| trust models | `models/trust/<expert>/model.pkl` + `metadata.json` | Per-expert LightGBM trust heads |
+| followup model | `models/followup/model.pkl` + `metadata.json` | Binary follow-up recommendation model |
+| split | `models/trust/metadata.json` | Train/cal/test object ID lists (reproducible) |
+| trust metrics | `reports/metrics/expert_trust_metrics.json` | Per-expert ROC-AUC, Brier on held-out test set |
+| followup metrics | `reports/metrics/followup_metrics.json` | Follow-up ROC-AUC, Brier on held-out test set |
+| score payloads | `reports/scores/scores_ndet{3,5,10}.jsonl` | Trust-aware expert_confidence + ensemble per object |
+| results summary | `reports/results_summary.txt` | Human-readable analysis of all metrics |
 
 ## 9. Pipeline architecture summary
 
