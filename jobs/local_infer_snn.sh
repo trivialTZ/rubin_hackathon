@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -N debass_meta_local_infer_snn
 #$ -l h_rt=02:00:00
-#$ -l mem_per_core=16G
+#$ -l mem_per_core=8G
 #$ -pe omp 2
 #$ -j y
 #$ -o logs/local_infer_snn.$JOB_ID.log
