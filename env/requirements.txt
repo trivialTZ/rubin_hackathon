@@ -8,6 +8,7 @@
 alerce>=2.1.0,<3
 fink-client>=7.0
 lasair>=0.1.0,<1
+pittgoogle-client>=0.3        # Pitt-Google Broker (BigQuery); needs GCP credentials
 requests>=2.31
 
 # Data / IO

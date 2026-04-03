@@ -67,20 +67,25 @@ def rec_label(p_follow: float) -> str:
 # ── Global CSS injected via st.markdown ───────────────────────────
 CUSTOM_CSS = """
 <style>
-    /* Compact metric cards */
+    /* Metric cards — subtle border, no forced background */
     [data-testid="stMetric"] {
-        background-color: #1e2130;
         border-radius: 8px;
         padding: 12px 16px;
-        border: 1px solid #2d3250;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     }
-    /* Expert card styles */
+    [data-testid="stMetricLabel"] p {
+        font-weight: 600 !important;
+    }
+    /* Expert card — light background with accent border */
     .expert-card {
-        background: #1e2130;
+        background: #f7f8fa;
         border-radius: 8px;
         padding: 14px;
         margin-bottom: 8px;
         border-left: 4px solid #3498db;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        color: #1a1a2e;
     }
     .expert-card.agree { border-left-color: #2ecc71; }
     .expert-card.disagree { border-left-color: #e74c3c; }

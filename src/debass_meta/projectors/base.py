@@ -32,6 +32,9 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     "fink_lsst/early_snia":                            ("lsst", "fink_lsst"),
     # --- Lasair (both surveys) ---
     "lasair/sherlock":                 ("any",  "lasair"),
+    # --- Pitt-Google Broker (SuperNNova via BigQuery) ---
+    "pittgoogle/supernnova_lsst":      ("lsst", "pittgoogle"),
+    "pittgoogle/supernnova_ztf":       ("ztf",  "pittgoogle"),
 }
 
 # Backward-compatible flat list — Phase 1 experts (original 8)
@@ -156,6 +159,10 @@ def _dispatch_projector(expert_key: str, events: list[dict[str, Any]]) -> dict[s
         return project_events(expert_key, events)
     if expert_key in {"parsnip", "supernnova", "alerce_lc"}:
         from .local import project_events
+
+        return project_events(expert_key, events)
+    if expert_key.startswith("pittgoogle/"):
+        from .pittgoogle import project_events
 
         return project_events(expert_key, events)
     return {"prediction_type": "unknown", "reason": f"no projector for {expert_key}"}

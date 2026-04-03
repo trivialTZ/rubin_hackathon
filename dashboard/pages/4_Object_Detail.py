@@ -132,16 +132,19 @@ else:
 
             with cols[i % 3]:
                 trust_str = f"{trust:.4f}" if trust is not None else "N/A"
+                # Darken "other" gray for readability on light backgrounds
+                dot_color = cls_color if cls_color != "#95a5a6" else "#636e72"
                 st.markdown(
-                    f'<div style="background:#1e2130; border-radius:8px; '
+                    f'<div style="background:#f7f8fa; border-radius:8px; '
                     f'padding:14px; margin-bottom:8px; '
-                    f'border-left:4px solid {border_color}">'
-                    f'<b>{expert_name(ek)}</b> &nbsp; '
-                    f'<span style="color:#aaa">Trust: {trust_str}</span><br>'
-                    f'<span style="color:{cls_color}; font-size:1.1em">'
+                    f'border-left:4px solid {border_color}; '
+                    f'box-shadow:0 1px 3px rgba(0,0,0,0.06)">'
+                    f'<b style="color:#1a1a2e">{expert_name(ek)}</b> &nbsp; '
+                    f'<span style="color:#555">Trust: {trust_str}</span><br>'
+                    f'<span style="color:{dot_color}; font-size:1.1em; font-weight:600">'
                     f'● {mapped_cls}</span> &nbsp; '
-                    f'(p={p_snia:.3f} SNIa)<br>'
-                    f'<span style="color:#888; font-size:0.85em">'
+                    f'<span style="color:#333">(p={p_snia:.3f} SNIa)</span><br>'
+                    f'<span style="color:#777; font-size:0.85em">'
                     f'Exactness: {exactness}</span>'
                     f'</div>',
                     unsafe_allow_html=True,
