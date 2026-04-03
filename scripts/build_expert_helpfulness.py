@@ -7,8 +7,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+import math
+
 from debass_meta.features.lightcurve import FEATURE_NAMES
 from debass_meta.projectors import ALL_EXPERT_KEYS, sanitize_expert_key
+
+
+def _isnan(value) -> bool:
+    """Check if a value is NaN (handles float NaN from parquet roundtrip)."""
+    try:
+        return value is None or (isinstance(value, float) and math.isnan(value))
+    except (TypeError, ValueError):
+        return False
 
 
 def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
@@ -65,10 +75,12 @@ def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
             record["mapped_p_true_class"] = p_true_class
 
             follow_pred = None
-            if record.get(f"proj__{san}__p_snia") is not None:
-                follow_pred = int(record[f"proj__{san}__p_snia"] >= 0.5)
-            elif record.get(f"proj__{san}__p_snia_scalar") is not None:
-                follow_pred = int(record[f"proj__{san}__p_snia_scalar"] >= 0.5)
+            p_snia_val = record.get(f"proj__{san}__p_snia")
+            p_snia_scalar_val = record.get(f"proj__{san}__p_snia_scalar")
+            if p_snia_val is not None and not _isnan(p_snia_val):
+                follow_pred = int(float(p_snia_val) >= 0.5)
+            elif p_snia_scalar_val is not None and not _isnan(p_snia_scalar_val):
+                follow_pred = int(float(p_snia_scalar_val) >= 0.5)
             elif mapped_pred_class is not None:
                 follow_pred = int(mapped_pred_class == "snia")
 
@@ -76,6 +88,7 @@ def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
             record["is_helpful_for_follow_proxy"] = (
                 int(follow_pred == int(target_follow_proxy))
                 if follow_pred is not None and target_follow_proxy is not None
+                    and not _isnan(target_follow_proxy)
                 else None
             )
             rows.append(record)

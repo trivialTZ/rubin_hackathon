@@ -2,8 +2,17 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
+
+
+def _is_nan(value) -> bool:
+    """Check if a value is NaN (handles float NaN from parquet roundtrip)."""
+    try:
+        return isinstance(value, float) and math.isnan(value)
+    except (TypeError, ValueError):
+        return False
 
 from debass_meta.access.associations import load_lsst_ztf_associations, resolve_object_reference
 from debass_meta.access.identifiers import infer_identifier_kind
@@ -372,7 +381,7 @@ def _local_record_to_events(record: dict[str, Any]) -> list[dict[str, Any]]:
             "event_scope": "rerun_local",
             "event_time_jd": float(alert_jd) if alert_jd is not None else None,
             "alert_id": None,
-            "n_det": int(record["n_det"]) if record.get("n_det") is not None else None,
+            "n_det": int(record["n_det"]) if record.get("n_det") is not None and not _is_nan(record["n_det"]) else None,
             "raw_label_or_score": probability,
             "canonical_projection": float(probability) if probability is not None else None,
             "ranking": None,
