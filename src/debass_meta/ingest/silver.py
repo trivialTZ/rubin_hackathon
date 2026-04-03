@@ -162,6 +162,10 @@ def bronze_to_silver(
     if n_dropped > 0:
         print(f"  silver dedup: {n_before:,} → {len(silver_df):,} ({n_dropped:,} duplicates removed)")
 
+    # Ensure classifier_version is uniform string type — broker APIs return
+    # a mix of str ("2.1.0"), int, and None which pyarrow rejects as mixed.
+    if "classifier_version" in silver_df.columns:
+        silver_df["classifier_version"] = silver_df["classifier_version"].astype("string")
     silver_df.to_parquet(out_path, index=False)
 
     legacy_df = pd.DataFrame(legacy_rows)
