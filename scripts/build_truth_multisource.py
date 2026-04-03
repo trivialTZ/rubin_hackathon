@@ -28,35 +28,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import numpy as np
 import pandas as pd
 
-# TNS type string → ternary class mapping
-_TNS_TYPE_MAP = {
-    "SN Ia": "snia", "SN Ia-91T-like": "snia", "SN Ia-91bg-like": "snia",
-    "SN Ia-CSM": "snia", "SN Ia-pec": "snia", "SN Ia-SC": "snia",
-    "SN Iax[02cx-like]": "snia",
-    "SN II": "nonIa_snlike", "SN IIP": "nonIa_snlike", "SN IIL": "nonIa_snlike",
-    "SN IIn": "nonIa_snlike", "SN IIb": "nonIa_snlike",
-    "SN Ib": "nonIa_snlike", "SN Ic": "nonIa_snlike", "SN Ic-BL": "nonIa_snlike",
-    "SN Ibc": "nonIa_snlike", "SN I": "nonIa_snlike",
-    "SLSN-I": "nonIa_snlike", "SLSN-II": "nonIa_snlike", "SLSN-R": "nonIa_snlike",
-}
-
-
-def _classify_tns_type(tns_type: str | None) -> str | None:
-    """Map TNS type string to ternary class."""
-    if not tns_type or str(tns_type) in ("None", "nan", ""):
-        return None
-    tns_type = str(tns_type).strip()
-    # Direct match
-    if tns_type in _TNS_TYPE_MAP:
-        return _TNS_TYPE_MAP[tns_type]
-    # Prefix match
-    for prefix, cls in _TNS_TYPE_MAP.items():
-        if tns_type.startswith(prefix):
-            return cls
-    # Non-SN TNS types → other
-    if tns_type.startswith("AGN") or tns_type.startswith("TDE"):
-        return "other"
-    return None
+# Use the canonical mapping from tns.py — single source of truth
+from debass_meta.access.tns import (
+    TNS_TERNARY_MAP,
+    TNS_AMBIGUOUS_TYPES,
+    map_tns_type_to_ternary as _classify_tns_type,
+    is_ambiguous_type,
+)
 
 
 def build_truth_multisource(
@@ -106,14 +84,24 @@ def build_truth_multisource(
             plx = xm.get("fink_xm_gaiadr3_Plx")
 
             # Tier 1: TNS spectroscopic type from Fink crossmatch
+            # Note: Fink xm_tns_type comes from the TNS classification,
+            # but we don't know the source group. Treat as credible IF
+            # the type is specific (not ambiguous "SN").
             ternary = _classify_tns_type(tns_type)
             if ternary:
+                if is_ambiguous_type(tns_type):
+                    # Generic "SN" — ambiguous, downgrade to consensus
+                    quality = "consensus"
+                    label_source = f"fink_xm_tns_ambiguous ({tns_name})"
+                else:
+                    quality = "spectroscopic"
+                    label_source = f"fink_xm_tns ({tns_name})"
                 truth[oid] = {
                     "object_id": oid,
                     "final_class_ternary": ternary,
                     "follow_proxy": int(ternary == "snia"),
-                    "label_source": f"fink_xm_tns ({tns_name})",
-                    "label_quality": "spectroscopic",
+                    "label_source": label_source,
+                    "label_quality": quality,
                     "tns_name": tns_name,
                     "tns_type": tns_type,
                     "redshift": xm.get("fink_xm_tns_redshift"),

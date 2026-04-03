@@ -93,51 +93,270 @@ def load_tns_credentials(*, sandbox: bool = False) -> TNSCredentials:
 
 
 # ------------------------------------------------------------------ #
-# TNS client — single-object + bulk                                   #
+# TNS type → ternary mapping                                          #
 # ------------------------------------------------------------------ #
+#
+# Science notes on contested types:
+#   - SN Ia-CSM: thermonuclear + circumstellar medium. Some debate
+#     whether these are true Ia or IIn mimics, but TNS consensus
+#     (and most published analyses) treats them as Ia-family.
+#   - SN Iax/02cx-like: low-luminosity thermonuclear. Definitely
+#     NOT core-collapse. Keep as snia for follow-up purposes.
+#   - "SN" (generic, no subtype): observer saw SN features but
+#     couldn't determine type. Could be Ia OR CC — ambiguous.
+#     Mapped to nonIa_snlike as conservative prior (CCSNe are
+#     ~3x more common), BUT flagged in TNS_AMBIGUOUS_TYPES so
+#     quality assignment can downgrade from spectroscopic.
 
 TNS_TERNARY_MAP: dict[str, str] = {
-    # SN Ia variants → "snia"
+    # ── SN Ia variants → "snia" ──────────────────────────────
     "SN Ia": "snia",
-    "SN Ia-91T-like": "snia",
-    "SN Ia-91bg-like": "snia",
-    "SN Ia-CSM": "snia",
-    "SN Ia-pec": "snia",
-    "SN Ia-SC": "snia",
-    "SN Iax[02cx-like]": "snia",
-    # Core-collapse / thermonuclear non-Ia → "nonIa_snlike"
+    "SN Ia-91T-like": "snia",     # overluminous Ia
+    "SN Ia-91bg-like": "snia",    # subluminous Ia
+    "SN Ia-CSM": "snia",          # thermonuclear + CSM (see note)
+    "SN Ia-pec": "snia",          # peculiar Ia
+    "SN Ia-SC": "snia",           # super-Chandrasekhar
+    "SN Iax[02cx-like]": "snia",  # low-luminosity thermonuclear
+    # ── Core-collapse / non-Ia SN → "nonIa_snlike" ──────────
     "SN Ib": "nonIa_snlike",
     "SN Ib-pec": "nonIa_snlike",
     "SN Ib/c": "nonIa_snlike",
     "SN Ic": "nonIa_snlike",
-    "SN Ic-BL": "nonIa_snlike",
+    "SN Ic-BL": "nonIa_snlike",   # broad-lined, GRB-associated
     "SN Ic-pec": "nonIa_snlike",
+    "SN Ibn": "nonIa_snlike",     # He-rich CSM interaction
+    "SN Icn": "nonIa_snlike",     # C/O-rich CSM interaction
     "SN II": "nonIa_snlike",
-    "SN IIb": "nonIa_snlike",
-    "SN IIP": "nonIa_snlike",
-    "SN IIL": "nonIa_snlike",
-    "SN IIn": "nonIa_snlike",
+    "SN IIb": "nonIa_snlike",     # transitional H→He
+    "SN IIP": "nonIa_snlike",     # plateau
+    "SN IIL": "nonIa_snlike",     # linear decline
+    "SN IIn": "nonIa_snlike",     # narrow lines (CSM)
     "SN IIn-pec": "nonIa_snlike",
     "SN II-pec": "nonIa_snlike",
-    "SLSN-I": "nonIa_snlike",
-    "SLSN-II": "nonIa_snlike",
-    "SLSN-R": "nonIa_snlike",
-    "SN": "nonIa_snlike",
-    # Everything else → "other"
-    "TDE": "other",
-    "AGN": "other",
-    "CV": "other",
-    "LBV": "other",
+    "SLSN-I": "nonIa_snlike",     # superluminous H-poor
+    "SLSN-II": "nonIa_snlike",    # superluminous H-rich
+    "SLSN-R": "nonIa_snlike",     # superluminous radioactive
+    "SN": "nonIa_snlike",         # generic SN (AMBIGUOUS — see below)
+    # ── Everything else → "other" ────────────────────────────
+    "TDE": "other",               # tidal disruption event
+    "AGN": "other",               # active galactic nucleus
+    "CV": "other",                # cataclysmic variable
+    "LBV": "other",               # luminous blue variable
     "Nova": "other",
-    "Varstar": "other",
-    "Galaxy": "other",
-    "QSO": "other",
-    "ILRT": "other",
-    "Kilonova": "other",
-    "FRB": "other",
-    "Impostor-SN": "other",
+    "Varstar": "other",           # generic variable star
+    "Galaxy": "other",            # host galaxy (not transient)
+    "QSO": "other",               # quasar
+    "ILRT": "other",              # intermediate-luminosity red transient
+    "Kilonova": "other",          # neutron star merger
+    "FRB": "other",               # fast radio burst
+    "Impostor-SN": "other",       # SN impostor (LBV eruption etc.)
     "Other": "other",
+    # Rare/emerging types
+    "FBOT": "other",              # fast blue optical transient
+    "LRN": "other",               # luminous red nova (stellar merger)
+    "Afterglow": "other",         # GRB afterglow
+    "M dwarf": "other",           # stellar flare
+    "WR": "other",                # Wolf-Rayet star
+    "Gap": "other",               # luminosity gap transient
+    "PISN": "nonIa_snlike",       # pair-instability SN
 }
+
+# Types where the ternary class is AMBIGUOUS even with a spectrum.
+# "SN" means the observer saw SN features but couldn't determine Ia vs CC.
+# These should NOT get "spectroscopic" quality — downgrade to "consensus"
+# unless corroborated by broker agreement.
+TNS_AMBIGUOUS_TYPES: set[str] = {"SN"}
+
+
+# ------------------------------------------------------------------ #
+# Source verification framework                                        #
+# ------------------------------------------------------------------ #
+#
+# Recognized survey programs with documented spectroscopic follow-up
+# pipelines. Classifications from these groups have well-characterized
+# reduction and typing procedures.
+#
+# Groups NOT in this set may still produce correct classifications,
+# but we lack the metadata to verify the pipeline programmatically.
+# Their labels are assigned a lower quality tier unless corroborated
+# by independent broker consensus.
+
+TNS_CREDIBLE_GROUPS: set[str] = {
+    # Major survey programs with classification pipelines
+    "ZTF", "ZTF/CLU", "BTS",           # Zwicky Transient Facility
+    "SCAT", "UCSC",                     # Santa Cruz / UCSC
+    "ePESSTO", "ePESSTO+", "PESSTO",   # Public ESO Spectroscopic Survey
+    "YSE",                              # Young Supernova Experiment
+    "DEBASS",                           # Discovery and Early Broadband Analysis of SNe
+    "SDSS", "SDSS-II",                  # Sloan Digital Sky Survey
+    "SNLS",                             # Supernova Legacy Survey
+    "DES", "DES-SN",                    # Dark Energy Survey
+    "ATLAS",                            # Asteroid Terrestrial-impact Last Alert System
+    "Pan-STARRS", "PS1", "PS2",        # Panoramic Survey Telescope
+    "AMPEL",                            # Alert Management Platform
+    "ALeRCE",                           # ALeRCE broker
+    "Fink",                             # Fink broker
+    "Lasair",                           # Lasair broker
+    "SNFactory", "SNf",                 # Nearby Supernova Factory
+    "SOAR",                             # SOAR telescope group
+    "CSP",                              # Carnegie Supernova Project
+    "LCO", "LCO Global SN Project",    # Las Cumbres Observatory
+    "NOIR",                             # NOIR Lab
+    "CfA",                              # Center for Astrophysics
+    "Asiago",                           # Asiago classification program
+    "GSP",                              # Global SN Project
+    "TCD", "GREAT",                     # Trinity College Dublin / GREAT survey
+    "SGLF",                             # Singapore Gravitational Lensing
+    "GTC",                              # Gran Telescopio Canarias
+    "NOT",                              # Nordic Optical Telescope
+    "WHT",                              # William Herschel Telescope
+    "Keck",                             # Keck Observatory
+    "Gemini",                           # Gemini Observatory
+    "VLT", "ESO",                       # Very Large Telescope / ESO
+    "Magellan",                         # Magellan Telescopes
+    "AAT",                              # Anglo-Australian Telescope
+    "NTT",                              # New Technology Telescope
+    "SALT",                             # Southern African Large Telescope
+    "HET",                              # Hobby-Eberly Telescope
+    "APO",                              # Apache Point Observatory
+    "Lick",                             # Lick Observatory
+    "FLOYDS",                           # FLOYDS spectrograph (LCO)
+    "SNIFS",                            # SuperNova Integral Field Spectrograph
+    "MMT",                              # MMT Observatory
+    "TDE",                              # TDE classification group
+    "ENGRAVE",                          # EM counterpart to GW
+    "GROWTH",                           # Global Relay of Observatories
+    "SNe in ACT",                       # SNe in ACT survey
+}
+
+# Recognized spectrographs — an instrument in this set provides
+# strong provenance for the classification even if the group name
+# is not in the registry (e.g. a PI-led program on a known telescope).
+TNS_CREDIBLE_INSTRUMENTS: set[str] = {
+    # Robotic classifiers
+    "SEDM", "SPRAT",
+    # Workhorse spectrographs on 2-4m telescopes
+    "ALFOSC", "EFOSC2", "FLOYDS", "WiFeS", "SNIFS",
+    "DBSP", "DIS", "Goodman", "GMOS",
+    "Binospec", "LDSS3", "IMACS", "MODS",
+    # Large telescope spectrographs (4-10m)
+    "DEIMOS", "LRIS", "ESI",     # Keck
+    "FORS2", "X-shooter",         # VLT
+    "GMOS-N", "GMOS-S",           # Gemini
+    "FIRE", "MagE", "LDSS-3",     # Magellan
+    "RSS",                         # SALT
+    "LRS2", "VIRUS",               # HET
+    "Kastner", "Kast",             # Lick
+}
+
+
+@dataclass(frozen=True)
+class SpectrumCredibility:
+    """Credibility assessment of a TNS spectroscopic classification."""
+    tier: str  # "professional", "likely_professional", "unverified"
+    source_group: str | None
+    instrument: str | None
+    reason: str
+
+
+def extract_classification_credibility(
+    raw_detail: dict[str, Any],
+) -> SpectrumCredibility:
+    """Assess verification status of TNS classification from API response metadata.
+
+    Checks the classification spectrum's source group and instrument
+    against recognized survey programs and instruments.
+
+    Returns
+    -------
+    SpectrumCredibility
+        tier="professional" → recognized survey program, use as spectroscopic truth
+        tier="likely_professional" → recognized instrument, group not in registry
+        tier="unverified" → insufficient metadata to verify, lower quality tier
+    """
+    spectra = raw_detail.get("spectra") or raw_detail.get("classification_spectra")
+    if not spectra:
+        return SpectrumCredibility(
+            tier="unverified",
+            source_group=None,
+            instrument=None,
+            reason="no_spectra_in_response",
+        )
+
+    if isinstance(spectra, dict):
+        spectra = list(spectra.values())
+    if not isinstance(spectra, list) or len(spectra) == 0:
+        return SpectrumCredibility(
+            tier="unverified",
+            source_group=None,
+            instrument=None,
+            reason="empty_spectra_list",
+        )
+
+    # Check ALL spectra — if ANY is from a credible source, trust it.
+    # (Object may have multiple spectra from different groups.)
+    best_tier = "unverified"
+    best_group = None
+    best_instrument = None
+    best_reason = "no_recognized_source"
+
+    for spec in spectra:
+        if not isinstance(spec, dict):
+            continue
+
+        group = str(spec.get("source_group_name") or "").strip()
+        inst_obj = spec.get("instrument")
+        instrument = ""
+        if isinstance(inst_obj, dict):
+            instrument = str(inst_obj.get("name") or "").strip()
+        elif isinstance(inst_obj, str):
+            instrument = inst_obj.strip()
+
+        # Check group against credible list
+        if group and group in TNS_CREDIBLE_GROUPS:
+            return SpectrumCredibility(
+                tier="professional",
+                source_group=group,
+                instrument=instrument or None,
+                reason=f"credible_group:{group}",
+            )
+
+        # Check instrument against credible list
+        if instrument and instrument in TNS_CREDIBLE_INSTRUMENTS:
+            if best_tier != "professional":
+                best_tier = "likely_professional"
+                best_group = group or None
+                best_instrument = instrument
+                best_reason = f"credible_instrument:{instrument}"
+
+        # Track whatever we found
+        if best_group is None and group:
+            best_group = group
+        if best_instrument is None and instrument:
+            best_instrument = instrument
+
+    return SpectrumCredibility(
+        tier=best_tier,
+        source_group=best_group,
+        instrument=best_instrument,
+        reason=best_reason,
+    )
+
+
+def is_credible_classification(
+    raw_detail: dict[str, Any],
+) -> bool:
+    """Quick check: is the TNS classification from a recognized source?
+
+    Returns True for "professional" or "likely_professional" tiers.
+    """
+    cred = extract_classification_credibility(raw_detail)
+    return cred.tier in ("professional", "likely_professional")
+
+
+# ------------------------------------------------------------------ #
+# TNS client — single-object + bulk                                   #
+# ------------------------------------------------------------------ #
 
 
 class TNSError(RuntimeError):
@@ -157,6 +376,11 @@ class TNSResult:
     dec: float | None
     discovery_date: str | None
     raw: dict[str, Any]
+    # Credibility metadata (populated from API responses, None for bulk CSV)
+    source_group: str | None = None
+    classification_instrument: str | None = None
+    credibility_tier: str | None = None  # "professional"/"likely_professional"/"unverified"
+    credibility_reason: str | None = None
 
 
 class TNSClient:
@@ -374,6 +598,9 @@ class TNSClient:
         dec = _safe_float(detail.get("dec") or detail.get("decdeg"))
         discovery_date = str(detail.get("discoverydate") or "") or None
 
+        # Assess classification credibility from spectrum metadata
+        cred = extract_classification_credibility(detail)
+
         detail["match_method"] = match_method
         return TNSResult(
             object_id=object_id,
@@ -386,6 +613,10 @@ class TNSClient:
             dec=dec,
             discovery_date=discovery_date,
             raw=detail,
+            source_group=cred.source_group,
+            classification_instrument=cred.instrument,
+            credibility_tier=cred.tier,
+            credibility_reason=cred.reason,
         )
 
     # ------------------------------------------------------------------ #
@@ -527,3 +758,14 @@ def map_tns_type_to_ternary(type_name: str | None) -> str | None:
     if cleaned.startswith("SN ") or cleaned.startswith("SLSN"):
         return "nonIa_snlike"
     return None
+
+
+def is_ambiguous_type(type_name: str | None) -> bool:
+    """Check if the TNS type is ambiguous (class uncertain even with spectrum).
+
+    Generic "SN" means the observer saw SN features but couldn't distinguish
+    Ia from core-collapse. This should not get full spectroscopic quality.
+    """
+    if not type_name:
+        return True
+    return type_name.strip() in TNS_AMBIGUOUS_TYPES

@@ -1,18 +1,29 @@
-"""Three-tier truth quality assignment.
+"""Truth quality assignment with source verification.
 
 Quality tiers:
-  spectroscopic — TNS has spectra + a mapped classification
-  consensus     — no spectra, but N independent classifiers agree at late time
+  spectroscopic — TNS has spectra from a recognized survey program + specific type
+  consensus     — multiple independent classifiers agree at late time,
+                  OR TNS type from a source without verification metadata
   weak          — single broker self-label, or no external confirmation
 
 The consensus tier uses a temporal firewall: only late-time (n_det >= threshold)
 classifier outputs are used, while training targets early-time (n_det <= 5).
 This avoids circularity since the feature space at high n_det is genuinely
 different from the early-time features the model learns on.
+
+Source verification:
+  TNS accepts classifications from diverse contributors. We assign
+  "spectroscopic" quality when the classifying group is a recognized
+  survey program with a well-documented reduction pipeline. For other
+  sources where we lack metadata to verify the pipeline, the label is
+  still used but at a lower quality tier (consensus or weak).
+
+  Ambiguous types like generic "SN" (no subtype) are also downgraded
+  because the ternary class is uncertain.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 LabelQuality = Literal["spectroscopic", "consensus", "weak"]
@@ -46,6 +57,10 @@ class QualityAssignment:
     consensus_experts: list[str] | None = None
     consensus_n_agree: int = 0
     consensus_n_total: int = 0
+    # Credibility metadata
+    source_group: str | None = None
+    credibility_tier: str | None = None
+    downgrade_reason: str | None = None
 
 
 def assign_quality_from_tns(
@@ -54,6 +69,9 @@ def assign_quality_from_tns(
     tns_ternary: str | None,
     has_spectra: bool,
     broker_votes: dict[str, str] | None = None,
+    credibility_tier: str | None = None,
+    source_group: str | None = None,
+    type_is_ambiguous: bool = False,
 ) -> QualityAssignment:
     """Assign truth quality tier for a single object.
 
@@ -67,20 +85,51 @@ def assign_quality_from_tns(
         Whether TNS reports spectroscopic confirmation.
     broker_votes : dict mapping expert_key -> ternary prediction, optional
         Late-time broker consensus votes (only from n_det >= CONSENSUS_MIN_NDET).
+    credibility_tier : str or None
+        Source credibility: "professional", "likely_professional", or "unverified".
+        If None (e.g. bulk CSV mode), treated as credible for backward compat.
+    source_group : str or None
+        Name of the group that submitted the classification spectrum.
+    type_is_ambiguous : bool
+        True if the TNS type is ambiguous (e.g. generic "SN" without subtype).
+        Ambiguous types are downgraded from spectroscopic even if credible.
     """
-    # Tier 1: spectroscopic
-    if has_spectra and tns_ternary is not None:
-        return QualityAssignment(
-            quality="spectroscopic",
-            label_source="tns_spectroscopic",
-            final_class_ternary=tns_ternary,
-            tns_type_raw=tns_type,
-            has_spectra=True,
-        )
-
-    # Tier 2: consensus — TNS has a classification but no spectra,
-    # AND broker votes agree
     broker_votes = broker_votes or {}
+
+    # ── Tier 1: spectroscopic ────────────────────────────────────────
+    # Requirements: has spectrum + specific type + credible source
+    if has_spectra and tns_ternary is not None:
+        downgrade_reason = None
+
+        # Check 1: Is the type ambiguous? (e.g. generic "SN")
+        if type_is_ambiguous:
+            downgrade_reason = f"ambiguous_type:{tns_type}"
+
+        # Check 2: Is the source credible?
+        # credibility_tier=None means we don't have metadata (bulk CSV) —
+        # accept as credible for backward compatibility.
+        elif credibility_tier == "unverified":
+            downgrade_reason = f"unverified_source:{source_group or 'unknown'}"
+
+        if downgrade_reason is None:
+            # Full spectroscopic quality — credible source + specific type
+            return QualityAssignment(
+                quality="spectroscopic",
+                label_source="tns_spectroscopic",
+                final_class_ternary=tns_ternary,
+                tns_type_raw=tns_type,
+                has_spectra=True,
+                source_group=source_group,
+                credibility_tier=credibility_tier,
+            )
+        else:
+            # Downgraded: has spectra but source unverified or type ambiguous.
+            # Falls through to consensus check below.
+            pass
+
+    # ── Tier 2: consensus ────────────────────────────────────────────
+
+    # 2a: TNS has a classification (possibly downgraded) + broker votes agree
     if tns_ternary is not None and broker_votes:
         agreeing = [
             k for k, v in broker_votes.items()
@@ -90,18 +139,25 @@ def assign_quality_from_tns(
         n_total = len(broker_votes)
         # Need TNS + at least CONSENSUS_MIN_EXPERTS brokers to agree
         if n_agree >= CONSENSUS_MIN_EXPERTS:
+            source = "tns_consensus"
+            # Note if this was downgraded from spectroscopic
+            if has_spectra and (type_is_ambiguous or credibility_tier == "unverified"):
+                source = "tns_downgraded_consensus"
             return QualityAssignment(
                 quality="consensus",
-                label_source="tns_consensus",
+                label_source=source,
                 final_class_ternary=tns_ternary,
                 tns_type_raw=tns_type,
-                has_spectra=False,
+                has_spectra=has_spectra,
                 consensus_experts=agreeing,
                 consensus_n_agree=n_agree,
                 consensus_n_total=n_total,
+                source_group=source_group,
+                credibility_tier=credibility_tier,
+                downgrade_reason=downgrade_reason if has_spectra else None,
             )
 
-    # Tier 2b: consensus from brokers alone (no TNS classification),
+    # 2b: consensus from brokers alone (no TNS classification),
     # if enough independent experts agree on the same class
     if not tns_ternary and broker_votes:
         class_counts: dict[str, list[str]] = {}
@@ -120,15 +176,30 @@ def assign_quality_from_tns(
                     consensus_n_total=len(broker_votes),
                 )
 
-    # Tier 3: weak
-    # TNS has a type but no spectra and insufficient broker agreement
+    # ── Tier 3: weak ─────────────────────────────────────────────────
+
+    # TNS type exists but either:
+    # - no spectra and insufficient broker agreement, OR
+    # - type is ambiguous (generic "SN"), OR
+    # - classifying source lacks verification metadata
     if tns_ternary is not None:
+        source = "tns_unconfirmed"
+        downgrade = None
+        if has_spectra and credibility_tier == "unverified":
+            source = "tns_source_unverified"
+            downgrade = f"unverified_source:{source_group or 'unknown'}"
+        elif has_spectra and type_is_ambiguous:
+            source = "tns_ambiguous_type"
+            downgrade = f"ambiguous_type:{tns_type}"
         return QualityAssignment(
             quality="weak",
-            label_source="tns_unconfirmed",
+            label_source=source,
             final_class_ternary=tns_ternary,
             tns_type_raw=tns_type,
-            has_spectra=False,
+            has_spectra=has_spectra,
+            source_group=source_group,
+            credibility_tier=credibility_tier,
+            downgrade_reason=downgrade,
         )
 
     # No TNS classification at all

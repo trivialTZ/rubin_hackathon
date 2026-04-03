@@ -46,6 +46,7 @@ from debass_meta.access.tns import (
     TNSResult,
     load_tns_credentials,
     map_tns_type_to_ternary,
+    is_ambiguous_type,
 )
 from debass_meta.truth.quality import (
     QualityAssignment,
@@ -80,6 +81,10 @@ def _load_cached(cache_dir: Path, object_id: str) -> TNSResult | None:
             dec=data.get("dec"),
             discovery_date=data.get("discovery_date"),
             raw=data.get("raw", {}),
+            source_group=data.get("source_group"),
+            classification_instrument=data.get("classification_instrument"),
+            credibility_tier=data.get("credibility_tier"),
+            credibility_reason=data.get("credibility_reason"),
         )
     except Exception:
         return None
@@ -99,6 +104,10 @@ def _save_cached(cache_dir: Path, result: TNSResult) -> None:
         "dec": result.dec,
         "discovery_date": result.discovery_date,
         "raw": result.raw,
+        "source_group": result.source_group,
+        "classification_instrument": result.classification_instrument,
+        "credibility_tier": result.credibility_tier,
+        "credibility_reason": result.credibility_reason,
     }
     p.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
@@ -120,20 +129,79 @@ def load_object_ids(labels_path: Path) -> list[str]:
 
 
 def _load_tns_bulk_csv(bulk_csv_path: Path) -> pd.DataFrame:
-    """Load the TNS bulk CSV, handling the optional timestamp header row."""
+    """Load the TNS bulk CSV, handling the optional timestamp header row.
+
+    The real TNS bulk export has ~22 columns:
+      objid, name_prefix, name, ra, declination, redshift, typeid, type,
+      reporting_groupid, reporting_group, source_groupid, source_group,
+      discoverydate, discoverymag, discmagfilter, filter, reporters,
+      time_received, internal_names, Discovery_ADS_bibcode,
+      Class_ADS_bibcodes, creationdate, lastmodified
+
+    Key columns for credibility: source_group (who classified),
+    reporting_group (who discovered). Older/trimmed CSVs may lack these.
+    """
     tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"')
     if "internal_names" not in tns_df.columns:
         tns_df = pd.read_csv(bulk_csv_path, low_memory=False, quotechar='"', skiprows=1)
+
+    # The official TNS bulk CSV uses "name" not "objname" — normalize
+    if "name" in tns_df.columns and "objname" not in tns_df.columns:
+        tns_df = tns_df.rename(columns={"name": "objname"})
+
+    available = set(tns_df.columns)
+    expected_key = {"objname", "name_prefix", "internal_names", "type"}
+    found = expected_key & available
+    if len(found) < 3:
+        raise ValueError(
+            f"TNS CSV missing expected columns. Found: {sorted(available)}. "
+            f"Expected at least: {sorted(expected_key)}"
+        )
+
+    has_source = "source_group" in available
+    has_reporting = "reporting_group" in available
+    print(f"  TNS CSV columns: {len(available)} "
+          f"(source_group={'yes' if has_source else 'NO'}, "
+          f"reporting_group={'yes' if has_reporting else 'NO'})")
+    if not has_source:
+        print("  WARNING: source_group column missing — "
+              "credibility filtering will rely on API data or be skipped")
+
     return tns_df
+
+
+def _safe_str(val: Any) -> str | None:
+    """Convert a pandas value to string, handling NA/NaN/None."""
+    if val is None:
+        return None
+    if pd.isna(val):
+        return None
+    s = str(val).strip()
+    return s if s else None
 
 
 def _tns_row_to_result(
     object_id: str, row: Any, *, source: str = "bulk_csv"
 ) -> TNSResult:
-    """Convert a TNS bulk CSV row to a TNSResult."""
-    tns_name = str(row.get("objname") or "").strip() or None
-    tns_prefix = str(row.get("name_prefix") or "").strip() or None
-    type_name = str(row.get("type") or "").strip() or None
+    """Convert a TNS bulk CSV row to a TNSResult.
+
+    The full TNS bulk export has columns including:
+      objid, name_prefix, name, ra, declination, redshift, typeid, type,
+      reporting_groupid, reporting_group, source_groupid, source_group,
+      discoverydate, discoverymag, discmagfilter, filter, reporters,
+      time_received, internal_names, Discovery_ADS_bibcode,
+      Class_ADS_bibcodes, creationdate, lastmodified
+
+    We extract source_group for credibility verification when available.
+    Older or trimmed CSV exports may lack these columns.
+    """
+    tns_name = _safe_str(row.get("objname") or row.get("name"))
+    tns_prefix = _safe_str(row.get("name_prefix"))
+    type_name = _safe_str(row.get("type"))
+
+    # has_spectra proxy: name_prefix="SN" + non-empty type means TNS
+    # moderators accepted a spectroscopic classification report.
+    # Prefix "AT" = astronomical transient (no confirmed spectrum).
     has_spectra = bool(tns_prefix == "SN" and type_name)
 
     redshift = row.get("redshift")
@@ -145,7 +213,26 @@ def _tns_row_to_result(
     dec = row.get("declination")
     dec = float(dec) if pd.notna(dec) else None
 
-    discovery_date = str(row.get("discoverydate") or "").strip() or None
+    discovery_date = _safe_str(row.get("discoverydate"))
+
+    # Extract source/reporting group when available in the CSV.
+    # The full TNS bulk export has "source_group" (who classified)
+    # and "reporting_group" (who discovered).
+    source_group = _safe_str(row.get("source_group"))
+    reporting_group = _safe_str(row.get("reporting_group"))
+
+    # Determine credibility from the CSV source_group column.
+    # If the column exists and has a value, check against our registry.
+    credibility_tier = None
+    credibility_reason = None
+    if source_group is not None:
+        from debass_meta.access.tns import TNS_CREDIBLE_GROUPS
+        if source_group in TNS_CREDIBLE_GROUPS:
+            credibility_tier = "professional"
+            credibility_reason = f"credible_group:{source_group}"
+        else:
+            credibility_tier = "unverified"
+            credibility_reason = f"group_not_in_registry:{source_group}"
 
     return TNSResult(
         object_id=object_id,
@@ -157,7 +244,10 @@ def _tns_row_to_result(
         ra=ra,
         dec=dec,
         discovery_date=discovery_date,
-        raw={"source": source},
+        raw={"source": source, "reporting_group": reporting_group},
+        source_group=source_group,
+        credibility_tier=credibility_tier,
+        credibility_reason=credibility_reason,
     )
 
 
@@ -420,6 +510,9 @@ def build_truth_from_crossmatch(
             tns_ternary=tns_ternary,
             has_spectra=result.has_spectra,
             broker_votes=broker_votes,
+            credibility_tier=result.credibility_tier,
+            source_group=result.source_group,
+            type_is_ambiguous=is_ambiguous_type(result.type_name),
         )
 
         final_class = qa.final_class_ternary
@@ -455,6 +548,12 @@ def build_truth_from_crossmatch(
             ),
             "consensus_n_agree": qa.consensus_n_agree,
             "consensus_n_total": qa.consensus_n_total,
+            # Credibility metadata
+            "source_group": result.source_group,
+            "classification_instrument": result.classification_instrument,
+            "credibility_tier": result.credibility_tier,
+            "credibility_reason": result.credibility_reason,
+            "downgrade_reason": qa.downgrade_reason,
         })
 
     return pd.DataFrame(rows)
@@ -577,6 +676,19 @@ def main() -> None:
     tns_typed = truth_df["tns_type"].notna().sum()
     tns_spectra = truth_df["tns_has_spectra"].sum()
     print(f"  TNS matched: {tns_matched}, typed: {tns_typed}, with spectra: {tns_spectra}")
+
+    # Credibility summary
+    if "credibility_tier" in truth_df.columns:
+        cred_counts = truth_df["credibility_tier"].value_counts().to_dict()
+        if cred_counts:
+            print(f"  Credibility: {cred_counts}")
+    if "downgrade_reason" in truth_df.columns:
+        downgrades = truth_df["downgrade_reason"].dropna()
+        if len(downgrades) > 0:
+            print(f"  Downgraded: {len(downgrades)} objects")
+            for reason in downgrades.unique():
+                n = (downgrades == reason).sum()
+                print(f"    {reason}: {n}")
 
     # Write output
     output_path = Path(args.output)

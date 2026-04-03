@@ -28,7 +28,12 @@ from debass_meta.access.tns import (
     TNSCredentials,
     TNSResult,
     map_tns_type_to_ternary,
+    is_ambiguous_type,
     load_tns_credentials,
+    extract_classification_credibility,
+    is_credible_classification,
+    TNS_CREDIBLE_GROUPS,
+    TNS_AMBIGUOUS_TYPES,
     _extract_type,
     _has_spectra,
     _extract_redshift,
@@ -545,3 +550,230 @@ class TestBuildTruthFromCrossmatch:
         ]
         df = build_truth_from_crossmatch(tns_results=results, use_consensus=False)
         assert len(df) == 0
+
+
+# ------------------------------------------------------------------ #
+# Credibility framework                                                #
+# ------------------------------------------------------------------ #
+
+
+class TestCredibilityExtraction:
+    """Tests for extract_classification_credibility()."""
+
+    def test_professional_group_recognized(self):
+        """ZTF group with SEDM instrument → professional."""
+        detail = {
+            "spectra": [{
+                "source_group_name": "ZTF",
+                "instrument": {"name": "SEDM"},
+                "observer": "SEDmRobot",
+            }]
+        }
+        cred = extract_classification_credibility(detail)
+        assert cred.tier == "professional"
+        assert cred.source_group == "ZTF"
+
+    def test_epessto_recognized(self):
+        detail = {
+            "spectra": [{
+                "source_group_name": "ePESSTO+",
+                "instrument": {"name": "EFOSC2"},
+            }]
+        }
+        cred = extract_classification_credibility(detail)
+        assert cred.tier == "professional"
+        assert cred.source_group == "ePESSTO+"
+
+    def test_unlisted_group_with_recognized_instrument(self):
+        """Group not in registry but recognized instrument → likely_professional."""
+        detail = {
+            "spectra": [{
+                "source_group_name": "NewSurveyProgram",
+                "instrument": {"name": "ALFOSC"},
+            }]
+        }
+        cred = extract_classification_credibility(detail)
+        assert cred.tier == "likely_professional"
+        assert cred.instrument == "ALFOSC"
+
+    def test_unlisted_group_and_instrument(self):
+        """Group and instrument both not in registry → unverified."""
+        detail = {
+            "spectra": [{
+                "source_group_name": "UnregisteredGroup",
+                "instrument": {"name": "CustomSetup"},
+            }]
+        }
+        cred = extract_classification_credibility(detail)
+        assert cred.tier == "unverified"
+
+    def test_no_spectra(self):
+        cred = extract_classification_credibility({})
+        assert cred.tier == "unverified"
+        assert cred.reason == "no_spectra_in_response"
+
+    def test_empty_spectra_list(self):
+        cred = extract_classification_credibility({"spectra": []})
+        assert cred.tier == "unverified"
+
+    def test_multiple_spectra_one_recognized(self):
+        """If ANY spectrum is from a recognized source, classify as professional."""
+        detail = {
+            "spectra": [
+                {
+                    "source_group_name": "UnregisteredGroup",
+                    "instrument": {"name": "Unknown"},
+                },
+                {
+                    "source_group_name": "SCAT",
+                    "instrument": {"name": "SNIFS"},
+                },
+            ]
+        }
+        cred = extract_classification_credibility(detail)
+        assert cred.tier == "professional"
+        assert cred.source_group == "SCAT"
+
+    def test_is_credible_helper(self):
+        assert is_credible_classification({
+            "spectra": [{"source_group_name": "ZTF", "instrument": {"name": "SEDM"}}]
+        }) is True
+        assert is_credible_classification({
+            "spectra": [{"source_group_name": "UnlistedGroup", "instrument": {"name": "UnlistedInstrument"}}]
+        }) is False
+
+
+class TestAmbiguousTypes:
+    """Tests for ambiguous type detection."""
+
+    def test_generic_sn_is_ambiguous(self):
+        assert is_ambiguous_type("SN") is True
+
+    def test_specific_snia_not_ambiguous(self):
+        assert is_ambiguous_type("SN Ia") is False
+
+    def test_specific_cc_not_ambiguous(self):
+        assert is_ambiguous_type("SN II") is False
+
+    def test_none_is_ambiguous(self):
+        assert is_ambiguous_type(None) is True
+
+    def test_new_rare_types_mapped(self):
+        """Ensure new rare types have ternary mappings."""
+        assert map_tns_type_to_ternary("SN Ibn") == "nonIa_snlike"
+        assert map_tns_type_to_ternary("SN Icn") == "nonIa_snlike"
+        assert map_tns_type_to_ternary("FBOT") == "other"
+        assert map_tns_type_to_ternary("LRN") == "other"
+        assert map_tns_type_to_ternary("PISN") == "nonIa_snlike"
+
+
+class TestCredibilityQualityDowngrade:
+    """Tests that unverified sources and ambiguous types are downgraded."""
+
+    def test_professional_source_gets_spectroscopic(self):
+        qa = assign_quality_from_tns(
+            tns_type="SN Ia",
+            tns_ternary="snia",
+            has_spectra=True,
+            credibility_tier="professional",
+            source_group="ZTF",
+        )
+        assert qa.quality == "spectroscopic"
+        assert qa.downgrade_reason is None
+
+    def test_unverified_source_downgraded_to_weak(self):
+        """Unverified source is assigned weak quality without broker consensus."""
+        qa = assign_quality_from_tns(
+            tns_type="SN Ia",
+            tns_ternary="snia",
+            has_spectra=True,
+            credibility_tier="unverified",
+            source_group="UnregisteredGroup",
+        )
+        # Without broker consensus, falls to weak
+        assert qa.quality == "weak"
+        assert qa.label_source == "tns_source_unverified"
+        assert "unverified_source" in (qa.downgrade_reason or "")
+
+    def test_unverified_source_with_consensus_gets_consensus(self):
+        """Unverified source + broker agreement → consensus (corroborated)."""
+        votes = {
+            "fink/snn": "snia",
+            "fink/rf_ia": "snia",
+            "alerce/lc_classifier_transient": "snia",
+        }
+        qa = assign_quality_from_tns(
+            tns_type="SN Ia",
+            tns_ternary="snia",
+            has_spectra=True,
+            credibility_tier="unverified",
+            source_group="UnregisteredGroup",
+            broker_votes=votes,
+        )
+        assert qa.quality == "consensus"
+        assert "downgraded" in qa.label_source
+
+    def test_ambiguous_sn_downgraded(self):
+        """Generic 'SN' type with spectra is NOT spectroscopic quality."""
+        qa = assign_quality_from_tns(
+            tns_type="SN",
+            tns_ternary="nonIa_snlike",
+            has_spectra=True,
+            credibility_tier="professional",
+            source_group="ZTF",
+            type_is_ambiguous=True,
+        )
+        assert qa.quality == "weak"
+        assert qa.label_source == "tns_ambiguous_type"
+        assert "ambiguous_type" in (qa.downgrade_reason or "")
+
+    def test_likely_professional_accepted(self):
+        """likely_professional tier gets spectroscopic quality."""
+        qa = assign_quality_from_tns(
+            tns_type="SN Ia",
+            tns_ternary="snia",
+            has_spectra=True,
+            credibility_tier="likely_professional",
+            source_group="SmallPIProgram",
+        )
+        assert qa.quality == "spectroscopic"
+
+    def test_no_credibility_info_backward_compat(self):
+        """Bulk CSV mode: credibility_tier=None → accept as credible."""
+        qa = assign_quality_from_tns(
+            tns_type="SN Ia",
+            tns_ternary="snia",
+            has_spectra=True,
+            credibility_tier=None,  # bulk CSV, no metadata
+        )
+        assert qa.quality == "spectroscopic"
+
+    def test_cache_roundtrip_preserves_credibility(self):
+        """Cache save/load preserves credibility fields."""
+        from crossmatch_tns import _load_cached, _save_cached
+
+        result = TNSResult(
+            object_id="ZTF23abc",
+            tns_name="2023xyz",
+            tns_prefix="SN",
+            type_name="SN Ia",
+            has_spectra=True,
+            redshift=0.05,
+            ra=180.0,
+            dec=-30.0,
+            discovery_date="2023-01-15",
+            raw={},
+            source_group="ZTF",
+            classification_instrument="SEDM",
+            credibility_tier="professional",
+            credibility_reason="credible_group:ZTF",
+        )
+        with tempfile.TemporaryDirectory() as td:
+            cache_dir = Path(td)
+            _save_cached(cache_dir, result)
+            loaded = _load_cached(cache_dir, "ZTF23abc")
+            assert loaded is not None
+            assert loaded.source_group == "ZTF"
+            assert loaded.classification_instrument == "SEDM"
+            assert loaded.credibility_tier == "professional"
+            assert loaded.credibility_reason == "credible_group:ZTF"
