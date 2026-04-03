@@ -6,3 +6,7 @@ build_truth_table = _module.build_truth_table
 main = _module.main
 
 __all__ = ["build_truth_table", "main"]
+
+
+def __getattr__(name: str):
+    return getattr(_module, name)

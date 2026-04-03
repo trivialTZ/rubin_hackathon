@@ -87,7 +87,7 @@ Expected output: `"ready_for_trust_training_now": true`
 ## Step 6: Train ML Models (Smoke Test)
 
 ```bash
-# Train trust heads (7 experts)
+# Train trust heads for the available experts in the smoke-test snapshots
 python3 scripts/train_expert_trust.py \
     --snapshots tmp/scc_smoke_test/gold/object_epoch_snapshots.parquet \
     --helpfulness tmp/scc_smoke_test/gold/expert_helpfulness.parquet \
@@ -96,19 +96,17 @@ python3 scripts/train_expert_trust.py \
 # Train follow-up head
 python3 scripts/train_followup.py \
     --snapshots tmp/scc_smoke_test/gold/object_epoch_snapshots_trust.parquet \
-    --truth tmp/scc_smoke_test/truth/object_truth.parquet \
-    --models-dir tmp/scc_smoke_test/models/followup
+    --trust-models-dir tmp/scc_smoke_test/models/trust \
+    --model-dir tmp/scc_smoke_test/models/followup
 
 # Score epochs
 python3 scripts/score_nightly.py \
     --from-labels data/labels.csv \
     --n-det 4 \
-    --lc-dir data/lightcurves \
-    --silver-dir tmp/scc_smoke_test/silver \
-    --truth tmp/scc_smoke_test/truth/object_truth.parquet \
-    --trust-dir tmp/scc_smoke_test/models/trust \
-    --followup-dir tmp/scc_smoke_test/models/followup \
-    --output-dir tmp/scc_smoke_test/reports/scores
+    --snapshots tmp/scc_smoke_test/gold/object_epoch_snapshots_trust.parquet \
+    --trust-models-dir tmp/scc_smoke_test/models/trust \
+    --followup-model-dir tmp/scc_smoke_test/models/followup \
+    --output tmp/scc_smoke_test/reports/scores/scores_ndet4.jsonl
 ```
 
 ## Step 7: Scale to 2000 Objects
@@ -131,8 +129,8 @@ python3 scripts/train_expert_trust.py \
 
 python3 scripts/train_followup.py \
     --snapshots data/gold/object_epoch_snapshots_trust.parquet \
-    --truth data/truth/object_truth.parquet \
-    --models-dir models/followup
+    --trust-models-dir models/trust \
+    --model-dir models/followup
 ```
 
 ## Troubleshooting
@@ -162,9 +160,9 @@ python3 scripts/train_followup.py \
 After smoke test:
 - ✓ `tmp/scc_smoke_test/gold/object_epoch_snapshots.parquet` exists
 - ✓ `tmp/scc_smoke_test/gold/expert_helpfulness.parquet` exists
-- ✓ `tmp/scc_smoke_test/models/trust/<expert>/model.pkl` exists (7 experts)
+- ✓ `tmp/scc_smoke_test/models/trust/<expert>/model.pkl` exists for each available trainable expert
 - ✓ `tmp/scc_smoke_test/models/followup/model.pkl` exists
-- ✓ `tmp/scc_smoke_test/reports/scores/*.jsonl` exists
+- ✓ `tmp/scc_smoke_test/reports/scores/scores_ndet4.jsonl` exists
 
 ## Key Files Generated
 

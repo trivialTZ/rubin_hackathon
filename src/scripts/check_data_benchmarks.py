@@ -8,3 +8,7 @@ load_benchmark_spec = _module.load_benchmark_spec
 main = _module.main
 
 __all__ = ["DEFAULT_BENCHMARKS", "evaluate_run", "load_benchmark_spec", "main"]
+
+
+def __getattr__(name: str):
+    return getattr(_module, name)

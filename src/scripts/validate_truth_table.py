@@ -6,3 +6,7 @@ validate_truth_frame = _module.validate_truth_frame
 main = _module.main
 
 __all__ = ["validate_truth_frame", "main"]
+
+
+def __getattr__(name: str):
+    return getattr(_module, name)

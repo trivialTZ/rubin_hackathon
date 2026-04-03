@@ -7,3 +7,7 @@ build_score_payload = _module.build_score_payload
 main = _module.main
 
 __all__ = ["_resolve_snapshot_path", "build_score_payload", "main"]
+
+
+def __getattr__(name: str):
+    return getattr(_module, name)

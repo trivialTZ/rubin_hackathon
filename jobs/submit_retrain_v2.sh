@@ -92,122 +92,86 @@ if ${LOCAL_MODE}; then
     echo "=== Running locally ==="
     cd "${DEBASS_ROOT}"
 
-    # Step 0: Install/upgrade dependencies
-    echo "[0/8] Checking Python environment..."
-    python3 --version
-    pip install -q -r env/requirements.txt
-
-    # Step 1: (Optional) Discover LSST transient candidates + merge into labels
+    # Step 1: Discover LSST + merge
+    LSST_CSV="${DEBASS_ROOT}/data/lsst_candidates.csv"
     if [ "${DISCOVER_LSST}" -gt 0 ] 2>/dev/null; then
-        echo "[1/8] Discovering ${DISCOVER_LSST} LSST candidates from ALeRCE..."
-        LSST_CSV="${DEBASS_ROOT}/data/lsst_candidates.csv"
+        echo "[1/10] Discovering ${DISCOVER_LSST} LSST candidates from ALeRCE..."
         python3 scripts/discover_lsst_training.py \
             --max-candidates "${DISCOVER_LSST}" \
             --min-detections 2 \
             --output "${LSST_CSV}"
-
-        echo "[1/8] Merging LSST candidates into labels.csv..."
-        python3 scripts/merge_labels.py \
-            --new "${LSST_CSV}" \
-            --labels "${LABELS}"
+    fi
+    if [ -f "${LSST_CSV}" ]; then
+        echo "[1/10] Merging LSST candidates into labels.csv..."
+        python3 scripts/merge_labels.py --new "${LSST_CSV}" --labels "${LABELS}"
     else
-        echo "[1/8] Skipping LSST discovery (use --discover-lsst N to enable)"
+        echo "[1/10] No LSST candidates to merge"
     fi
 
-    # Always merge lsst_candidates.csv if it exists (from a previous run)
-    LSST_CSV="${DEBASS_ROOT}/data/lsst_candidates.csv"
-    if [ -f "${LSST_CSV}" ] && [ "${DISCOVER_LSST}" -eq 0 ] 2>/dev/null; then
-        echo "[1/8] Found existing lsst_candidates.csv — merging into labels..."
-        python3 scripts/merge_labels.py \
-            --new "${LSST_CSV}" \
-            --labels "${LABELS}"
-    fi
+    # Step 2: Fetch lightcurves (ZTF from ALeRCE, LSST from Lasair)
+    echo "[2/10] Fetching lightcurves..."
+    python3 scripts/fetch_lightcurves.py --from-labels "${LABELS}"
 
-    # Step 2: (Optional) Re-fetch ALeRCE to get BHRF/ATAT/Rubin classifiers
-    if ${UPDATE_ALERCE}; then
-        echo "[2/8] Re-fetching ALeRCE data (parallel=${PARALLEL})..."
-        python3 scripts/backfill.py \
-            --broker alerce \
-            --from-labels "${LABELS}" \
-            --parallel "${PARALLEL}"
-    else
-        echo "[2/8] Skipping ALeRCE re-fetch (use --update-alerce to enable)"
-    fi
+    # Step 3: Backfill all brokers (parallel, dual-survey for LSST objects)
+    echo "[3/10] Backfilling broker scores (parallel=${PARALLEL})..."
+    python3 scripts/backfill.py --broker all --from-labels "${LABELS}" --parallel "${PARALLEL}"
 
-    # Step 3: (Optional) Update TNS CSV and re-run crossmatch
+    # Step 4: (Optional) Update TNS
     if ${UPDATE_TNS}; then
-        echo "[3/8] Updating TNS bulk CSV..."
+        echo "[4/10] Updating TNS bulk CSV + crossmatch..."
         python3 scripts/download_tns_bulk.py
-        echo "[3/8] Running TNS crossmatch (with positional fallback)..."
         python3 scripts/crossmatch_tns.py \
             --labels "${LABELS}" \
             --bulk-csv data/tns_public_objects.csv \
-            --positional-fallback \
-            --positional-radius 3.0
+            --positional-fallback --positional-radius 3.0
     else
-        echo "[3/8] Skipping TNS update (use --update-tns to enable)"
+        echo "[4/10] Skipping TNS update (use --update-tns to enable)"
     fi
 
-    # Step 4: Fetch lightcurves + backfill all brokers for new objects
-    echo "[4/8] Fetching lightcurves + broker scores..."
-    python3 scripts/fetch_lightcurves.py --from-labels "${LABELS}"
-    python3 scripts/backfill.py --broker all --from-labels "${LABELS}" --parallel "${PARALLEL}"
-
-    # Step 5a: Normalize bronze → silver (picks up new ALeRCE classifiers)
-    echo "[5a/9] Normalizing bronze → silver..."
+    # Step 5: Normalize bronze → silver (with dedup)
+    echo "[5/10] Normalizing bronze → silver..."
     python3 scripts/normalize.py
 
-    # Step 5b: Build multi-source truth (TNS + Fink xm + host context + labels)
-    echo "[5b/9] Building multi-source truth table..."
+    # Step 6: Build multi-source truth (TNS + Fink xm + host context)
+    echo "[6/10] Building multi-source truth table..."
     python3 scripts/build_truth_multisource.py \
-        --labels "${LABELS}" \
-        --silver-dir data/silver
+        --labels "${LABELS}" --silver-dir data/silver
 
-    # Step 5c: Collect per-epoch classification history from local experts
-    #          This is the key to learning epoch-dependent trust for LSST objects
-    #          where broker APIs only give static snapshots.
-    echo "[5b/9] Collecting per-epoch local expert history..."
+    # Step 7: Collect per-epoch local expert history
+    echo "[7/10] Collecting local expert epoch history..."
     python3 scripts/collect_epoch_history.py \
-        --from-labels "${LABELS}" \
-        --lc-dir data/lightcurves \
-        --max-n-det 20
+        --from-labels "${LABELS}" --lc-dir data/lightcurves --max-n-det 20
 
-    # Step 6: Rebuild gold tables (51 LC features + 13 experts + survey flag)
-    echo "[6/9] Rebuilding gold tables..."
+    # Step 8: Build gold tables (51 features + 16 expert projections)
+    echo "[8/10] Rebuilding gold tables..."
     python3 scripts/build_object_epoch_snapshots.py \
-        --objects-csv "${LABELS}" \
-        --allow-unsafe-latest-snapshot
+        --objects-csv "${LABELS}" --allow-unsafe-latest-snapshot
     python3 scripts/build_expert_helpfulness.py
 
-    # Step 7: Train expert trust heads
-    echo "[7/8] Training expert trust..."
+    # Step 9: Train trust + followup
+    echo "[9/10] Training expert trust (16 heads) + followup..."
     python3 scripts/train_expert_trust.py \
         --snapshots data/gold/object_epoch_snapshots.parquet \
         --helpfulness data/gold/expert_helpfulness.parquet \
         --models-dir models/trust \
         --output-snapshots data/gold/object_epoch_snapshots_trust.parquet
-
-    # Step 7b: Train followup model
-    echo "[7b/8] Training followup model..."
     python3 scripts/train_followup.py \
         --snapshots data/gold/object_epoch_snapshots_trust.parquet \
         --trust-models-dir models/trust \
         --model-dir models/followup
 
-    # Step 8: Score and analyze
-    echo "[8/8] Scoring (n_det=3,5,10)..."
+    # Step 10: Score + analyze
+    echo "[10/10] Scoring (n_det=3,5,10) + analyzing..."
     mkdir -p reports/scores
     for N in 3 5 10; do
         python3 scripts/score_nightly.py \
-            --from-labels "${LABELS}" \
-            --n-det "${N}" \
+            --from-labels "${LABELS}" --n-det "${N}" \
             --snapshots data/gold/object_epoch_snapshots_trust.parquet \
             --trust-models-dir models/trust \
             --followup-model-dir models/followup \
             --output reports/scores/scores_ndet${N}.jsonl
     done
-    python3 scripts/analyze_results.py \
-        --scores reports/scores/scores_ndet3.jsonl
+    python3 scripts/analyze_results.py --scores reports/scores/scores_ndet3.jsonl
 
     echo ""
     echo "=== Done ==="

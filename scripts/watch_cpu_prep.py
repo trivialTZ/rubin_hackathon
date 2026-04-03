@@ -22,6 +22,21 @@ _PROGRESS_RE = re.compile(r"^PROGRESS\s+(download|build)\s+(.+)$")
 ProgressValue = Optional[Union[str, int]]
 
 
+def _job_id_base(job_id: str | None) -> str:
+    if not job_id or job_id == "skipped":
+        return ""
+    return str(job_id).split(".", 1)[0]
+
+
+def _resolve_log_path(meta_path: Path, log_value: str | None, prefix: str, job_id: str) -> Path | None:
+    if log_value:
+        return Path(log_value)
+    base = _job_id_base(job_id)
+    if not base:
+        return None
+    return meta_path.parent / f"{prefix}.{base}.log"
+
+
 def _parse_progress(log_path: Path, stage: str) -> Dict[str, ProgressValue]:
     info: Dict[str, ProgressValue] = {
         "phase": None,
@@ -173,37 +188,44 @@ def main() -> None:
 
     download_job = str(meta["download_job_id"])
     build_job = str(meta["build_job_id"])
-    download_log = Path(meta["download_log"])
-    build_log = Path(meta["build_log"])
+    download_log = _resolve_log_path(meta_path, meta.get("download_log"), "download", download_job)
+    build_log = _resolve_log_path(meta_path, meta.get("build_log"), "build_epochs", build_job)
 
     try:
         while True:
-            states = _job_states([download_job, build_job])
-            dl_info = _parse_progress(download_log, "download")
-            ep_info = _parse_progress(build_log, "build")
+            active_jobs = [job_id for job_id in (download_job, build_job) if job_id.isdigit()]
+            states = _job_states(active_jobs)
+            states.setdefault(download_job, "skipped" if download_job == "skipped" else "finished")
+            states.setdefault(build_job, "finished")
 
-            if not dl_info.get("phase"):
+            dl_info = _parse_progress(download_log, "download") if download_log else {"phase": "skipped"}
+            ep_info = _parse_progress(build_log, "build") if build_log else {"phase": "missing_log"}
+
+            if download_log and not dl_info.get("phase"):
                 dl_info["phase"] = _log_phase_hint(download_log, "download")
-            if not ep_info.get("phase"):
+            if build_log and not ep_info.get("phase"):
                 ep_info["phase"] = _log_phase_hint(build_log, "build")
 
-            if _has_failure(download_log):
+            if download_log and _has_failure(download_log):
                 states[download_job] = "failed"
-            if _has_failure(build_log):
+            if build_log and _has_failure(build_log):
                 states[build_job] = "failed"
 
             os.system("clear")
             print("DEBASS CPU Prep Watch")
             print(f"meta: {meta_path}")
-            print(f"download log: {download_log}")
-            print(f"build log:    {build_log}")
+            print(f"download log: {download_log or '<not recorded>'}")
+            print(f"build log:    {build_log or '<not recorded>'}")
             print("")
             print(_render_line("download", states[download_job], dl_info))
             print(_render_line("build", states[build_job], ep_info))
 
-            if _is_complete(states[download_job], dl_info, download_log) and _is_complete(
-                states[build_job], ep_info, build_log
-            ):
+            download_complete = download_job == "skipped" or (
+                download_log is not None and _is_complete(states[download_job], dl_info, download_log)
+            )
+            build_complete = build_log is not None and _is_complete(states[build_job], ep_info, build_log)
+
+            if download_complete and build_complete:
                 print("\nCPU prep complete.")
                 break
 

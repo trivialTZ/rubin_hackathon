@@ -90,6 +90,11 @@ qsub_submit_cpu() {
     "${cmd[@]}"
 }
 
+job_id_base() {
+    local job_id="${1:-}"
+    printf '%s' "${job_id%%.*}"
+}
+
 echo "======================================="
 echo " DEBASS SCC CPU Prep Submission"
 echo "======================================="
@@ -158,6 +163,8 @@ cat > "$DEBASS_ROOT/logs/cpu_prep_latest.json" <<EOF
   "download_job_id": "${JID_DL:-skipped}",
   "backfill_job_id": "${JID_BF:-skipped}",
   "build_job_id": "$JID_EP",
+  "download_log": "${DEBASS_ROOT}/logs/download.$(job_id_base "${JID_DL:-skipped}").log",
+  "build_log": "${DEBASS_ROOT}/logs/build_epochs.$(job_id_base "$JID_EP").log",
   "train_alerce_lc_job_id": "${JID_LC:-skipped}",
   "local_infer_cpu_job_id": "${JID_LI:-skipped}",
   "local_classifiers": $LOCAL_CLASSIFIERS,

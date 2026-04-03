@@ -115,6 +115,7 @@ def _build_run(root: Path, *, include_all_expert_blocks: bool = True) -> tuple[P
         "fink/rf_ia": {"available": True, "trust": 0.7, "prediction_type": "class_correctness", "exactness": "exact_alert"},
         "parsnip": {"available": False, "trust": None, "prediction_type": None, "exactness": None},
         "supernnova": {"available": False, "trust": None, "prediction_type": None, "exactness": None},
+        "alerce_lc": {"available": False, "trust": None, "prediction_type": None, "exactness": None},
         "alerce/lc_classifier_transient": {"available": False, "trust": None, "prediction_type": None, "exactness": None},
         "alerce/stamp_classifier": {"available": False, "trust": None, "prediction_type": None, "exactness": None},
         "lasair/sherlock": {"available": False, "trust": None, "prediction_type": None, "exactness": None},
