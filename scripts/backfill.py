@@ -28,7 +28,7 @@ from debass_meta.ingest.bronze import write_bronze
 # Brokers that support BOTH ZTF and LSST natively.
 # For LSST objects with ZTF counterparts, we query BOTH endpoints
 # to get the richest possible data (LSST per-alert + ZTF per-alert).
-_DUAL_SURVEY_BROKERS = {"alerce", "fink"}
+_DUAL_SURVEY_BROKERS = {"alerce", "fink", "pitt_google"}
 
 # Default test objects (known ZTF transients)
 _DEFAULT_OBJECTS = [

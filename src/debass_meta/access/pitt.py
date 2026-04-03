@@ -33,6 +33,13 @@ from typing import Any
 from .base import BrokerAdapter, BrokerOutput, SemanticType
 from .identifiers import infer_identifier_kind
 
+# Load .env from repo root if python-dotenv is available (for GCP credentials)
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:
+    pass
+
 # ---------------------------------------------------------------------------
 # Optional pittgoogle import
 # ---------------------------------------------------------------------------
@@ -84,7 +91,7 @@ _SNN_PRED_CLASS_CANDIDATES = [
     "supernnova_predicted_class",
     "predicted_class",
 ]
-_TIMESTAMP_CANDIDATES = ["jd", "midpointMjdTai", "mjd", "timestamp", "jd_alert"]
+_TIMESTAMP_CANDIDATES = ["jd", "midpointMjdTai", "mjd", "timestamp", "jd_alert", "kafkaPublishTimestamp"]
 _OBJECT_ID_CANDIDATES = {
     "lsst": ["diaObjectId", "dia_object_id"],
     "ztf": ["objectId", "object_id"],
@@ -155,7 +162,13 @@ class PittAdapter(BrokerAdapter):
         request_params = {"diaObjectId": object_id}
 
         raw, fixture_used = self._query_or_fixture(
-            sql=f"SELECT * FROM {_LSST_SUPERNNOVA_TABLE} WHERE diaObjectId = {object_id} ORDER BY 1 LIMIT 500",
+            sql=(
+                f"SELECT diaSourceId, diaObjectId, prob_class0, prob_class1, "
+                f"predicted_class, kafkaPublishTimestamp "
+                f"FROM {_LSST_SUPERNNOVA_TABLE} "
+                f"WHERE diaObjectId = {object_id} "
+                f"ORDER BY kafkaPublishTimestamp LIMIT 500"
+            ),
             fixture_path=fixture_path,
             survey="LSST",
         )
@@ -191,7 +204,12 @@ class PittAdapter(BrokerAdapter):
         request_params = {"objectId": object_id}
 
         raw, fixture_used = self._query_or_fixture(
-            sql=f"SELECT * FROM {_ZTF_SUPERNNOVA_TABLE} WHERE objectId = '{object_id}' ORDER BY jd LIMIT 500",
+            sql=(
+                f"SELECT objectId, candid, prob_class0, prob_class1, predicted_class "
+                f"FROM {_ZTF_SUPERNNOVA_TABLE} "
+                f"WHERE objectId = '{object_id}' "
+                f"ORDER BY candid LIMIT 500"
+            ),
             fixture_path=fixture_path,
             survey="ZTF",
         )
@@ -293,12 +311,24 @@ class PittAdapter(BrokerAdapter):
             jd: float | None = None
             if ts_raw is not None:
                 ts_f = float(ts_raw)
-                # Convert MJD → JD if value looks like MJD (< 2400000)
-                jd = ts_f + 2400000.5 if ts_f < 2400000.5 else ts_f
+                if ts_f > 1e12:
+                    # Unix epoch milliseconds (e.g. kafkaPublishTimestamp) → JD
+                    unix_sec = ts_f / 1000.0
+                    jd = unix_sec / 86400.0 + 2440587.5
+                elif ts_f < 2400000.5:
+                    # MJD → JD
+                    jd = ts_f + 2400000.5
+                else:
+                    jd = ts_f
 
             # Resolve object / alert identifiers
             obj_id_col = _first_match(row, _OBJECT_ID_CANDIDATES.get(survey.lower(), []))
             alert_id_raw = row.get("candid") or row.get("diaSourceId") or row.get("sourceid")
+
+            # ZTF BQ table lacks timestamps — mark as temporally unsafe
+            # so the trust model can learn appropriate weighting.
+            # LSST has kafkaPublishTimestamp → exact_alert.
+            temporal = "exact_alert" if jd is not None else "latest_object_unsafe"
 
             fields.append({
                 "field": "supernnova_prob_class0",
@@ -310,10 +340,9 @@ class PittAdapter(BrokerAdapter):
                 "classifier_version": row.get("supernnova_version") or row.get("model_version"),
                 "expert_key": expert_key,
                 "event_scope": "alert",
-                # Per-alert rows in BigQuery: mark as exact_alert
-                "temporal_exactness": "exact_alert",
+                "temporal_exactness": temporal,
                 "alert_id": int(alert_id_raw) if alert_id_raw is not None else None,
-                "n_det": idx + 1,  # approximate — rows ordered by timestamp
+                "n_det": idx + 1,  # approximate — rows ordered by timestamp/candid
                 "alert_jd": jd,
                 "event_time_jd": jd,
             })

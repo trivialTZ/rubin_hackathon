@@ -52,9 +52,12 @@ def _project_supernnova(events: list[dict[str, Any]], expert_key: str) -> dict[s
 
     if p_nonia_raw is not None:
         # Both class 0 and class 1 are available — use them directly.
+        # SuperNNova is binary (Ia vs non-Ia), so p_other is just numeric
+        # residual from normalisation noise.  Assign a small floor so the
+        # ternary normalisation doesn't collapse "other" to exactly 0.
         p_nonia_sn = float(p_nonia_raw)
         residual = max(0.0, 1.0 - p_ia - p_nonia_sn)
-        p_other = residual if residual > 0.01 else (1.0 - p_ia) * 0.3
+        p_other = max(residual, 0.01)
         p_nonia_snlike = p_nonia_sn
     else:
         # Only P(Ia) available — split complement.
