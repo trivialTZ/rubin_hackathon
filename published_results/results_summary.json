@@ -9,20 +9,23 @@
     20
   ],
   "truth": {
-    "n_objects": 1920,
+    "n_objects": 9298,
     "by_quality": {
-      "weak": 1878,
-      "spectroscopic": 42
+      "weak": 8201,
+      "spectroscopic": 516,
+      "context": 489,
+      "tns_untyped": 92
     },
     "by_source": {
       "alerce_self_label": 1876,
-      "tns_spectroscopic": 42,
-      "tns_source_unverified": 2
+      "tns_spectroscopic": 516,
+      "tns_untyped": 92,
+      "context": 489
     },
     "by_class": {
-      "nonIa_snlike": 756,
-      "snia": 603,
-      "other": 561
+      "snia": 280,
+      "nonIa_snlike": 236,
+      "other": 0
     }
   },
   "expert_availability_sample": [
@@ -1539,5 +1542,7 @@
         "mean_trust": null
       }
     }
-  }
+  },
+  "followup_roc_auc": 0.9949332675264165,
+  "followup_brier": 0.03051587264676497
 }

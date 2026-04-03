@@ -1,47 +1,47 @@
 {
   "alerce/stamp_classifier": {
-    "n_rows": 3207,
-    "positive_rate": 0.031805425631431246,
-    "brier": 0.016926109221234907,
-    "roc_auc": 0.9790312904549904,
-    "n_train_rows": 9894,
-    "n_cal_rows": 3087,
-    "n_test_rows": 3207
+    "n_rows": 3206,
+    "positive_rate": 0.04834684965689332,
+    "brier": 0.029186094037362744,
+    "roc_auc": 0.9275414723887462,
+    "n_train_rows": 9967,
+    "n_cal_rows": 3015,
+    "n_test_rows": 3206
   },
   "alerce/stamp_classifier_2025_beta": {
-    "n_rows": 809,
-    "positive_rate": 0.0,
-    "brier": 1.4606217406385127e-09,
-    "roc_auc": NaN,
-    "n_train_rows": 3297,
-    "n_cal_rows": 843,
-    "n_test_rows": 809
+    "n_rows": 885,
+    "positive_rate": 0.022598870056497175,
+    "brier": 1.6797995120404083e-09,
+    "roc_auc": 1.0,
+    "n_train_rows": 3061,
+    "n_cal_rows": 1003,
+    "n_test_rows": 885
   },
   "fink/rf_ia": {
-    "n_rows": 4213,
-    "positive_rate": 0.5015428435793972,
-    "brier": 0.10554852188955892,
-    "roc_auc": 0.937733080927591,
-    "n_train_rows": 12435,
-    "n_cal_rows": 4200,
-    "n_test_rows": 4213
+    "n_rows": 4268,
+    "positive_rate": 0.5271790065604499,
+    "brier": 0.1266927372720546,
+    "roc_auc": 0.9165437727122563,
+    "n_train_rows": 12510,
+    "n_cal_rows": 4070,
+    "n_test_rows": 4268
   },
   "fink/snn": {
-    "n_rows": 4213,
-    "positive_rate": 0.3712319012580109,
-    "brier": 0.06766275191698522,
-    "roc_auc": 0.9733321168341285,
-    "n_train_rows": 12435,
-    "n_cal_rows": 4200,
-    "n_test_rows": 4213
+    "n_rows": 4268,
+    "positive_rate": 0.3823805060918463,
+    "brier": 0.08246244351265464,
+    "roc_auc": 0.9567198797197178,
+    "n_train_rows": 12510,
+    "n_cal_rows": 4070,
+    "n_test_rows": 4268
   },
   "supernnova": {
-    "n_rows": 733,
-    "positive_rate": 0.26330150068212826,
-    "brier": 0.06681353054129884,
-    "roc_auc": 0.9506812511993858,
-    "n_train_rows": 1834,
-    "n_cal_rows": 729,
-    "n_test_rows": 733
+    "n_rows": 666,
+    "positive_rate": 0.21021021021021022,
+    "brier": 0.049669555465344364,
+    "roc_auc": 0.9963199348180338,
+    "n_train_rows": 1958,
+    "n_cal_rows": 672,
+    "n_test_rows": 666
   }
 }
