@@ -2,56 +2,85 @@
 DEBASS Trust-Aware Meta-Classifier — Results Summary
 ========================================================================
 
-Objects:      6958
-Epoch rows:   111597
+Objects:      1920
+Epoch rows:   29539
 n_det range:  1 – 20
 
 ── Truth Labels ──
-  spectroscopic           508 objects
-  weak                   6450 objects
+  spectroscopic            42 objects
+  weak                   1878 objects
 
-  nonIa_snlike           3241 objects
-  other                   575 objects
-  snia                   3142 objects
+  nonIa_snlike            756 objects
+  other                   561 objects
+  snia                    603 objects
 
 ── Expert Trust Models (test-set performance) ──
-  fink/rf_ia                                AUC=0.887  Brier=0.1332  (n_test=19573)
-  fink/snn                                  AUC=0.939  Brier=0.0877  (n_test=19573)
-  supernnova                                AUC=0.909  Brier=0.1210  (n_test=21931)
+  alerce/stamp_classifier                   AUC=0.979  Brier=0.0169  (n_test=3207)
+  alerce/stamp_classifier_2025_beta         AUC=nan  Brier=0.0000  (n_test=809)
+  fink/rf_ia                                AUC=0.938  Brier=0.1055  (n_test=4213)
+  fink/snn                                  AUC=0.973  Brier=0.0677  (n_test=4213)
+  supernnova                                AUC=0.951  Brier=0.0668  (n_test=733)
 
 ── Follow-Up Recommendation Model ──
-  ROC-AUC:       0.914
-  Brier:         0.11646826917543074
-  Positive rate: 0.43919565911267155
-  Test rows:     21931
+  ROC-AUC:       0.992
+  Brier:         0.0197072714095814
+  Positive rate: 0.3894736842105263
+  Test rows:     5890
 
 ── Expert Coverage at Key Epochs ──
   n_det = 3:
-    fink/snn                                 5626/6739  ( 83.5%)  trust=0.112
-    fink/rf_ia                               5626/6739  ( 83.5%)  trust=0.461
-    parsnip                                     0/6739  (  0.0%)  trust=n/a
-    supernnova                               6739/6739  (100.0%)  trust=0.481
-    alerce/lc_classifier_transient              0/6739  (  0.0%)  trust=n/a
-    alerce/stamp_classifier                     0/6739  (  0.0%)  trust=n/a
-    lasair/sherlock                             0/6739  (  0.0%)  trust=n/a
+    fink/snn                                  991/1624  ( 61.0%)  trust=0.084
+    fink/rf_ia                                991/1624  ( 61.0%)  trust=0.348
+    parsnip                                     0/1624  (  0.0%)  trust=n/a
+    supernnova                                169/1624  ( 10.4%)  trust=0.285
+    alerce_lc                                   0/1624  (  0.0%)  trust=n/a
+    alerce/lc_classifier_transient            893/1624  ( 55.0%)  trust=n/a
+    alerce/stamp_classifier                   888/1624  ( 54.7%)  trust=0.015
+    alerce/lc_classifier_BHRF_forced_phot_transient    278/1624  ( 17.1%)  trust=n/a
+    alerce/lc_classifier_BHRF_forced_phot_top    278/1624  ( 17.1%)  trust=n/a
+    alerce/LC_classifier_ATAT_forced_phot(beta)    313/1624  ( 19.3%)  trust=n/a
+    alerce/stamp_classifier_2025_beta         274/1624  ( 16.9%)  trust=0.018
+    alerce/stamp_classifier_rubin_beta          0/1624  (  0.0%)  trust=n/a
+    fink_lsst/snn                               0/1624  (  0.0%)  trust=n/a
+    fink_lsst/cats                              0/1624  (  0.0%)  trust=n/a
+    fink_lsst/early_snia                        0/1624  (  0.0%)  trust=n/a
+    lasair/sherlock                             0/1624  (  0.0%)  trust=n/a
 
   n_det = 5:
-    fink/snn                                 5879/6493  ( 90.5%)  trust=0.172
-    fink/rf_ia                               5879/6493  ( 90.5%)  trust=0.467
-    parsnip                                     0/6493  (  0.0%)  trust=n/a
-    supernnova                               6493/6493  (100.0%)  trust=0.474
-    alerce/lc_classifier_transient              0/6493  (  0.0%)  trust=n/a
-    alerce/stamp_classifier                     0/6493  (  0.0%)  trust=n/a
-    lasair/sherlock                             0/6493  (  0.0%)  trust=n/a
+    fink/snn                                 1070/1576  ( 67.9%)  trust=0.139
+    fink/rf_ia                               1070/1576  ( 67.9%)  trust=0.371
+    parsnip                                     0/1576  (  0.0%)  trust=n/a
+    supernnova                                169/1576  ( 10.7%)  trust=0.299
+    alerce_lc                                   0/1576  (  0.0%)  trust=n/a
+    alerce/lc_classifier_transient            878/1576  ( 55.7%)  trust=n/a
+    alerce/stamp_classifier                   873/1576  ( 55.4%)  trust=0.018
+    alerce/lc_classifier_BHRF_forced_phot_transient    267/1576  ( 16.9%)  trust=n/a
+    alerce/lc_classifier_BHRF_forced_phot_top    267/1576  ( 16.9%)  trust=n/a
+    alerce/LC_classifier_ATAT_forced_phot(beta)    301/1576  ( 19.1%)  trust=n/a
+    alerce/stamp_classifier_2025_beta         263/1576  ( 16.7%)  trust=0.019
+    alerce/stamp_classifier_rubin_beta          0/1576  (  0.0%)  trust=n/a
+    fink_lsst/snn                               0/1576  (  0.0%)  trust=n/a
+    fink_lsst/cats                              0/1576  (  0.0%)  trust=n/a
+    fink_lsst/early_snia                        0/1576  (  0.0%)  trust=n/a
+    lasair/sherlock                             0/1576  (  0.0%)  trust=n/a
 
   n_det = 10:
-    fink/snn                                 5410/5705  ( 94.8%)  trust=0.357
-    fink/rf_ia                               5410/5705  ( 94.8%)  trust=0.524
-    parsnip                                     0/5705  (  0.0%)  trust=n/a
-    supernnova                               5705/5705  (100.0%)  trust=0.464
-    alerce/lc_classifier_transient              0/5705  (  0.0%)  trust=n/a
-    alerce/stamp_classifier                     0/5705  (  0.0%)  trust=n/a
-    lasair/sherlock                             0/5705  (  0.0%)  trust=n/a
+    fink/snn                                 1153/1519  ( 75.9%)  trust=0.456
+    fink/rf_ia                               1153/1519  ( 75.9%)  trust=0.574
+    parsnip                                     0/1519  (  0.0%)  trust=n/a
+    supernnova                                168/1519  ( 11.1%)  trust=0.285
+    alerce_lc                                   0/1519  (  0.0%)  trust=n/a
+    alerce/lc_classifier_transient            846/1519  ( 55.7%)  trust=n/a
+    alerce/stamp_classifier                   843/1519  ( 55.5%)  trust=0.025
+    alerce/lc_classifier_BHRF_forced_phot_transient    256/1519  ( 16.9%)  trust=n/a
+    alerce/lc_classifier_BHRF_forced_phot_top    256/1519  ( 16.9%)  trust=n/a
+    alerce/LC_classifier_ATAT_forced_phot(beta)    283/1519  ( 18.6%)  trust=n/a
+    alerce/stamp_classifier_2025_beta         252/1519  ( 16.6%)  trust=0.020
+    alerce/stamp_classifier_rubin_beta          0/1519  (  0.0%)  trust=n/a
+    fink_lsst/snn                               0/1519  (  0.0%)  trust=n/a
+    fink_lsst/cats                              0/1519  (  0.0%)  trust=n/a
+    fink_lsst/early_snia                        0/1519  (  0.0%)  trust=n/a
+    lasair/sherlock                             0/1519  (  0.0%)  trust=n/a
 
 ── Science Significance ──
 This pipeline demonstrates trust-aware fusion of heterogeneous

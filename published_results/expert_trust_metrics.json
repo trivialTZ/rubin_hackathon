@@ -1,0 +1,47 @@
+{
+  "alerce/stamp_classifier": {
+    "n_rows": 3207,
+    "positive_rate": 0.031805425631431246,
+    "brier": 0.016926109221234907,
+    "roc_auc": 0.9790312904549904,
+    "n_train_rows": 9894,
+    "n_cal_rows": 3087,
+    "n_test_rows": 3207
+  },
+  "alerce/stamp_classifier_2025_beta": {
+    "n_rows": 809,
+    "positive_rate": 0.0,
+    "brier": 1.4606217406385127e-09,
+    "roc_auc": NaN,
+    "n_train_rows": 3297,
+    "n_cal_rows": 843,
+    "n_test_rows": 809
+  },
+  "fink/rf_ia": {
+    "n_rows": 4213,
+    "positive_rate": 0.5015428435793972,
+    "brier": 0.10554852188955892,
+    "roc_auc": 0.937733080927591,
+    "n_train_rows": 12435,
+    "n_cal_rows": 4200,
+    "n_test_rows": 4213
+  },
+  "fink/snn": {
+    "n_rows": 4213,
+    "positive_rate": 0.3712319012580109,
+    "brier": 0.06766275191698522,
+    "roc_auc": 0.9733321168341285,
+    "n_train_rows": 12435,
+    "n_cal_rows": 4200,
+    "n_test_rows": 4213
+  },
+  "supernnova": {
+    "n_rows": 733,
+    "positive_rate": 0.26330150068212826,
+    "brier": 0.06681353054129884,
+    "roc_auc": 0.9506812511993858,
+    "n_train_rows": 1834,
+    "n_cal_rows": 729,
+    "n_test_rows": 733
+  }
+}
