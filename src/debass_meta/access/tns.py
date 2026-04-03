@@ -151,6 +151,14 @@ TNS_TERNARY_MAP: dict[str, str] = {
     "FRB": "other",               # fast radio burst
     "Impostor-SN": "other",       # SN impostor (LBV eruption etc.)
     "Other": "other",
+    # SN subtypes seen in real TNS data
+    "SN Ib-Ca-rich": "nonIa_snlike",  # calcium-rich transient
+    "SN I": "nonIa_snlike",       # stripped-envelope, subtype uncertain
+    # TDE subtypes (real TNS classifications)
+    "TDE-H": "other",             # TDE with hydrogen features
+    "TDE-He": "other",            # TDE with helium features
+    "TDE-H-He": "other",          # TDE with both H and He
+    "TDE-featureless": "other",   # featureless TDE
     # Rare/emerging types
     "FBOT": "other",              # fast blue optical transient
     "LRN": "other",               # luminous red nova (stellar merger)
@@ -159,6 +167,9 @@ TNS_TERNARY_MAP: dict[str, str] = {
     "WR": "other",                # Wolf-Rayet star
     "Gap": "other",               # luminosity gap transient
     "PISN": "nonIa_snlike",       # pair-instability SN
+    "Blazar": "other",            # blazar / BL Lac
+    "Light-Echo": "other",        # light echo (not a transient)
+    "NA/Unknown": "other",        # explicitly unknown
 }
 
 # Types where the ternary class is AMBIGUOUS even with a spectrum.
@@ -182,31 +193,56 @@ TNS_AMBIGUOUS_TYPES: set[str] = {"SN"}
 # by independent broker consensus.
 
 TNS_CREDIBLE_GROUPS: set[str] = {
-    # Major survey programs with classification pipelines
+    # ── Major time-domain surveys (discovery + classification) ────
     "ZTF", "ZTF/CLU", "BTS",           # Zwicky Transient Facility
+    "iPTF", "PTF",                      # (intermediate) Palomar Transient Factory
+    "ATLAS",                            # Asteroid Terrestrial-impact Last Alert System
+    "Pan-STARRS", "PS1", "PS2",        # Panoramic Survey Telescope
+    "ASAS-SN",                          # All-Sky Automated Survey for Supernovae
+    "GaiaAlerts",                       # ESA Gaia Science Alerts
+    "MASTER",                           # Mobile Astronomical System of TElescope-Robots
+    "OGLE",                             # Optical Gravitational Lensing Experiment
+    "SkyMapper",                        # SkyMapper Southern Survey (ANU)
+    "GOTO",                             # Gravitational-wave Optical Transient Observer
+    "BlackGEM",                         # BlackGEM array (ESO/Radboud)
+    "WFST",                             # Wide Field Survey Telescope (USTC)
+    "Rubin",                            # Vera C. Rubin Observatory
+    "LAST",                             # Large Array Survey Telescope
+    "SDSS", "SDSS-II",                  # Sloan Digital Sky Survey
+    "DES", "DES-SN", "DESGW",          # Dark Energy Survey
+    "SNLS",                             # Supernova Legacy Survey
+    # ── Spectroscopic classification programs ─────────────────────
     "SCAT", "UCSC",                     # Santa Cruz / UCSC
     "ePESSTO", "ePESSTO+", "PESSTO",   # Public ESO Spectroscopic Survey
     "YSE",                              # Young Supernova Experiment
     "DEBASS",                           # Discovery and Early Broadband Analysis of SNe
-    "SDSS", "SDSS-II",                  # Sloan Digital Sky Survey
-    "SNLS",                             # Supernova Legacy Survey
-    "DES", "DES-SN",                    # Dark Energy Survey
-    "ATLAS",                            # Asteroid Terrestrial-impact Last Alert System
-    "Pan-STARRS", "PS1", "PS2",        # Panoramic Survey Telescope
-    "AMPEL",                            # Alert Management Platform
-    "ALeRCE",                           # ALeRCE broker
-    "Fink",                             # Fink broker
-    "Lasair",                           # Lasair broker
     "SNFactory", "SNf",                 # Nearby Supernova Factory
-    "SOAR",                             # SOAR telescope group
     "CSP",                              # Carnegie Supernova Project
     "LCO", "LCO Global SN Project",    # Las Cumbres Observatory
-    "NOIR",                             # NOIR Lab
     "CfA",                              # Center for Astrophysics
     "Asiago",                           # Asiago classification program
     "GSP",                              # Global SN Project
-    "TCD", "GREAT",                     # Trinity College Dublin / GREAT survey
     "SGLF",                             # Singapore Gravitational Lensing
+    "SNe in ACT",                       # SNe in ACT survey
+    "GSNST",                            # Global SN Science Team
+    "DESIRT",                           # DESI Transients program
+    # ── Alert brokers ─────────────────────────────────────────────
+    "ALeRCE",                           # ALeRCE broker
+    "Fink",                             # Fink broker
+    "Lasair",                           # Lasair broker
+    "AMPEL",                            # Alert Management Platform (AIP)
+    "ANTARES",                          # ANTARES broker (NOIRLab)
+    # ── Multi-messenger / GW follow-up ────────────────────────────
+    "ENGRAVE",                          # EM counterpart to GW
+    "GROWTH", "DECam-GROWTH",           # Global Relay of Observatories
+    "GW-MMADS",                         # GW Multi-Messenger Astronomy
+    # ── Radio transient surveys ───────────────────────────────────
+    "CHIMEFRB",                         # CHIME Fast Radio Burst
+    "CRAFT",                            # Commensal Real-time ASKAP Fast Transients
+    "FRBCAT",                           # FRB Catalogue project
+    # ── Observatory / telescope groups ────────────────────────────
+    "SOAR",                             # SOAR telescope group
+    "NOIR",                             # NOIRLab
     "GTC",                              # Gran Telescopio Canarias
     "NOT",                              # Nordic Optical Telescope
     "WHT",                              # William Herschel Telescope
@@ -220,13 +256,23 @@ TNS_CREDIBLE_GROUPS: set[str] = {
     "HET",                              # Hobby-Eberly Telescope
     "APO",                              # Apache Point Observatory
     "Lick",                             # Lick Observatory
+    "MMT",                              # MMT Observatory
+    "TCD", "GREAT",                     # Trinity College Dublin / GREAT survey
+    # ── Instrument-named groups ───────────────────────────────────
     "FLOYDS",                           # FLOYDS spectrograph (LCO)
     "SNIFS",                            # SuperNova Integral Field Spectrograph
-    "MMT",                              # MMT Observatory
+    # ── Specialized classification programs ───────────────────────
     "TDE",                              # TDE classification group
-    "ENGRAVE",                          # EM counterpart to GW
-    "GROWTH",                           # Global Relay of Observatories
-    "SNe in ACT",                       # SNe in ACT survey
+    "SNHunt",                           # Catalina Real-Time SN Hunt
+    "BraTS",                            # Brazilian Transient Search
+    "TNTS",                             # Tsinghua-NAOC Transient Survey
+    "XOSS",                             # Xingming Observatory Sky Survey
+    "DLT40",                            # Distance Less Than 40 Mpc Survey (UC Davis/Tartaglia)
+    "FLEET",                            # Finding Luminous & Exotic Extragalactic Transients (CfA)
+    "Supernova Alliance",               # Supernova Alliance (ANU/Swinburne)
+    "YSSN",                             # Yonsei SN group
+    "NUTS", "NUTS2",                    # NOT Unbiased Transient Survey
+    "CBET",                             # IAU Central Bureau
 }
 
 # Recognized spectrographs — an instrument in this set provides
@@ -248,6 +294,11 @@ TNS_CREDIBLE_INSTRUMENTS: set[str] = {
     "LRS2", "VIRUS",               # HET
     "Kastner", "Kast",             # Lick
 }
+
+# Build case-insensitive lookup sets at import time.
+# TNS API returns inconsistent casing (e.g. "BINOSPEC" vs "Binospec").
+_CREDIBLE_GROUPS_LOWER = {g.lower() for g in TNS_CREDIBLE_GROUPS}
+_CREDIBLE_INSTRUMENTS_LOWER = {i.lower() for i in TNS_CREDIBLE_INSTRUMENTS}
 
 
 @dataclass(frozen=True)
@@ -312,8 +363,8 @@ def extract_classification_credibility(
         elif isinstance(inst_obj, str):
             instrument = inst_obj.strip()
 
-        # Check group against credible list
-        if group and group in TNS_CREDIBLE_GROUPS:
+        # Check group against credible list (case-insensitive)
+        if group and group.lower() in _CREDIBLE_GROUPS_LOWER:
             return SpectrumCredibility(
                 tier="professional",
                 source_group=group,
@@ -321,8 +372,8 @@ def extract_classification_credibility(
                 reason=f"credible_group:{group}",
             )
 
-        # Check instrument against credible list
-        if instrument and instrument in TNS_CREDIBLE_INSTRUMENTS:
+        # Check instrument against credible list (case-insensitive)
+        if instrument and instrument.lower() in _CREDIBLE_INSTRUMENTS_LOWER:
             if best_tier != "professional":
                 best_tier = "likely_professional"
                 best_group = group or None

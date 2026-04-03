@@ -215,24 +215,19 @@ def _tns_row_to_result(
 
     discovery_date = _safe_str(row.get("discoverydate"))
 
-    # Extract source/reporting group when available in the CSV.
-    # The full TNS bulk export has "source_group" (who classified)
-    # and "reporting_group" (who discovered).
-    source_group = _safe_str(row.get("source_group"))
+    # The TNS bulk CSV has "source_group" and "reporting_group", but
+    # NEITHER is the spectroscopic classifier. In the CSV:
+    #   - reporting_group = who reported the discovery to TNS
+    #   - source_group    = the survey/data source that provided the object
+    #
+    # The actual classifier (who took the spectrum and typed it) is only
+    # available from the TNS API response: spectra[].source_group_name.
+    #
+    # So in bulk CSV mode we CANNOT verify the classifier. We record the
+    # CSV fields as metadata but do NOT assign credibility_tier — that
+    # requires API data.
+    source_group_csv = _safe_str(row.get("source_group"))
     reporting_group = _safe_str(row.get("reporting_group"))
-
-    # Determine credibility from the CSV source_group column.
-    # If the column exists and has a value, check against our registry.
-    credibility_tier = None
-    credibility_reason = None
-    if source_group is not None:
-        from debass_meta.access.tns import TNS_CREDIBLE_GROUPS
-        if source_group in TNS_CREDIBLE_GROUPS:
-            credibility_tier = "professional"
-            credibility_reason = f"credible_group:{source_group}"
-        else:
-            credibility_tier = "unverified"
-            credibility_reason = f"group_not_in_registry:{source_group}"
 
     return TNSResult(
         object_id=object_id,
@@ -244,10 +239,13 @@ def _tns_row_to_result(
         ra=ra,
         dec=dec,
         discovery_date=discovery_date,
-        raw={"source": source, "reporting_group": reporting_group},
-        source_group=source_group,
-        credibility_tier=credibility_tier,
-        credibility_reason=credibility_reason,
+        raw={
+            "source": source,
+            "reporting_group": reporting_group,
+            "source_group_csv": source_group_csv,
+        },
+        # credibility_tier/source_group left as None — bulk CSV cannot
+        # identify the classifier. Use API mode for credibility filtering.
     )
 
 
@@ -559,6 +557,174 @@ def build_truth_from_crossmatch(
     return pd.DataFrame(rows)
 
 
+def enrich_classifier_from_api(
+    tns_results: list[TNSResult],
+    *,
+    cache_dir: Path | None = None,
+    sandbox: bool = False,
+    max_workers: int = 2,
+    progress: bool = True,
+) -> list[TNSResult]:
+    """Enrich TNS results with real classifier info from the API.
+
+    After bulk CSV crossmatch, matched objects have type/name but NO
+    classifier metadata (the CSV ``source_group`` is the data source,
+    not the spectroscopic classifier).
+
+    This function queries the TNS API for each matched object to get
+    ``spectra[].source_group_name`` — the actual classifier — and
+    updates the result with credibility info.
+
+    Only queries objects that:
+    - Have a TNS name (matched in bulk CSV)
+    - Don't already have credibility_tier set (not yet enriched)
+
+    Caches results so repeated runs skip already-enriched objects.
+
+    Parameters
+    ----------
+    tns_results : list[TNSResult]
+        Results from bulk CSV crossmatch.
+    cache_dir : Path, optional
+        Directory for caching API responses (default: data/tns_cache).
+    max_workers : int
+        Concurrent API workers (keep low, TNS rate-limits globally).
+    """
+    from debass_meta.access.tns import (
+        TNSClient,
+        extract_classification_credibility,
+        load_tns_credentials,
+        _extract_type,
+        _has_spectra,
+    )
+
+    # Find objects that need enrichment
+    to_enrich = [
+        r for r in tns_results
+        if r.tns_name and r.credibility_tier is None
+    ]
+    if not to_enrich:
+        print("  All matched objects already have classifier info, skipping API enrichment")
+        return tns_results
+
+    # Check cache first
+    enriched_from_cache = 0
+    still_need_api: list[TNSResult] = []
+
+    if cache_dir is not None:
+        for r in to_enrich:
+            cached = _load_cached(cache_dir, r.object_id)
+            if cached is not None and cached.credibility_tier is not None:
+                enriched_from_cache += 1
+            else:
+                still_need_api.append(r)
+    else:
+        still_need_api = to_enrich
+
+    if enriched_from_cache > 0:
+        print(f"  Classifier info from cache: {enriched_from_cache}")
+
+    if not still_need_api:
+        # Rebuild results using cached data
+        return _rebuild_with_cache(tns_results, cache_dir)
+
+    print(f"  Querying TNS API for classifier info: {len(still_need_api)} objects "
+          f"(~{len(still_need_api) * 0.8:.0f}s)")
+
+    try:
+        creds = load_tns_credentials(sandbox=sandbox)
+    except RuntimeError as e:
+        print(f"  WARNING: Cannot enrich classifiers — {e}")
+        print("  Set TNS_API_KEY, TNS_TNS_ID, TNS_MARKER_NAME env vars to enable.")
+        return tns_results
+
+    client = TNSClient(creds, timeout_s=60.0, max_retries=3)
+
+    if progress:
+        try:
+            from tqdm import tqdm
+            pbar = tqdm(total=len(still_need_api), desc="TNS classifier lookup", unit="obj")
+        except ImportError:
+            pbar = None
+    else:
+        pbar = None
+
+    # Query sequentially (TNS rate limit is global, concurrent hurts more than helps)
+    import time
+    enriched_map: dict[str, TNSResult] = {}
+
+    for r in still_need_api:
+        try:
+            detail = client.get_object(r.tns_name, spectra=True)
+            cred = extract_classification_credibility(detail)
+
+            enriched = TNSResult(
+                object_id=r.object_id,
+                tns_name=r.tns_name,
+                tns_prefix=r.tns_prefix,
+                type_name=_extract_type(detail) or r.type_name,
+                has_spectra=_has_spectra(detail) or r.has_spectra,
+                redshift=r.redshift,
+                ra=r.ra,
+                dec=r.dec,
+                discovery_date=r.discovery_date,
+                raw=detail,
+                source_group=cred.source_group,
+                classification_instrument=cred.instrument,
+                credibility_tier=cred.tier,
+                credibility_reason=cred.reason,
+            )
+            enriched_map[r.object_id] = enriched
+
+            if cache_dir is not None:
+                _save_cached(cache_dir, enriched)
+
+        except Exception as exc:
+            print(f"  WARNING: API enrichment failed for {r.tns_name}: {exc}",
+                  file=sys.stderr)
+
+        if pbar is not None:
+            pbar.update(1)
+        time.sleep(0.3)  # polite rate
+
+    if pbar is not None:
+        pbar.close()
+
+    # Merge enriched results back
+    result_map = {r.object_id: r for r in tns_results}
+    result_map.update(enriched_map)
+
+    # Also pull in any cache-enriched results
+    if cache_dir is not None and enriched_from_cache > 0:
+        for r in to_enrich:
+            if r.object_id not in enriched_map:
+                cached = _load_cached(cache_dir, r.object_id)
+                if cached is not None and cached.credibility_tier is not None:
+                    result_map[r.object_id] = cached
+
+    n_enriched = sum(1 for r in result_map.values() if r.credibility_tier is not None)
+    print(f"  Enriched: {n_enriched} objects now have classifier info")
+
+    return [result_map[oid] for oid in [r.object_id for r in tns_results]]
+
+
+def _rebuild_with_cache(
+    tns_results: list[TNSResult],
+    cache_dir: Path | None,
+) -> list[TNSResult]:
+    """Replace results with cached versions that have credibility info."""
+    if cache_dir is None:
+        return tns_results
+    out = []
+    for r in tns_results:
+        cached = _load_cached(cache_dir, r.object_id)
+        if cached is not None and cached.credibility_tier is not None:
+            out.append(cached)
+        else:
+            out.append(r)
+    return out
+
+
 def _load_object_coords(labels_path: Path) -> dict[str, tuple[float, float]]:
     """Load RA/Dec from a CSV with object_id, ra, dec columns.
 
@@ -589,6 +755,9 @@ def main() -> None:
                         help="Enable positional RA/Dec fallback for objects not matched by name")
     parser.add_argument("--positional-radius", type=float, default=3.0,
                         help="Cone search radius in arcsec for positional fallback (default: 3.0)")
+    parser.add_argument("--enrich-classifiers", action="store_true",
+                        help="After bulk CSV match, query TNS API for real classifier source "
+                             "(spectra[].source_group_name). ~0.3s per matched object.")
     parser.add_argument("--cache-dir", default="data/tns_cache")
     parser.add_argument("--silver-dir", default=None, help="Silver dir for broker consensus")
     parser.add_argument("--consensus", action="store_true", help="Enable broker consensus tier")
@@ -644,6 +813,19 @@ def main() -> None:
             offline=args.offline,
             sandbox=args.sandbox,
             max_workers=args.max_workers,
+            progress=not args.no_progress,
+        )
+
+    # Enrich classifier info from API (only for bulk CSV matched objects)
+    if args.enrich_classifiers and not args.offline:
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        n_matched = sum(1 for r in tns_results if r.tns_name)
+        print(f"\nEnriching classifier info for {n_matched} matched objects...")
+        tns_results = enrich_classifier_from_api(
+            tns_results,
+            cache_dir=cache_dir,
+            sandbox=args.sandbox,
+            max_workers=1,
             progress=not args.no_progress,
         )
 

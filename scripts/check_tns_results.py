@@ -78,7 +78,7 @@ def check_parquet(path: Path) -> None:
     if "source_group" in df.columns:
         groups = df["source_group"].dropna()
         if len(groups) > 0:
-            print("Source groups (who classified):")
+            print("Source groups (from parquet — classifier if via API, data source if via CSV):")
             for g, c in groups.value_counts().items():
                 in_registry = "YES" if g in TNS_CREDIBLE_GROUPS else "NO"
                 print(f"  {g:30s}: {c:4d}  in_registry={in_registry}")
@@ -204,7 +204,9 @@ def check_bulk_csv(csv_path: Path, labels_path: Path | None = None) -> None:
     if "source_group" in df.columns:
         groups = df["source_group"].dropna()
         group_counts = groups.value_counts()
-        print(f"Source groups (who classified): {len(group_counts)} distinct")
+        print(f"source_group column (data source, NOT the spectroscopic classifier): {len(group_counts)} distinct")
+        print(f"  NOTE: In TNS CSV, source_group = survey that provided the object.")
+        print(f"  The classifier is only available via the TNS API (spectra[].source_group_name).")
         in_reg = 0
         not_in_reg = 0
         for g, c in group_counts.items():

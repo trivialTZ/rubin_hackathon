@@ -118,11 +118,13 @@ if ${LOCAL_MODE}; then
 
     # Step 4: (Optional) Update TNS
     if ${UPDATE_TNS}; then
-        echo "[4/10] Updating TNS bulk CSV + crossmatch..."
+        echo "[4/10] Updating TNS bulk CSV + crossmatch + classifier enrichment..."
         python3 scripts/download_tns_bulk.py
         python3 scripts/crossmatch_tns.py \
             --labels "${LABELS}" \
             --bulk-csv data/tns_public_objects.csv \
+            --enrich-classifiers \
+            --cache-dir data/tns_cache \
             --positional-fallback --positional-radius 3.0
     else
         echo "[4/10] Skipping TNS update (use --update-tns to enable)"
@@ -135,7 +137,8 @@ if ${LOCAL_MODE}; then
     # Step 6: Build multi-source truth (TNS + Fink xm + host context)
     echo "[6/10] Building multi-source truth table..."
     python3 scripts/build_truth_multisource.py \
-        --labels "${LABELS}" --silver-dir data/silver
+        --labels "${LABELS}" --silver-dir data/silver \
+        --existing-truth data/truth/tns_crossmatch.parquet
 
     # Step 7: Collect per-epoch local expert history
     echo "[7/10] Collecting local expert epoch history..."
@@ -247,6 +250,8 @@ if ${UPDATE_TNS}; then
               python3 scripts/crossmatch_tns.py \
                   --labels ${LABELS} \
                   --bulk-csv data/tns_public_objects.csv \
+                  --enrich-classifiers \
+                  --cache-dir data/tns_cache \
                   --positional-fallback --positional-radius 3.0")
     echo "Step 2: TNS update            → Job ${JID2}"
     HOLD_PREV="-hold_jid ${JID2}"
@@ -260,7 +265,8 @@ JID3=$(submit_or_echo "normalize_truth" $COMMON ${HOLD_PREV} \
           echo 'Normalizing...' && \
           python3 scripts/normalize.py && \
           echo 'Building multi-source truth...' && \
-          python3 scripts/build_truth_multisource.py --labels ${LABELS} --silver-dir data/silver && \
+          python3 scripts/build_truth_multisource.py --labels ${LABELS} --silver-dir data/silver \
+              --existing-truth data/truth/tns_crossmatch.parquet && \
           echo 'Collecting local expert epoch history...' && \
           python3 scripts/collect_epoch_history.py --from-labels ${LABELS} --max-n-det 20")
 echo "Step 3: Normalize + truth     → Job ${JID3}"
