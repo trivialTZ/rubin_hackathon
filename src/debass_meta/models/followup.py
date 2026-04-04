@@ -17,7 +17,13 @@ def _numeric_feature_cols(df: pd.DataFrame) -> list[str]:
     return sorted(
         column
         for column in df.columns
-        if column not in blocked and is_numeric_dtype(df[column])
+        if column not in blocked
+        and is_numeric_dtype(df[column])
+        # Exclude absolute timestamps — won't generalize to future observations
+        and column != "alert_jd"
+        and not column.startswith("source_event_time_jd__")
+        # Exclude association metadata — not a classification signal
+        and column != "lightcurve_association_sep_arcsec"
     )
 
 

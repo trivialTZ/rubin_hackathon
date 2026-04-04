@@ -31,16 +31,14 @@ def project_events(expert_key: str, events: list[dict[str, Any]]) -> dict[str, A
         p_snia = _row_value(events, "rf_snia_vs_nonia")
         if p_snia is None:
             return {"prediction_type": "class_correctness", "reason": "missing rf_snia_vs_nonia"}
-        mapped_pred = "snia" if p_snia >= 0.5 else "nonIa_snlike"
-        top1_prob = max(p_snia, 1.0 - p_snia)
-        return {
-            "prediction_type": "class_correctness",
-            "mapped_pred_class": mapped_pred,
-            "p_snia_scalar": p_snia,
-            "p_non_snia_scalar": 1.0 - p_snia,
-            "top1_prob": top1_prob,
-            "margin": abs(p_snia - 0.5) * 2.0,
-            "entropy": None,
-        }
+        # Binary Ia-vs-nonIa → ternary: split complement 0.7 nonIa / 0.3 other
+        complement = 1.0 - p_snia
+        p_nonia_snlike = complement * 0.7
+        p_other = complement * 0.3
+        out = summarize_ternary(p_snia, p_nonia_snlike, p_other)
+        # Preserve scalar fields for backward compat with helpfulness builder
+        out["p_snia_scalar"] = p_snia
+        out["p_non_snia_scalar"] = 1.0 - p_snia
+        return out
 
     return {"prediction_type": "unknown", "reason": f"unsupported fink expert {expert_key}"}

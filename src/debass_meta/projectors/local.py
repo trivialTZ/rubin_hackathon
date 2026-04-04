@@ -9,7 +9,16 @@ from .base import summarize_ternary
 def _map_class(class_name: str | None) -> str:
     if class_name is None:
         return "other"
-    name = str(class_name).lower()
+    name = str(class_name).strip().lower()
+    # Explicit non-Ia patterns must be checked BEFORE the "ia" substring match
+    # because "non-ia", "nonia", "non_ia" all contain "ia".
+    if name in {"non-ia", "nonia", "non_ia", "non ia", "cc"}:
+        return "nonIa_snlike"
+    if name in {"sn ia", "snia", "ia", "snIa"}:
+        return "snia"
+    # Fallback substring matches — order matters
+    if "non" in name and "ia" in name:
+        return "nonIa_snlike"
     if "ia" in name:
         return "snia"
     if name.startswith("sn") or "slsn" in name or "ibc" in name or "iin" in name or "iib" in name:

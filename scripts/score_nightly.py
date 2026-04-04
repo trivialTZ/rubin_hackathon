@@ -128,11 +128,13 @@ def build_score_payload(row, trust_models: dict[str, ExpertTrustArtifact], follo
         p_s = projected.get("p_snia")
         p_n = projected.get("p_nonIa_snlike")
         p_o = projected.get("p_other")
-        if p_s is not None:
+        # Only include experts with full ternary output — zeroing missing
+        # channels biases the ensemble toward p_snia for scalar-only experts.
+        if p_s is not None and p_n is not None and p_o is not None:
             tw_weights.append(w)
             tw_p_snia.append(w * float(p_s))
-            tw_p_nonia.append(w * float(p_n or 0))
-            tw_p_other.append(w * float(p_o or 0))
+            tw_p_nonia.append(w * float(p_n))
+            tw_p_other.append(w * float(p_o))
 
     ensemble: dict[str, Any] = {"p_follow_proxy": None, "recommended": None}
     if tw_weights:

@@ -148,6 +148,9 @@ def _expert_feature_cols(df: pd.DataFrame, expert_key: str) -> list[str]:
     for column in df.columns:
         if column in blocked:
             continue
+        # Exclude absolute timestamps — won't generalize to future observations
+        if column == "alert_jd" or column.startswith("source_event_time_jd__"):
+            continue
         if column.startswith("proj__") and not column.startswith(f"proj__{san}__"):
             continue
         if column.startswith("q__") or column.startswith("trust_source__"):
