@@ -66,6 +66,7 @@ _ZTF_GCP_PROJECT = "ardent-cycling-243415"
 
 _LSST_SUPERNNOVA_TABLE = f"`{_PITTGOOGLE_GCP_PROJECT}.lsst.supernnova`"
 _ZTF_SUPERNNOVA_TABLE = f"`{_ZTF_GCP_PROJECT}.ztf.SuperNNova`"
+_LSST_UPSILON_TABLE = f"`{_PITTGOOGLE_GCP_PROJECT}.lsst.upsilon`"
 
 _FIXTURE_DIR = Path("fixtures/raw/pittgoogle")
 
@@ -175,6 +176,9 @@ class PittAdapter(BrokerAdapter):
 
         fields = self._extract_supernnova_fields(raw, survey="LSST",
                                                   expert_key="pittgoogle/supernnova_lsst")
+        # Phase 1a addition: also query UPSILoN (periodic variable classifier)
+        upsilon_fields = self._fetch_upsilon_lsst(object_id)
+        fields = list(fields) + list(upsilon_fields)
         return BrokerOutput(
             broker=self.name,
             object_id=object_id,
@@ -193,6 +197,67 @@ class PittAdapter(BrokerAdapter):
             availability=not fixture_used and bool(fields),
             fixture_used=fixture_used,
         )
+
+    # ------------------------------------------------------------------ #
+    # UPSILoN (lsst.upsilon) — periodic variable classifier                #
+    # ------------------------------------------------------------------ #
+
+    def _fetch_upsilon_lsst(self, object_id: str) -> list[dict[str, Any]]:
+        """Query Pitt-Google LSST UPSILoN table for periodic variable classifications.
+
+        UPSILoN classes (7): delta_scuti, rr_lyrae, cepheid, type_ii_cepheid,
+        eclipsing_binary, long_period_variable, non_variable.  All feed p_other
+        in the DEBASS ternary via the projector.
+
+        Returns empty list on any error (table missing, no creds, etc.).
+        """
+        if not _PITTGOOGLE_AVAILABLE or not self._has_credentials():
+            return []
+        fixture_path = _FIXTURE_DIR / f"{object_id}_upsilon.json"
+        sql = (
+            "SELECT diaObjectId, predicted_class, probability, kafkaPublishTimestamp "
+            f"FROM {_LSST_UPSILON_TABLE} "
+            f"WHERE diaObjectId = {object_id} "
+            "ORDER BY kafkaPublishTimestamp LIMIT 200"
+        )
+        raw, _ = self._query_or_fixture(sql=sql, fixture_path=fixture_path, survey="LSST")
+        rows = raw.get("rows", []) if isinstance(raw, dict) else []
+        events: list[dict[str, Any]] = []
+        for idx, row in enumerate(rows):
+            pred = row.get("predicted_class") or row.get("class") or row.get("label")
+            prob = row.get("probability") or row.get("prob") or row.get("score")
+            if pred is None and prob is None:
+                continue
+            ts_raw = row.get("kafkaPublishTimestamp") or row.get("mjd") or row.get("jd")
+            jd: float | None = None
+            if ts_raw is not None:
+                try:
+                    ts_f = float(ts_raw)
+                    if ts_f > 1e12:
+                        jd = (ts_f / 1000.0) / 86400.0 + 2440587.5
+                    elif ts_f < 2400000.5:
+                        jd = ts_f + 2400000.5
+                    else:
+                        jd = ts_f
+                except (TypeError, ValueError):
+                    jd = None
+            events.append({
+                "field": "upsilon_class",
+                "raw_label_or_score": prob if prob is not None else pred,
+                "semantic_type": "probability" if prob is not None else "heuristic_class",
+                "canonical_projection": float(prob) if prob is not None else None,
+                "classifier": "upsilon",
+                "classifier_version": row.get("upsilon_version"),
+                "class_name": str(pred) if pred is not None else None,
+                "expert_key": "pittgoogle/upsilon_lsst",
+                "event_scope": "alert",
+                "temporal_exactness": "exact_alert" if jd is not None else "latest_object_unsafe",
+                "alert_id": row.get("diaSourceId"),
+                "n_det": idx + 1,
+                "alert_jd": jd,
+                "event_time_jd": jd,
+            })
+        return events
 
     # ------------------------------------------------------------------ #
     # ZTF path                                                             #

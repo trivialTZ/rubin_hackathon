@@ -94,25 +94,106 @@ brokers:
       posterior. Treat as a categorical feature, not a probability.
 
   pitt_google:
-    phase: 2
+    phase: 1
     access: remote
-    status: stubbed
+    status: active
     public: true
-    credentials_required: true  # Google Cloud service account
-    event_scope: unknown
-    temporal_exactness: unknown
-    historical_trainability: deferred
+    credentials_required: true  # Google Cloud service account or ADC
+    client: pittgoogle-client (BigQuery)
+    base_url: bigquery://pitt-alert-broker.lsst.supernnova
+    semantic_type: probability
+    event_scope: alert
+    temporal_exactness: exact_alert
+    historical_trainability: trainable
     classifier_version_expected: false
-    notes: Useful but requires GCP setup. Deferred to phase 2.
+    output_fields:
+      - field: supernnova_prob_class0
+        type: probability
+        description: SuperNNova P(SN Ia) — binary classifier
+      - field: supernnova_prob_class1
+        type: probability
+        description: SuperNNova P(non-Ia) — complement
+    expert_keys:
+      - pittgoogle/supernnova_lsst
+      - pittgoogle/supernnova_ztf
+    notes: >
+      Per-alert SuperNNova binary P(Ia) from BigQuery public datasets.
+      LSST: pitt-alert-broker.lsst.supernnova
+      ZTF: ardent-cycling-243415.ztf.SuperNNova
+      Requires GCP credentials (service account or gcloud auth).
+      Falls back to fixture if credentials absent.
 
   antares:
-    phase: 2
+    phase: 1
     access: remote
-    status: stubbed
+    status: active
+    public: true
+    credentials_required: false  # public read API; login only for user filters
+    client: antares-client
+    base_url: https://antares.noirlab.edu
+    semantic_type: mixed
+    event_scope: alert
+    temporal_exactness: exact_alert  # tags stored per locus history state
+    historical_trainability: trainable
+    classifier_version_expected: true
+    output_fields:
+      - classifier: ORACLE (Shah+ 2025)
+        field: oracle_class
+        type: probability
+        classes: [SNIa, SN91bg, SNIax, SNII, SNIbc, SLSN-I, SLSN-II, IIn, IIb,
+                  TDE, KN, AGN, uLens, CART, ILOT, PISN, Cep, RRLyr, EB]
+        notes: Hierarchical 19-class GRU, per-alert tags with scores.
+      - classifier: Superphot+ (de Soto+ 2024)
+        field: superphot_plus_class
+        type: probability
+        classes: [SNIa, SNII, SNIbc, SNIIn, SLSN-I]
+        notes: 5-class SN subtype; running on ZTF, LSST retrain in progress.
+    expert_keys:
+      - antares/oracle
+      - antares/superphot_plus
+    notes: >
+      Query `loci_history` to retrieve the tag (and its score) at the exact
+      alert that added it — this gives per-epoch semantics matching DEBASS's
+      trust-training requirements.  Filter coverage expands per RTN-090.
+
+  ampel:
+    phase: 1
+    access: remote
+    status: active_with_caveats
     public: partial
-    credentials_required: true
-    event_scope: unknown
-    temporal_exactness: unknown
-    historical_trainability: deferred
-    classifier_version_expected: false
-    notes: Open client exists; stream access needs credentials. Deferred to phase 2.
+    credentials_required: true  # AMPEL channel token (free via ampel-info@desy.de)
+    client: requests (DESY REST)
+    base_url: https://ampel.zeuthen.desy.de
+    semantic_type: probability
+    event_scope: alert
+    temporal_exactness: exact_alert  # T2 documents are per-state (per-alert)
+    historical_trainability: trainable
+    classifier_version_expected: true
+    output_fields:
+      - classifier: T2MultiXGBClassifier (SNGuess)
+        field: snguess_prob
+        type: probability
+        description: Binary young-extragalactic-transient probability.
+      - classifier: T2RunParsnip (FollowMe / FinalBet)
+        field: parsnip_probs
+        type: probability
+        classes: [SNIa, SNIax, 91bg, SNII, SNIbc, IIn, SLSN-I, TDE, KN, AGN,
+                  uLens, CART, ILOT, PISN, non-SN]
+        description: 14-class ParSNIP + rate/host priors.
+    expert_keys:
+      - ampel/snguess
+      - ampel/parsnip_followme
+    notes: >
+      AMPEL stores all T2 results per-state, so retrieval of the classifier
+      output at N=5 detections is native — cleanest per-epoch semantics of
+      any Rubin community broker.  Archive access requires AMPEL_ARCHIVE_TOKEN.
+
+  # Additional Phase 1a addition: Pitt-Google UPSILoN (periodic variable)
+  # See pitt_google entry above for credentials/transport; UPSILoN rides the
+  # same BigQuery backend.  Expert keys listed here for completeness:
+  #   pittgoogle/upsilon_lsst
+  #
+  # The Rubin Community broker list (7 brokers) is now fully covered:
+  #   alerce, fink, lasair, pitt_google, antares, ampel — plus babamul
+  #   (skipped: babamul runs Superphot+ as an external filter, duplicating
+  #    antares/superphot_plus).

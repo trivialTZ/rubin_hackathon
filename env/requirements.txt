@@ -9,6 +9,7 @@ alerce>=2.1.0,<3
 fink-client>=7.0
 lasair>=0.1.0,<1
 pittgoogle-client>=0.3        # Pitt-Google Broker (BigQuery); needs GCP credentials
+antares-client>=1.14          # NOIRLab ANTARES — ORACLE + Superphot+ tags
 requests>=2.31
 
 # Data / IO
@@ -35,6 +36,14 @@ python-dotenv>=1.0
 # Local experts (install separately if GPU unavailable)
 # supernnova>=2.0
 # astro-parsnip>=1.4.0
+
+# Phase 1b local experts
+sncosmo>=2.10                 # SALT3 template fit (χ² Ia consistency expert)
+light-curve>=0.8              # Rust-fast Bazin/Villar parametric features
+
+# Plots + paper figures
+matplotlib>=3.7
+seaborn>=0.13
 
 # Dev / test
 pytest>=8.0

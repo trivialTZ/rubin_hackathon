@@ -55,7 +55,11 @@ def _run_alerce_lc_expert(
         expert = AlerceLCExpert()
         if not expert.is_available():
             return None
-        result = expert.predict_epoch(detections_truncated, n_det=n_det)
+        last_mjd = detections_truncated[-1].get("mjd") if detections_truncated else None
+        if last_mjd is None:
+            return None
+        epoch_jd = float(last_mjd) + 2400000.5 + 0.5
+        result = expert.predict_epoch(f"obj_{n_det}", list(detections_truncated), epoch_jd)
         if result is None:
             return None
         return {
@@ -77,7 +81,11 @@ def _run_supernnova_expert(
         expert = SuperNNovaExpert()
         if not expert.is_available():
             return None
-        result = expert.predict_epoch(detections_truncated, n_det=n_det)
+        last_mjd = detections_truncated[-1].get("mjd") if detections_truncated else None
+        if last_mjd is None:
+            return None
+        epoch_jd = float(last_mjd) + 2400000.5 + 0.5
+        result = expert.predict_epoch(f"obj_{n_det}", list(detections_truncated), epoch_jd)
         if result is None:
             return None
         return {
@@ -89,10 +97,76 @@ def _run_supernnova_expert(
         return None
 
 
+# --- Phase 1b local physics experts ---
+# These use the LocalExpert.predict_epoch(object_id, lightcurve, epoch_jd) API:
+# they accept the FULL lightcurve and an epoch cutoff, and truncate internally.
+# The epoch_jd is derived from the last truncated detection's MJD in this loop.
+
+_PHYSICS_EXPERT_INSTANCES: dict[str, object] = {}  # cache so __init__ cost paid once
+
+
+def _physics_runner_factory(expert_key: str, expert_cls_path: str):
+    """Return a runner closure for an expert that follows the LocalExpert API."""
+
+    def _runner(detections_truncated, n_det):
+        try:
+            inst = _PHYSICS_EXPERT_INSTANCES.get(expert_key)
+            if inst is None:
+                module_path, class_name = expert_cls_path.rsplit(".", 1)
+                module = __import__(module_path, fromlist=[class_name])
+                cls = getattr(module, class_name)
+                inst = cls()
+                _PHYSICS_EXPERT_INSTANCES[expert_key] = inst
+            if not getattr(inst, "_available", False):
+                return None
+            if not detections_truncated:
+                return None
+            last_mjd = detections_truncated[-1].get("mjd")
+            if last_mjd is None:
+                return None
+            epoch_jd = float(last_mjd) + 2400000.5
+            # These experts expect the full lightcurve and truncate internally,
+            # but since collect_epoch_history pre-truncates, we pass the pre-truncated
+            # list as the "lightcurve" and an epoch just past the last det.
+            out = inst.predict_epoch(
+                f"obj_{n_det}", list(detections_truncated), float(epoch_jd + 0.5)
+            )
+            if out is None or not getattr(out, "available", False):
+                return None
+            return {
+                "expert": expert_key,
+                "class_probabilities": dict(getattr(out, "class_probabilities", {}) or {}),
+                "available": True,
+            }
+        except Exception:
+            return None
+
+    return _runner
+
+
+_run_salt3_expert = _physics_runner_factory(
+    "salt3_chi2",
+    "debass_meta.experts.local.salt3_fit.Salt3Chi2Expert",
+)
+
+_run_lc_features_expert = _physics_runner_factory(
+    "lc_features_bv",
+    "debass_meta.experts.local.lc_features.LcFeaturesExpert",
+)
+
+_run_oracle_local_expert = _physics_runner_factory(
+    "oracle_lsst",
+    "debass_meta.experts.local.oracle_local.OracleLocalExpert",
+)
+
+
 # Map expert name → runner function
 _EXPERT_RUNNERS = {
     "alerce_lc": _run_alerce_lc_expert,
     "supernnova": _run_supernnova_expert,
+    "salt3_chi2": _run_salt3_expert,
+    "lc_features_bv": _run_lc_features_expert,
+    "oracle_lsst": _run_oracle_local_expert,
 }
 
 
@@ -213,6 +287,24 @@ def main() -> None:
                     print(f"  {expert_name}: available")
                 else:
                     print(f"  {expert_name}: weights not found")
+            except Exception as e:
+                print(f"  {expert_name}: unavailable ({e})")
+        elif expert_name in ("salt3_chi2", "lc_features_bv", "oracle_lsst"):
+            cls_path = {
+                "salt3_chi2":      "debass_meta.experts.local.salt3_fit.Salt3Chi2Expert",
+                "lc_features_bv":  "debass_meta.experts.local.lc_features.LcFeaturesExpert",
+                "oracle_lsst":     "debass_meta.experts.local.oracle_local.OracleLocalExpert",
+            }[expert_name]
+            try:
+                mod, klass = cls_path.rsplit(".", 1)
+                ExpertCls = getattr(__import__(mod, fromlist=[klass]), klass)
+                inst = ExpertCls()
+                if getattr(inst, "_available", False):
+                    available.append(expert_name)
+                    print(f"  {expert_name}: available")
+                else:
+                    reason = getattr(inst, "_reason", "unavailable")
+                    print(f"  {expert_name}: {reason}")
             except Exception as e:
                 print(f"  {expert_name}: unavailable ({e})")
 

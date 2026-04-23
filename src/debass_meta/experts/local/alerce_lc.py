@@ -53,6 +53,9 @@ class AlerceLCExpert(LocalExpert):
         self._lc_classifier_available = False
         self._load_model()
 
+    def is_available(self) -> bool:
+        return self._model is not None
+
     # ------------------------------------------------------------------ #
     # Model loading                                                       #
     # ------------------------------------------------------------------ #

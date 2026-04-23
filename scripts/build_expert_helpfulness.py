@@ -46,6 +46,8 @@ def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
                 "mapped_pred_class": row.get(f"mapped_pred_class__{san}"),
                 "target_class": row.get("target_class"),
                 "target_follow_proxy": row.get("target_follow_proxy"),
+                "label_source": row.get("label_source"),
+                "label_quality": row.get("label_quality"),
                 "prediction_type": row.get(f"prediction_type__{san}"),
                 "reason": row.get(f"reason__{san}"),
             }

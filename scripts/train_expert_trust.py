@@ -29,6 +29,8 @@ def main() -> None:
                         help="Exclude ALeRCE latest_object_unsafe snapshots from trust training")
     parser.add_argument("--n-jobs", type=int, default=1,
                         help="Number of threads for LightGBM (must match -pe omp slots)")
+    parser.add_argument("--allow-circular-consensus", action="store_true",
+                        help="Include broker_consensus labels in trust training (circular, not recommended)")
     args = parser.parse_args()
 
     snapshot_df = pd.read_parquet(args.snapshots)
@@ -49,6 +51,12 @@ def main() -> None:
         print("Including ALeRCE latest_object_unsafe snapshots in trust training. "
               "The exact__ flag lets the trust model learn temporal reliability.")
 
+    exclude_circ = not args.allow_circular_consensus
+    if exclude_circ:
+        print("Excluding broker_consensus labels from trust training (anti-circularity).")
+    else:
+        print("WARNING: Including broker_consensus labels in trust training — circular reasoning risk.")
+
     split = group_train_cal_test_split(object_to_label)
     _, metrics_report, metadata = train_expert_trust_suite(
         helpfulness_df=helpfulness_df,
@@ -58,6 +66,7 @@ def main() -> None:
         output_snapshot_path=Path(args.output_snapshots),
         n_splits=args.n_splits,
         allow_unsafe_latest_snapshot=include_unsafe,
+        exclude_circular_consensus=exclude_circ,
         n_jobs=args.n_jobs,
     )
 
@@ -66,6 +75,7 @@ def main() -> None:
     with open(metrics_out, "w") as fh:
         json.dump(metrics_report, fh, indent=2)
     metadata["allow_unsafe_alerce"] = include_unsafe
+    metadata["exclude_circular_consensus"] = exclude_circ
     metadata["contains_weak_labels"] = bool(snapshot_df["label_quality"].fillna("").eq("weak").any())
     with open(Path(args.models_dir) / "metadata.json", "w") as fh:
         json.dump(metadata, fh, indent=2)

@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from debass_meta.projectors import ALL_EXPERT_KEYS, PHASE1_EXPERT_KEYS, sanitize_expert_key
+from debass_meta.analysis.latency import auc_vs_ndet, plot_auc_vs_ndet
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -326,6 +327,48 @@ def main() -> None:
         experts_avail = sum(1 for v in entry["experts_available"].values() if v > 0)
         print(f"  n_det={n_det:2d}  objects={entry['n_objects']:5d}  experts_with_data={experts_avail}/7")
 
+    # ── Phase 0.3/0.4: Latency-aware metrics + ensemble baselines ────────
+    metrics_dir = output_dir / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    has_target_class = "target_class" in snapshot_df.columns
+    if has_target_class and snapshot_df["target_class"].notna().any():
+        print("\nComputing latency-aware metrics (AUC vs n_det with 95% CI)…")
+        try:
+            result = auc_vs_ndet(
+                snapshot_df,
+                n_dets=(3, 4, 5, 7, 10, 15, 20),
+                target_auc=0.9,
+                bootstrap_n=200,
+            )
+        except Exception as exc:
+            print(f"  [warn] auc_vs_ndet failed: {exc}")
+            result = None
+        if result is not None:
+            per_ndet_path = metrics_dir / "latency_curves.parquet"
+            per_expert_path = metrics_dir / "latency_per_expert.parquet"
+            result.per_ndet.to_parquet(per_ndet_path, index=False)
+            result.per_expert_ndet.to_parquet(per_expert_path, index=False)
+            plot_path = plots_dir / "auc_vs_ndet.png"
+            try:
+                plot_auc_vs_ndet(result, str(plot_path))
+                print(f"  Wrote {plot_path}")
+            except Exception as exc:
+                print(f"  [warn] plot failed: {exc}")
+            print(f"  Wrote {per_ndet_path}")
+            print(f"  Wrote {per_expert_path}")
+            print("  Earliest n_det to reach AUC ≥ 0.9:")
+            for method, n in result.earliest_n_det.items():
+                print(f"    {method:16s}  n_det = {n if n is not None else '— (never)'}")
+            summary["latency"] = {
+                "earliest_n_det_target_auc_0.9": result.earliest_n_det,
+                "best_single_expert_key": result.per_ndet.attrs.get("best_single_expert_key"),
+                "per_ndet_head": result.per_ndet.head(50).to_dict(orient="records"),
+            }
+    else:
+        print("\nSkipping latency metrics (no target_class column in snapshots)")
+
     # ── Score analysis (if JSONL available) ──────────────────────────────
     scores_path = None
     if args.scores:
@@ -414,6 +457,17 @@ def main() -> None:
                 trust_str = f"trust={trust_val:.3f}" if trust_val is not None else "trust=n/a"
                 lines.append(f"    {expert_key:38s}  {n_avail:5d}/{n_total}  ({_pct(n_avail, n_total):>6s})  {trust_str}")
             lines.append("")
+
+    # Latency + ensembles summary
+    if "latency" in summary:
+        lines.append("── Latency-Aware Metrics (n_det to reach AUC ≥ 0.9) ──")
+        for method, n in summary["latency"]["earliest_n_det_target_auc_0.9"].items():
+            disp = n if n is not None else "—"
+            lines.append(f"  {method:18s}  n_det = {disp}")
+        bse = summary["latency"].get("best_single_expert_key")
+        if bse:
+            lines.append(f"  best-single-expert oracle = {bse}")
+        lines.append("")
 
     # Science significance
     lines.append("── Science Significance ──")

@@ -4,7 +4,7 @@
 # This script:
 #   1. Re-fetches ALeRCE data (parallel) to get BHRF/ATAT/stamp_2025_beta scores
 #   2. Optionally updates TNS bulk CSV and re-runs crossmatch
-#   3. Rebuilds gold tables with 51 LC features + 13 expert keys + survey flag
+#   3. Rebuilds gold tables with 51 LC features + 18 expert keys + survey flag
 #   4. Retrains expert trust + followup models
 #   5. Scores at n_det=3,5,10 and analyzes results
 #
@@ -145,14 +145,14 @@ if ${LOCAL_MODE}; then
     python3 scripts/collect_epoch_history.py \
         --from-labels "${LABELS}" --lc-dir data/lightcurves --max-n-det 20
 
-    # Step 8: Build gold tables (51 features + 16 expert projections)
+    # Step 8: Build gold tables (51 features + 18 expert projections)
     echo "[8/10] Rebuilding gold tables..."
     python3 scripts/build_object_epoch_snapshots.py \
         --objects-csv "${LABELS}" --allow-unsafe-latest-snapshot
     python3 scripts/build_expert_helpfulness.py
 
     # Step 9: Train trust + followup
-    echo "[9/10] Training expert trust (16 heads) + followup..."
+    echo "[9/10] Training expert trust (18 heads) + followup..."
     python3 scripts/train_expert_trust.py \
         --snapshots data/gold/object_epoch_snapshots.parquet \
         --helpfulness data/gold/expert_helpfulness.parquet \

@@ -35,6 +35,18 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     # --- Pitt-Google Broker (SuperNNova via BigQuery) ---
     "pittgoogle/supernnova_lsst":      ("lsst", "pittgoogle"),
     "pittgoogle/supernnova_ztf":       ("ztf",  "pittgoogle"),
+    # --- Pitt-Google UPSILoN (periodic variable classifier, LSST only) ---
+    "pittgoogle/upsilon_lsst":         ("lsst", "pittgoogle"),
+    # --- ANTARES (NOIRLab filter-platform; ORACLE 19-class, Superphot+ 5-class) ---
+    "antares/oracle":                  ("any",  "antares"),
+    "antares/superphot_plus":          ("any",  "antares"),
+    # --- AMPEL (DESY/Stockholm; state-indexed T2 classifiers) ---
+    "ampel/snguess":                   ("any",  "ampel"),
+    "ampel/parsnip_followme":          ("any",  "ampel"),
+    # --- Local physics/feature experts (Phase 1b) ---
+    "salt3_chi2":                      ("any",  "local_salt3"),
+    "lc_features_bv":                  ("any",  "local_lc_features"),
+    "oracle_lsst":                     ("lsst", "local_oracle"),
 }
 
 # Backward-compatible flat list — Phase 1 experts (original 8)
@@ -163,6 +175,26 @@ def _dispatch_projector(expert_key: str, events: list[dict[str, Any]]) -> dict[s
         return project_events(expert_key, events)
     if expert_key.startswith("pittgoogle/"):
         from .pittgoogle import project_events
+
+        return project_events(expert_key, events)
+    if expert_key.startswith("antares/"):
+        from .antares import project_events
+
+        return project_events(expert_key, events)
+    if expert_key.startswith("ampel/"):
+        from .ampel import project_events
+
+        return project_events(expert_key, events)
+    if expert_key == "salt3_chi2":
+        from .local_salt3 import project_events
+
+        return project_events(expert_key, events)
+    if expert_key == "lc_features_bv":
+        from .local_lc_features import project_events
+
+        return project_events(expert_key, events)
+    if expert_key == "oracle_lsst":
+        from .local_oracle import project_events
 
         return project_events(expert_key, events)
     return {"prediction_type": "unknown", "reason": f"no projector for {expert_key}"}

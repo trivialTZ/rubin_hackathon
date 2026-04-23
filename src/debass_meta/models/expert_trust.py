@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,33 @@ from pandas.api.types import is_numeric_dtype
 
 from debass_meta.projectors import sanitize_expert_key
 
+from .calibrate import IsotonicCalibrator
+
+
+def _expected_calibration_error(
+    y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10
+) -> float:
+    """Equal-width ECE — mean |bin-accuracy - bin-confidence|, weighted by bin count."""
+    y_true = np.asarray(y_true, dtype=float)
+    y_prob = np.asarray(y_prob, dtype=float)
+    if len(y_true) == 0:
+        return float("nan")
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    n = len(y_true)
+    for i in range(n_bins):
+        lo, hi = bin_edges[i], bin_edges[i + 1]
+        if i == n_bins - 1:
+            mask = (y_prob >= lo) & (y_prob <= hi)
+        else:
+            mask = (y_prob >= lo) & (y_prob < hi)
+        if not mask.any():
+            continue
+        acc = float(y_true[mask].mean())
+        conf = float(y_prob[mask].mean())
+        ece += (mask.sum() / n) * abs(acc - conf)
+    return float(ece)
+
 
 def _binary_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, Any]:
     from sklearn.metrics import brier_score_loss, roc_auc_score
@@ -21,9 +48,11 @@ def _binary_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, Any]:
     if len(y_true) == 0:
         metrics["roc_auc"] = None
         metrics["brier"] = None
+        metrics["ece"] = None
         return metrics
     metrics["positive_rate"] = float(np.mean(y_true))
     metrics["brier"] = float(brier_score_loss(y_true, y_prob))
+    metrics["ece"] = _expected_calibration_error(y_true, y_prob)
     try:
         metrics["roc_auc"] = float(roc_auc_score(y_true, y_prob))
     except ValueError:
@@ -70,7 +99,7 @@ def _fit_binary_classifier(X: pd.DataFrame, y: np.ndarray, *, n_estimators: int 
         n_jobs=n_jobs,
         verbose=-1,
     )
-    model.fit(X.to_numpy(dtype=float), y)
+    model.fit(X, y)
     return {"kind": "sklearn", "model": model}  # sklearn-compat API
 
 
@@ -78,7 +107,7 @@ def _predict_binary_classifier(model_bundle, X: pd.DataFrame) -> np.ndarray:
     if model_bundle["kind"] == "constant":
         return np.full(len(X), float(model_bundle["prob"]), dtype=float)
     model = model_bundle["model"]
-    probs = model.predict_proba(X.to_numpy(dtype=float))
+    probs = model.predict_proba(X)
     if probs.shape[1] == 1:
         cls = int(model.classes_[0])
         return np.full(len(X), float(cls), dtype=float)
@@ -92,8 +121,17 @@ class ExpertTrustArtifact:
     feature_cols: list[str]
     fill_values: dict[str, float]
     model_bundle: Any
+    calibrator: Any = None  # Optional IsotonicCalibrator fit on cal set (Phase 0.1)
 
     def predict_trust(self, df: pd.DataFrame) -> np.ndarray:
+        """Return calibrated trust probability (passes through raw if no calibrator)."""
+        raw = self.predict_trust_raw(df)
+        if self.calibrator is None:
+            return raw
+        return np.asarray(self.calibrator.transform(raw), dtype=float)
+
+    def predict_trust_raw(self, df: pd.DataFrame) -> np.ndarray:
+        """Uncalibrated trust probability (for diagnostics / stacking features)."""
         X, _ = _prepare_numeric_frame(df, self.feature_cols, fill_values=self.fill_values)
         return _predict_binary_classifier(self.model_bundle, X)
 
@@ -101,12 +139,21 @@ class ExpertTrustArtifact:
         expert_dir.mkdir(parents=True, exist_ok=True)
         with open(expert_dir / "model.pkl", "wb") as fh:
             pickle.dump(self.model_bundle, fh)
+        if self.calibrator is not None:
+            with open(expert_dir / "calibrator.pkl", "wb") as fh:
+                pickle.dump(self.calibrator, fh)
         with open(expert_dir / "metadata.json", "w") as fh:
             json.dump(
                 {
                     "expert_key": self.expert_key,
                     "feature_cols": self.feature_cols,
                     "fill_values": self.fill_values,
+                    "has_calibrator": self.calibrator is not None,
+                    "calibrator_kind": (
+                        getattr(self.calibrator, "name", None)
+                        if self.calibrator is not None
+                        else None
+                    ),
                 },
                 fh,
                 indent=2,
@@ -118,11 +165,17 @@ class ExpertTrustArtifact:
             metadata = json.load(fh)
         with open(expert_dir / "model.pkl", "rb") as fh:
             model_bundle = pickle.load(fh)
+        calibrator = None
+        calibrator_path = expert_dir / "calibrator.pkl"
+        if calibrator_path.exists():
+            with open(calibrator_path, "rb") as fh:
+                calibrator = pickle.load(fh)
         return cls(
             expert_key=str(metadata["expert_key"]),
             feature_cols=[str(column) for column in metadata["feature_cols"]],
             fill_values={str(key): float(value) for key, value in metadata["fill_values"].items()},
             model_bundle=model_bundle,
+            calibrator=calibrator,
         )
 
 
@@ -158,6 +211,11 @@ def _expert_feature_cols(df: pd.DataFrame, expert_key: str) -> list[str]:
         if df[column].dtype == object and column not in {f"mapped_pred_class__{san}", f"prediction_type__{san}"}:
             continue
         if is_numeric_dtype(df[column]):
+            # Drop columns that are all-NaN or constant — zero signal
+            if df[column].isna().all():
+                continue
+            if df[column].nunique(dropna=True) <= 1:
+                continue
             feature_cols.append(column)
     return sorted(set(feature_cols))
 
@@ -198,6 +256,7 @@ def train_expert_trust_suite(
     output_snapshot_path: Path,
     n_splits: int = 5,
     allow_unsafe_latest_snapshot: bool = False,
+    exclude_circular_consensus: bool = True,
     n_jobs: int = 1,
 ):
     from sklearn.model_selection import GroupKFold
@@ -207,11 +266,37 @@ def train_expert_trust_suite(
     trained_experts: list[str] = []
     models_dir.mkdir(parents=True, exist_ok=True)
 
+    # --- Split integrity validation ---
+    assert len(split.train_ids & split.cal_ids) == 0, "train/cal overlap detected"
+    assert len(split.train_ids & split.test_ids) == 0, "train/test overlap detected"
+    assert len(split.cal_ids & split.test_ids) == 0, "cal/test overlap detected"
+    print(f"  Split validated: train={len(split.train_ids):,}, "
+          f"cal={len(split.cal_ids):,}, test={len(split.test_ids):,}")
+
     for expert_key in sorted(str(key) for key in helpfulness_df["expert_key"].dropna().unique()):
         san = sanitize_expert_key(expert_key)
         expert_rows = helpfulness_df[helpfulness_df["expert_key"] == expert_key].copy()
         if not allow_unsafe_latest_snapshot:
             expert_rows = expert_rows[expert_rows["temporal_exactness"] != "latest_object_unsafe"]
+        # Anti-circularity filter: exclude rows where truth comes from the
+        # same broker family whose trust we are training.  Using a broker's
+        # own labels to evaluate its trustworthiness is circular reasoning.
+        #
+        # 1. broker_consensus: derived from the same experts being evaluated.
+        # 2. alerce_self_label: ALeRCE stamp class used as truth for ALeRCE experts.
+        #
+        # TNS-backed labels ("tns_*"), Fink crossmatch labels, and host-context
+        # labels are independent external sources and are always kept.
+        if exclude_circular_consensus and "label_source" in expert_rows.columns:
+            n_before_circ = len(expert_rows)
+            # Always exclude broker_consensus (circular for all experts)
+            expert_rows = expert_rows[expert_rows["label_source"] != "broker_consensus"]
+            # For ALeRCE experts, also exclude alerce_self_label
+            if expert_key.startswith("alerce/") or expert_key == "alerce_lc":
+                expert_rows = expert_rows[expert_rows["label_source"] != "alerce_self_label"]
+            n_dropped_circ = n_before_circ - len(expert_rows)
+            if n_dropped_circ > 0:
+                print(f"  {expert_key}: excluded {n_dropped_circ:,} circular label rows")
         if len(expert_rows) == 0:
             continue
         if "is_topclass_correct" not in expert_rows.columns or expert_rows["is_topclass_correct"].dropna().empty:
@@ -222,6 +307,11 @@ def train_expert_trust_suite(
             continue
 
         feature_cols = _expert_feature_cols(expert_rows, expert_key)
+        # --- Feature leakage guard ---
+        leakage_cols = [c for c in feature_cols if c.startswith(("q__", "trust_source__"))]
+        assert len(leakage_cols) == 0, (
+            f"Stacking leakage detected for {expert_key}: {leakage_cols}"
+        )
         X_all, fill_values = _prepare_numeric_frame(expert_rows, feature_cols)
         y_all = expert_rows["is_topclass_correct"].astype(int).to_numpy()
 
@@ -238,6 +328,9 @@ def train_expert_trust_suite(
 
         train_X, fill_values = _prepare_numeric_frame(train_rows, feature_cols, fill_values=fill_values)
         train_y = train_rows["is_topclass_correct"].astype(int).to_numpy()
+        pos_rate = float(np.mean(train_y)) if len(train_y) > 0 else 0.0
+        print(f"  {expert_key}: {len(train_rows):,} train rows, "
+              f"{len(feature_cols)} features, pos_rate={pos_rate:.3f}")
 
         oof_pred = np.zeros(len(train_rows), dtype=float)
         groups = train_rows["object_id"].astype(str).to_numpy()
@@ -279,32 +372,67 @@ def train_expert_trust_suite(
             predictions=merged_predictions,
         )
 
-        deploy_rows = pd.concat([
-            train_rows.drop(columns=[f"q__{san}", f"trust_source__{san}"], errors="ignore"),
-            cal_rows.drop(columns=[f"q__{san}", f"trust_source__{san}"], errors="ignore"),
-        ], ignore_index=True, sort=False)
-        deploy_X, _ = _prepare_numeric_frame(
-            deploy_rows if len(deploy_rows) > 0 else train_rows,
-            feature_cols,
-            fill_values=fill_values,  # reuse training fill_values for consistency
-        )
-        deploy_y = deploy_rows["is_topclass_correct"].astype(int).to_numpy() if len(deploy_rows) > 0 else train_y
-        deploy_model = _fit_binary_classifier(deploy_X, deploy_y, n_jobs=n_jobs)
+        # Phase 0.2: Deploy model is train-only (train_fit_model). Cal is
+        # reserved strictly for fitting the isotonic calibrator — NOT merged
+        # into training data.  This preserves a clean held-out set for
+        # post-hoc probability calibration and for unbiased evaluation.
+        deploy_model = train_fit_model
+
+        # Phase 0.1: Fit IsotonicCalibrator on (cal raw-prob, cal y).
+        # Requires >=10 cal rows and both classes present; otherwise skip
+        # calibration and leave calibrator=None (predict_trust falls through).
+        calibrator = None
+        cal_raw_prob = None
+        cal_y_arr = None
+        if len(cal_rows) > 0:
+            cal_raw_prob = cal_rows[f"q__{san}"].astype(float).to_numpy()
+            cal_y_arr = cal_rows["is_topclass_correct"].astype(int).to_numpy()
+            valid = ~np.isnan(cal_raw_prob) & np.isin(cal_y_arr, [0, 1])
+            if valid.sum() >= 10 and len(np.unique(cal_y_arr[valid])) == 2:
+                calibrator = IsotonicCalibrator()
+                calibrator.fit(cal_raw_prob[valid], cal_y_arr[valid])
+
         artifact = ExpertTrustArtifact(
             expert_key=expert_key,
             feature_cols=feature_cols,
             fill_values=fill_values,
             model_bundle=deploy_model,
+            calibrator=calibrator,
         )
         artifact.save(models_dir / san)
 
-        test_metrics = _binary_metrics(
-            test_rows["is_topclass_correct"].astype(int).to_numpy(),
-            test_rows[f"q__{san}"].astype(float).to_numpy(),
-        )
-        test_metrics["n_train_rows"] = int(len(train_rows))
-        test_metrics["n_cal_rows"] = int(len(cal_rows))
-        test_metrics["n_test_rows"] = int(len(test_rows))
+        # Report RAW and CALIBRATED test-set metrics so paper can show uplift.
+        test_y = test_rows["is_topclass_correct"].astype(int).to_numpy()
+        test_raw = test_rows[f"q__{san}"].astype(float).to_numpy()
+        raw_metrics = _binary_metrics(test_y, test_raw)
+        if calibrator is not None:
+            test_cal = np.asarray(calibrator.transform(test_raw), dtype=float)
+            cal_metrics = _binary_metrics(test_y, test_cal)
+        else:
+            cal_metrics = dict(raw_metrics)  # copy; no calibration applied
+
+        # Cal-set self-metrics (on calibrator-fit set — upper-bound, paper uses test)
+        if cal_raw_prob is not None and cal_y_arr is not None and calibrator is not None:
+            cal_calibrated = np.asarray(calibrator.transform(cal_raw_prob), dtype=float)
+            cal_raw_metrics = _binary_metrics(cal_y_arr, cal_raw_prob)
+            cal_cal_metrics = _binary_metrics(cal_y_arr, cal_calibrated)
+        else:
+            cal_raw_metrics = None
+            cal_cal_metrics = None
+
+        test_metrics = {
+            "raw": raw_metrics,
+            "calibrated": cal_metrics,
+            "cal_set_raw": cal_raw_metrics,
+            "cal_set_calibrated": cal_cal_metrics,
+            "n_train_rows": int(len(train_rows)),
+            "n_cal_rows": int(len(cal_rows)),
+            "n_test_rows": int(len(test_rows)),
+            "has_calibrator": calibrator is not None,
+            # Backward-compat top-level keys (test raw) — existing consumers
+            # read these; add them last so raw_metrics still wins if a key collides.
+            **{k: v for k, v in raw_metrics.items() if k not in {"raw", "calibrated"}},
+        }
         metrics_report[expert_key] = test_metrics
         trained_experts.append(expert_key)
 

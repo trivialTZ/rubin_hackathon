@@ -48,9 +48,10 @@ def _project_snn_lsst(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     # Take the latest score (most informed)
     sn_prob = scores[-1]
-    # SNN gives P(SN) — we can't distinguish Ia from non-Ia with this alone
-    # Split SN probability evenly between snia and nonIa_snlike as a prior
-    # (the trust model will learn the real calibration from training data)
+    # SNN gives P(SN) — no Ia vs non-Ia subtype distinction available.
+    # Uniform 50/50 split is the maximum-entropy (least-informative) prior
+    # for binary subtype when the classifier provides no discrimination.
+    # The trust model learns the actual Ia/non-Ia ratio from training data.
     p_snia = sn_prob * 0.5
     p_nonia = sn_prob * 0.5
     p_other = 1.0 - sn_prob
@@ -105,7 +106,10 @@ def _project_early_snia(events: list[dict[str, Any]]) -> dict[str, Any]:
         return {"prediction_type": "class_correctness", "reason": "early_snia not triggered"}
 
     p_snia = scores[-1]
-    p_nonia = (1.0 - p_snia) * 0.8  # most non-Ia are still SN-like when EarlySNIa triggers
+    # EarlySNIa only triggers when SNN+RF both indicate SN, so the population
+    # is pre-filtered to SN-like objects.  80/20 non-Ia SN-like / other
+    # reflects this selection effect (fewer non-SN contaminants).
+    p_nonia = (1.0 - p_snia) * 0.8
     p_other = (1.0 - p_snia) * 0.2
     result = summarize_ternary(p_snia, p_nonia, p_other)
     result["raw_early_snia_score"] = p_snia

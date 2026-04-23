@@ -157,11 +157,17 @@ def bronze_to_silver(
     # Key: (object_id, expert_key, event_time_jd, field, raw_label_or_score).
     # Exclude payload_hash — re-fetching the same score from a different backfill
     # run produces a different hash but is logically the same event.
-    # Include raw_label_or_score to catch context experts (Lasair/Sherlock) where
-    # both event_time_jd and canonical_projection are NaN.
+    #
+    # pandas drop_duplicates treats NaN != NaN, so context experts with
+    # event_time_jd=NaN are never deduped.  Fill NaN with a sentinel before
+    # dedup, then restore.
     dedup_cols = ["object_id", "expert_key", "event_time_jd", "field", "raw_label_or_score"]
+    _SENTINEL = -999.0
+    silver_df["_dedup_jd"] = silver_df["event_time_jd"].fillna(_SENTINEL)
+    _dedup_on = ["object_id", "expert_key", "_dedup_jd", "field", "raw_label_or_score"]
     n_before = len(silver_df)
-    silver_df = silver_df.drop_duplicates(subset=dedup_cols, keep="last")
+    silver_df = silver_df.drop_duplicates(subset=_dedup_on, keep="last")
+    silver_df = silver_df.drop(columns=["_dedup_jd"])
     n_dropped = n_before - len(silver_df)
     if n_dropped > 0:
         print(f"  silver dedup: {n_before:,} → {len(silver_df):,} ({n_dropped:,} duplicates removed)")

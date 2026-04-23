@@ -185,6 +185,9 @@ def extract_features(detections: list[dict[str, Any]]) -> dict[str, float]:
     mjds_v = mjds[valid]
     mags_v = mags[valid]
 
+    # n_det counts all detections (including those with NaN mag); per-band
+    # counts and mag features use only valid mags.  This is intentional:
+    # n_det reflects the alert stream count, not the photometry count.
     feats["n_det"] = float(len(ndets))
 
     if len(mjds_v) == 0:

@@ -56,3 +56,22 @@ htmlcov/
 # Fixture cache — adapters write live-fetched responses here.
 # The small curated dev set is tracked; bulk SCC-generated files are not.
 fixtures/raw/fink/
+fixtures/raw/alerce/
+fixtures/raw/pittgoogle/
+fixtures/raw/lasair/
+
+# Local scratch, backups, large binaries, and generated outputs
+_backup_local_*/
+_backup_pre_*/
+codex_build_brief/
+data_old_local/
+models_scc_backup/
+notes/
+ddd.ipynb
+*.docx
+*.pptx
+docs/slides_figures/
+docs/slides_qa/
+paper/
+reports_safe/
+reports_safe_v*/

@@ -43,6 +43,9 @@ def build_truth_multisource(
     silver_dir: Path,
     existing_truth_path: Path | None,
     output_path: Path,
+    ztf_bts_path: Path | None = None,
+    yse_dr1_path: Path | None = None,
+    mpc_exclusion_path: Path | None = None,
 ) -> Path:
     """Build unified truth table from multiple sources."""
 
@@ -54,6 +57,66 @@ def build_truth_multisource(
             oid = str(row["object_id"])
             truth[oid] = row.to_dict()
         print(f"  Loaded {len(truth)} existing truth rows from TNS crossmatch")
+
+    # --- Source 1.5 (NEW Phase 2): ZTF BTS spectroscopic subtypes ---
+    # BTS has fine-grained subtypes (Ia, Ia-CSM, Iax, II, IIn, IIb, ...) and
+    # is spec-confirmed — we treat it as Tier 1 "spectroscopic" for any ZTF
+    # object whose TNS truth is missing or whose TNS type is "SN" (ambiguous).
+    bts_count = 0
+    if ztf_bts_path and Path(ztf_bts_path).exists():
+        bts_df = pd.read_parquet(ztf_bts_path)
+        for _, row in bts_df.iterrows():
+            oid = str(row.get("object_id") or "")
+            if not oid:
+                continue
+            existing = truth.get(oid, {})
+            existing_quality = existing.get("label_quality")
+            ternary = row.get("ternary")
+            # Only override if existing is weaker (or no ternary known)
+            if existing_quality == "spectroscopic" and existing.get("final_class_ternary"):
+                continue
+            if ternary is None:
+                continue
+            truth[oid] = {
+                "object_id": oid,
+                "final_class_ternary": str(ternary),
+                "follow_proxy": int(ternary == "snia"),
+                "label_source": "ztf_bts",
+                "label_quality": "spectroscopic",
+                "bts_type": row.get("bts_type"),
+                "tns_name": row.get("tns_name") or existing.get("tns_name"),
+                "redshift": row.get("redshift") or existing.get("redshift"),
+            }
+            bts_count += 1
+        print(f"  ZTF BTS: {bts_count} truth rows added/refined")
+
+    # --- Source 1.6 (NEW Phase 2): YSE DR1 low-z SNe (cross-check) ---
+    yse_count = 0
+    if yse_dr1_path and Path(yse_dr1_path).exists():
+        yse_df = pd.read_parquet(yse_dr1_path)
+        for _, row in yse_df.iterrows():
+            key = str(row.get("tns_name") or row.get("object_id") or "")
+            if not key:
+                continue
+            ternary = row.get("ternary")
+            if ternary is None:
+                continue
+            # YSE keyed by TNS name — look up any matching tns_name in existing
+            matched = False
+            for oid, entry in truth.items():
+                if str(entry.get("tns_name")) == key and entry.get("label_quality") != "spectroscopic":
+                    truth[oid]["yse_ternary"] = str(ternary)
+                    truth[oid]["label_source"] = (entry.get("label_source", "") + "+yse_dr1").strip("+")
+                    if entry.get("final_class_ternary") is None:
+                        truth[oid]["final_class_ternary"] = str(ternary)
+                        truth[oid]["follow_proxy"] = int(ternary == "snia")
+                        truth[oid]["label_quality"] = "spectroscopic"
+                    matched = True
+                    yse_count += 1
+                    break
+            if not matched:
+                pass  # YSE-only objects (not in labels) — skip
+        print(f"  YSE DR1: {yse_count} truth rows cross-matched")
 
     # Load labels for object list
     with open(labels_path) as fh:
@@ -182,6 +245,27 @@ def build_truth_multisource(
 
     print(f"  Labels CSV (weak): {stamp_count} truth rows added")
 
+    # --- Exclusion (NEW Phase 2): MPC asteroid cross-match ---
+    mpc_excluded = 0
+    if mpc_exclusion_path and Path(mpc_exclusion_path).exists():
+        mpc_df = pd.read_parquet(mpc_exclusion_path)
+        asteroid_ids = set(mpc_df[mpc_df["is_asteroid"]]["object_id"].astype(str))
+        for oid in list(truth.keys()):
+            if oid in asteroid_ids:
+                # Force asteroid objects to 'other' with explicit exclusion tag
+                existing_quality = truth[oid].get("label_quality")
+                if existing_quality == "spectroscopic":
+                    # Don't override a TNS spec label — but flag the anomaly
+                    truth[oid]["mpc_asteroid_conflict"] = True
+                    continue
+                truth[oid]["final_class_ternary"] = "other"
+                truth[oid]["follow_proxy"] = 0
+                truth[oid]["label_source"] = "mpc_exclusion"
+                truth[oid]["label_quality"] = "context"
+                truth[oid]["is_asteroid"] = True
+                mpc_excluded += 1
+        print(f"  MPC exclusion: {mpc_excluded} objects routed to 'other'")
+
     # Build output DataFrame
     rows = list(truth.values())
     if not rows:
@@ -208,15 +292,28 @@ def main() -> None:
     parser.add_argument("--existing-truth", default="data/truth/object_truth.parquet",
                         help="Existing TNS crossmatch truth (merged, not overwritten)")
     parser.add_argument("--output", default="data/truth/object_truth.parquet")
+    # Phase 2: additional truth/exclusion sources
+    parser.add_argument("--ztf-bts", default="data/truth/ztf_bts.parquet",
+                        help="ZTF BTS spectroscopic catalog (Tier 1.5)")
+    parser.add_argument("--yse-dr1", default="data/truth/yse_dr1.parquet",
+                        help="YSE DR1 low-z SN cross-check (Tier 1.6)")
+    parser.add_argument("--mpc-exclusion", default="data/truth/mpc_exclusion.parquet",
+                        help="MPC asteroid exclusion (forces target='other')")
     args = parser.parse_args()
 
     existing = Path(args.existing_truth) if Path(args.existing_truth).exists() else None
+    bts = Path(args.ztf_bts) if Path(args.ztf_bts).exists() else None
+    yse = Path(args.yse_dr1) if Path(args.yse_dr1).exists() else None
+    mpc = Path(args.mpc_exclusion) if Path(args.mpc_exclusion).exists() else None
 
     build_truth_multisource(
         labels_path=Path(args.labels),
         silver_dir=Path(args.silver_dir),
         existing_truth_path=existing,
         output_path=Path(args.output),
+        ztf_bts_path=bts,
+        yse_dr1_path=yse,
+        mpc_exclusion_path=mpc,
     )
 
 
