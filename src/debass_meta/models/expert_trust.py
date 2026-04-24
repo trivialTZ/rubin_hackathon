@@ -16,6 +16,25 @@ from debass_meta.projectors import sanitize_expert_key
 from .calibrate import IsotonicCalibrator
 
 
+# Experts whose ternary projection is designed for SN-vs-other discrimination
+# rather than Ia-vs-non-Ia. Their p_snia is mathematically capped at 0.5 by
+# the projection (`p_snia = score × 0.5` in fink_lsst projector), so training
+# a trust head with target=is_topclass_correct inflates aggregate AUC on
+# AGN-heavy samples and inverts on spec-Ia rows.
+# For these experts we train trust with target=is_sn (bool target_class != 'other').
+# Honest SN-filter AUC: ~0.85 instead of inflated 0.99.
+SN_FILTER_EXPERTS = {"fink_lsst/snn", "fink_lsst/cats"}
+
+
+def trust_target_col(expert_key: str) -> str:
+    """Return the helpfulness-row column this expert's trust head should
+    be trained against. Default is is_topclass_correct (ternary top-1).
+    SN-filter experts use is_sn (binary SN vs other)."""
+    if expert_key in SN_FILTER_EXPERTS:
+        return "is_sn"
+    return "is_topclass_correct"
+
+
 def _expected_calibration_error(
     y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10
 ) -> float:
@@ -193,6 +212,7 @@ def _expert_feature_cols(df: pd.DataFrame, expert_key: str) -> list[str]:
         "label_source",
         "label_quality",
         "is_topclass_correct",
+        "is_sn",
         "is_helpful_for_follow_proxy",
         "mapped_p_true_class",
         "temporal_exactness",
@@ -299,10 +319,22 @@ def train_expert_trust_suite(
                 print(f"  {expert_key}: excluded {n_dropped_circ:,} circular label rows")
         if len(expert_rows) == 0:
             continue
-        if "is_topclass_correct" not in expert_rows.columns or expert_rows["is_topclass_correct"].dropna().empty:
-            continue
+        target_col = trust_target_col(expert_key)
+        if target_col not in expert_rows.columns or expert_rows[target_col].dropna().empty:
+            # Fallback to legacy target if the new SN-filter target isn't present
+            # (helpfulness table pre-dates is_sn column).
+            if target_col != "is_topclass_correct":
+                if ("is_topclass_correct" not in expert_rows.columns
+                        or expert_rows["is_topclass_correct"].dropna().empty):
+                    continue
+                target_col = "is_topclass_correct"
+                print(f"  {expert_key}: is_sn column missing, falling back to is_topclass_correct")
+            else:
+                continue
+        if target_col != "is_topclass_correct":
+            print(f"  {expert_key}: using trust target = {target_col}")
 
-        expert_rows = expert_rows[expert_rows["is_topclass_correct"].notna()].copy()
+        expert_rows = expert_rows[expert_rows[target_col].notna()].copy()
         if len(expert_rows) == 0:
             continue
 
@@ -313,7 +345,7 @@ def train_expert_trust_suite(
             f"Stacking leakage detected for {expert_key}: {leakage_cols}"
         )
         X_all, fill_values = _prepare_numeric_frame(expert_rows, feature_cols)
-        y_all = expert_rows["is_topclass_correct"].astype(int).to_numpy()
+        y_all = expert_rows[target_col].astype(int).to_numpy()
 
         train_mask = expert_rows["object_id"].isin(split.train_ids)
         cal_mask = expert_rows["object_id"].isin(split.cal_ids)
@@ -327,7 +359,7 @@ def train_expert_trust_suite(
             continue
 
         train_X, fill_values = _prepare_numeric_frame(train_rows, feature_cols, fill_values=fill_values)
-        train_y = train_rows["is_topclass_correct"].astype(int).to_numpy()
+        train_y = train_rows[target_col].astype(int).to_numpy()
         pos_rate = float(np.mean(train_y)) if len(train_y) > 0 else 0.0
         print(f"  {expert_key}: {len(train_rows):,} train rows, "
               f"{len(feature_cols)} features, pos_rate={pos_rate:.3f}")
@@ -379,18 +411,63 @@ def train_expert_trust_suite(
         deploy_model = train_fit_model
 
         # Phase 0.1: Fit IsotonicCalibrator on (cal raw-prob, cal y).
-        # Requires >=10 cal rows and both classes present; otherwise skip
-        # calibration and leave calibrator=None (predict_trust falls through).
+        # Guards (tightened 2026-04-24 after fink_lsst/early_snia collapse
+        # 0.897 raw → 0.488 calibrated with only ~8 cal positives):
+        #   (i)   cal_n   >= 200 valid rows
+        #   (ii)  cal_pos >= 20 positives
+        #   (iii) cal_neg >= 20 negatives
+        #   (iv)  Post-fit AUC-drop guard: if calibrator drops test AUC by
+        #         > 0.05, reject it (isotonic regression on sparse cal
+        #         collapses to near-constant → destroys signal).
         calibrator = None
         cal_raw_prob = None
         cal_y_arr = None
+        _calibrator_skip_reason: str | None = None
         if len(cal_rows) > 0:
             cal_raw_prob = cal_rows[f"q__{san}"].astype(float).to_numpy()
-            cal_y_arr = cal_rows["is_topclass_correct"].astype(int).to_numpy()
+            cal_y_arr = cal_rows[target_col].astype(int).to_numpy()
             valid = ~np.isnan(cal_raw_prob) & np.isin(cal_y_arr, [0, 1])
-            if valid.sum() >= 10 and len(np.unique(cal_y_arr[valid])) == 2:
-                calibrator = IsotonicCalibrator()
-                calibrator.fit(cal_raw_prob[valid], cal_y_arr[valid])
+            n_valid = int(valid.sum())
+            n_pos = int(cal_y_arr[valid].sum()) if n_valid > 0 else 0
+            n_neg = n_valid - n_pos
+            if n_valid < 200:
+                _calibrator_skip_reason = f"cal_n<200 (have {n_valid})"
+            elif n_pos < 20:
+                _calibrator_skip_reason = f"cal_pos<20 (have {n_pos})"
+            elif n_neg < 20:
+                _calibrator_skip_reason = f"cal_neg<20 (have {n_neg})"
+            elif len(np.unique(cal_y_arr[valid])) != 2:
+                _calibrator_skip_reason = "single_class_in_cal"
+            else:
+                candidate = IsotonicCalibrator()
+                candidate.fit(cal_raw_prob[valid], cal_y_arr[valid])
+                # AUC-drop guard on held-out test set (if available)
+                if len(test_rows) > 20:
+                    test_y_guard = test_rows[target_col].astype(int).to_numpy()
+                    test_raw_guard = test_rows[f"q__{san}"].astype(float).to_numpy()
+                    gv = ~np.isnan(test_raw_guard) & np.isin(test_y_guard, [0, 1])
+                    if gv.sum() > 20 and len(np.unique(test_y_guard[gv])) == 2:
+                        from sklearn.metrics import roc_auc_score
+                        try:
+                            auc_raw = roc_auc_score(test_y_guard[gv], test_raw_guard[gv])
+                            auc_cal = roc_auc_score(
+                                test_y_guard[gv],
+                                np.asarray(candidate.transform(test_raw_guard[gv]), dtype=float),
+                            )
+                            if (auc_raw - auc_cal) > 0.05:
+                                _calibrator_skip_reason = (
+                                    f"auc_drop>0.05 (raw={auc_raw:.3f}, cal={auc_cal:.3f})"
+                                )
+                            else:
+                                calibrator = candidate
+                        except Exception:
+                            calibrator = candidate  # keep it if guard fails for non-AUC reasons
+                    else:
+                        calibrator = candidate
+                else:
+                    calibrator = candidate
+        if _calibrator_skip_reason:
+            print(f"    {expert_key}: calibrator SKIPPED ({_calibrator_skip_reason})")
 
         artifact = ExpertTrustArtifact(
             expert_key=expert_key,
@@ -402,7 +479,7 @@ def train_expert_trust_suite(
         artifact.save(models_dir / san)
 
         # Report RAW and CALIBRATED test-set metrics so paper can show uplift.
-        test_y = test_rows["is_topclass_correct"].astype(int).to_numpy()
+        test_y = test_rows[target_col].astype(int).to_numpy()
         test_raw = test_rows[f"q__{san}"].astype(float).to_numpy()
         raw_metrics = _binary_metrics(test_y, test_raw)
         if calibrator is not None:

@@ -35,6 +35,12 @@ from debass_meta.access.tns import (
     map_tns_type_to_ternary as _classify_tns_type,
     is_ambiguous_type,
 )
+from debass_meta.access.identifiers import infer_identifier_kind
+
+# LSST stamp_only Tier 2 (v5c circularity fix, ported 2026-04-24).
+# NEVER maps stamp=="SN" to snia — all snia labels must come from spec truth.
+_STAMP_OTHER_CLASSES = {"AGN", "VS", "asteroid", "star", "bogus"}
+_STAMP_MIN_PROB = 0.70
 
 
 def build_truth_multisource(
@@ -46,6 +52,7 @@ def build_truth_multisource(
     ztf_bts_path: Path | None = None,
     yse_dr1_path: Path | None = None,
     mpc_exclusion_path: Path | None = None,
+    lsst_stamp_path: Path | None = None,
 ) -> Path:
     """Build unified truth table from multiple sources."""
 
@@ -225,6 +232,50 @@ def build_truth_multisource(
 
     print(f"  Fink crossmatch: {fink_xm_count} truth rows added/updated")
 
+    # --- Source 4.5 (ported 2026-04-24, v5c stamp_only Tier 2) ---
+    # LSST stamp-based weak labels. Circularity-safe: SN-stamp rows become
+    # nonIa_snlike (NEVER snia — snia labels must come from spec truth).
+    # Skips any object already labeled spectroscopic.
+    stamp_count = 0
+    if lsst_stamp_path and Path(lsst_stamp_path).exists():
+        stamp_df = pd.read_parquet(lsst_stamp_path)
+        stamp_df["object_id"] = stamp_df["object_id"].astype(str)
+        for _, srow in stamp_df.iterrows():
+            oid = str(srow["object_id"])
+            # Only apply to LSST ids
+            if infer_identifier_kind(oid) != "lsst_dia_object_id":
+                continue
+            existing = truth.get(oid)
+            if existing and existing.get("label_quality") == "spectroscopic":
+                continue
+            stamp_class = srow.get("stamp_class")
+            try:
+                stamp_prob = float(srow.get("stamp_prob") or 0.0)
+            except (TypeError, ValueError):
+                stamp_prob = 0.0
+            if not stamp_class or stamp_prob < _STAMP_MIN_PROB:
+                continue
+            if stamp_class == "SN":
+                ternary = "nonIa_snlike"
+            elif stamp_class in _STAMP_OTHER_CLASSES:
+                ternary = "other"
+            else:
+                continue
+            truth[oid] = {
+                "object_id": oid,
+                "final_class_ternary": ternary,
+                "follow_proxy": int(ternary == "snia"),
+                "label_source": f"alerce_stamp_lsst ({stamp_class})",
+                "label_quality": "weak",
+                "stamp_class": stamp_class,
+                "stamp_prob": stamp_prob,
+            }
+            stamp_count += 1
+        print(f"  LSST ALeRCE stamp (stamp_only Tier 2): {stamp_count} weak rows added")
+    else:
+        if lsst_stamp_path:
+            print(f"  LSST ALeRCE stamp: not found at {lsst_stamp_path} — skipping Tier 2")
+
     # --- Source 5: ALeRCE stamp labels (weakest) ---
     stamp_count = 0
     for row in labels:
@@ -274,6 +325,20 @@ def build_truth_multisource(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows)
+    # Align mixed-type columns (same pattern as merge_lsst_truth.py).
+    # Different tiers write different dtypes into the same column
+    # (e.g. TNS writes str redshift, ALeRCE stamp tier writes None);
+    # pyarrow can't infer a unified schema → cast to str|None universally.
+    _str_cols = [
+        "redshift", "tns_redshift", "tns_ra", "tns_dec",
+        "consensus_experts", "consensus_n_agree", "consensus_n_total",
+        "tns_has_spectra",
+    ]
+    for c in _str_cols:
+        if c in df.columns:
+            df[c] = df[c].apply(
+                lambda v: None if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v)
+            )
     df.to_parquet(output_path, index=False)
 
     # Summary
@@ -299,12 +364,15 @@ def main() -> None:
                         help="YSE DR1 low-z SN cross-check (Tier 1.6)")
     parser.add_argument("--mpc-exclusion", default="data/truth/mpc_exclusion.parquet",
                         help="MPC asteroid exclusion (forces target='other')")
+    parser.add_argument("--lsst-stamp", default="data/truth_candidates/alerce_stamp_lsst.parquet",
+                        help="ALeRCE LSST stamp classifications (v5c stamp_only Tier 2)")
     args = parser.parse_args()
 
     existing = Path(args.existing_truth) if Path(args.existing_truth).exists() else None
     bts = Path(args.ztf_bts) if Path(args.ztf_bts).exists() else None
     yse = Path(args.yse_dr1) if Path(args.yse_dr1).exists() else None
     mpc = Path(args.mpc_exclusion) if Path(args.mpc_exclusion).exists() else None
+    stamp = Path(args.lsst_stamp) if Path(args.lsst_stamp).exists() else None
 
     build_truth_multisource(
         labels_path=Path(args.labels),
@@ -314,6 +382,7 @@ def main() -> None:
         ztf_bts_path=bts,
         yse_dr1_path=yse,
         mpc_exclusion_path=mpc,
+        lsst_stamp_path=stamp,
     )
 
 

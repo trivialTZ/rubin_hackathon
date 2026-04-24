@@ -3,6 +3,18 @@
 Scores objects at arbitrary epochs by truncating the lightcurve
 to detections up to epoch_jd before inference.
 
+**LSST-data-preview caveat (verified 2026-04-24)**: our ELAsTiCC-trained
+weights are formally correct for LSST ugrizy, but running on cached
+ALeRCE LSST *data preview* LCs produces uninformative scores
+(p_snia mean ≈ 0.506, std ≈ 0.02 on 200 objects) whereas Fink's
+`fink_lsst/snn` remote — using the same weights — gives discriminative
+scores (std ≈ 0.24, r = -0.22 with ours). The gap is attributable to
+(a) cadence: data preview LCs span ~2 days with 100+ dense detections,
+vs training-time phase-curve LCs spanning ~30 days; (b) detection quality
+filtering (isDipole, reliability, psfChi2) that Fink likely applies and
+we don't. For production, LSST SNN signal comes via `fink_lsst/snn`
+broker events; this wrapper stays ZTF-focused.
+
 Requires:
   - ``pip install supernnova torch``
   - Trained model **state_dict** + ``cli_args.json`` placed in
@@ -44,12 +56,23 @@ from .base import ExpertOutput, LocalExpert
 
 _DEFAULT_MODEL_DIR = Path("artifacts/local_experts/supernnova")
 
-# ZTF filter ID → SuperNNova band string
+# Filter ID → SuperNNova band string
+# ZTF: fid 1=g, 2=r, 3=i (integers or string "1","2","3")
+# LSST: native band is already the string "u"/"g"/"r"/"i"/"z"/"y";
+#       band_idx follows ALeRCE LSST convention 6=u, 1=g, 2=r, 3=i, 4=z, 5=y.
 _FID_TO_BAND = {
+    # ZTF conventions
     1: "g", 2: "r", 3: "i",
     "1": "g", "2": "r", "3": "i",
-    "g": "g", "r": "r", "i": "i",
+    # LSST band_idx (ALeRCE convention; 6=u wraps around)
+    6: "u", 4: "z", 5: "y",
+    "6": "u", "4": "z", "5": "y",
+    # Passthrough for string bands
+    "u": "u", "g": "g", "r": "r", "i": "i", "z": "z", "y": "y",
+    "Y": "y",
 }
+
+_SNN_BANDS = {"u", "g", "r", "i", "z", "y"}
 
 
 class SuperNNovaExpert(LocalExpert):
@@ -364,36 +387,41 @@ class SuperNNovaExpert(LocalExpert):
             if mjd is None:
                 continue
 
-            # --- flux (prefer native, else convert from mag) ---
-            flux = det.get("flux")
-            fluxerr = det.get("fluxerr")
-            if flux is not None and fluxerr is not None:
-                try:
-                    flux, fluxerr = float(flux), float(fluxerr)
-                except (TypeError, ValueError):
-                    flux, fluxerr = None, None
-
-            if flux is None or fluxerr is None:
-                mag = det.get("magpsf")
-                magerr = det.get("sigmapsf")
-                if mag is None or magerr is None:
-                    continue
-                try:
-                    mag, magerr = float(mag), float(magerr)
-                except (TypeError, ValueError):
-                    continue
-                if not math.isfinite(mag) or not math.isfinite(magerr) or magerr <= 0:
-                    continue
-                zp = 27.5  # SNANA convention
-                flux = 10 ** (-0.4 * (mag - zp))
-                fluxerr = flux * (math.log(10) / 2.5) * magerr
+            # --- flux: always derive from mag with SNANA zp=27.5 ---
+            # Native `flux` fields have different zeropoints across surveys
+            # (ZTF: ~25, LSST/ALeRCE: 31.4 for nJy), but SNN's ELAsTiCC-trained
+            # model expects the SNANA convention (zp=27.5). Deriving from mag
+            # gives consistent scale across surveys.
+            mag = det.get("magpsf")
+            magerr = det.get("sigmapsf")
+            if mag is None:
+                mag = det.get("mag")
+                magerr = det.get("magerr")
+            if mag is None or magerr is None:
+                continue
+            try:
+                mag, magerr = float(mag), float(magerr)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(mag) or not math.isfinite(magerr) or magerr <= 0:
+                continue
+            zp = 27.5  # SNANA convention
+            flux = 10 ** (-0.4 * (mag - zp))
+            fluxerr = flux * (math.log(10) / 2.5) * magerr
 
             if not math.isfinite(flux) or not math.isfinite(fluxerr) or fluxerr <= 0:
                 continue
 
-            # --- filter ---
-            fid = det.get("fid", 1)
-            band = _FID_TO_BAND.get(fid, _FID_TO_BAND.get(str(fid), "r"))
+            # --- filter: LSST uses `band` string; ZTF uses `fid` integer ---
+            band = det.get("band")
+            if band not in _SNN_BANDS:
+                fid = det.get("fid")
+                if fid is None:
+                    fid = det.get("band_idx")
+                band = _FID_TO_BAND.get(fid, _FID_TO_BAND.get(str(fid)))
+                if band not in _SNN_BANDS:
+                    # Final fallback: default to 'r' (retains ZTF behavior)
+                    band = "r"
 
             rows.append({
                 "SNID": object_id,

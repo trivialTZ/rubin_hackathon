@@ -64,6 +64,16 @@ def build_expert_helpfulness(snapshot_path: Path, output_path: Path) -> Path:
                 if mapped_pred_class is not None and target_class is not None and row.get(f"prediction_type__{san}") != "context_only"
                 else None
             )
+            # is_sn: binary SN-vs-other target. Used for experts whose
+            # projection caps p_snia (fink_lsst/snn, fink_lsst/cats) — these
+            # are SN filters, not Ia classifiers, and training them on
+            # is_topclass_correct produces inverted AUC on spec-Ia rows
+            # (verified 2026-04-24, reports/sn_filter_ab_comparison.json).
+            record["is_sn"] = (
+                int(target_class != "other")
+                if target_class is not None
+                else None
+            )
 
             p_true_class = None
             if target_class is not None:
