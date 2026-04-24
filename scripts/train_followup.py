@@ -32,6 +32,8 @@ def main() -> None:
     parser.add_argument("--metrics-out", default=None)
     parser.add_argument("--n-estimators", type=int, default=200)
     parser.add_argument("--n-jobs", type=int, default=1)
+    parser.add_argument("--weak-weight", type=float, default=1.0,
+                        help="sample weight applied to label_quality in {weak, context}; 1.0 disables, <1.0 dampens weak-label leverage")
     args = parser.parse_args()
 
     snapshot_df = pd.read_parquet(args.snapshots)
@@ -42,6 +44,7 @@ def main() -> None:
         model_dir=Path(args.model_dir),
         n_estimators=args.n_estimators,
         n_jobs=args.n_jobs,
+        weak_weight=args.weak_weight,
     )
 
     metrics_out = Path(args.metrics_out) if args.metrics_out else Path(args.model_dir).parent.parent / "reports/metrics/followup_metrics.json"

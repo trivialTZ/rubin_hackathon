@@ -1,16 +1,24 @@
-"""Batch backfill Pitt-Google SuperNNova scores via BigQuery.
+"""Batch backfill Pitt-Google SuperNNova scores via BigQuery — cost-safe.
 
-Instead of querying per-object (each query scans the full table = 0.5-8GB),
-this script runs TWO queries total:
-  1. One for ALL LSST objects  (~0.5 GB scan)
-  2. One for ALL ZTF objects   (~8 GB scan)
+Pitt-Google public tables are NOT clustered on objectId, so every WHERE
+query is a full table scan.  This means:
+  - 1 query per table (all IDs in one IN clause) is far cheaper than chunking.
+  - Identical queries are cached for 24 h → repeat runs cost 0 bytes.
 
-The results are saved as bronze Parquet, identical to what the per-object
-adapter produces, so the rest of the pipeline (normalize → gold) works unchanged.
+This script:
+  1. Builds one SQL per survey (LSST / ZTF) with ALL object IDs in one IN.
+  2. Runs ``dry_run=True`` first to estimate bytes scanned.
+  3. Aborts (by default) if any query would scan more than ``--max-gb`` GB.
+  4. Executes the real query and writes bronze parquet rows.
+
+UPSILoN (lsst.upsilon) is intentionally skipped — its schema is per-band
+(u_label, u_probability, ..., y_probability) and the projector expects a
+single predicted_class/probability pair.  Fix projector first.
 
 Usage:
     python scripts/backfill_pittgoogle_batch.py --from-labels data/labels.csv
     python scripts/backfill_pittgoogle_batch.py --objects ZTF21abbzjeq 313853517428162578
+    python scripts/backfill_pittgoogle_batch.py --from-labels data/labels.csv --dry-run  # cost estimate only
 """
 from __future__ import annotations
 
@@ -42,69 +50,57 @@ def _load_from_labels(path: str) -> list[str]:
     return oids
 
 
-def _batch_query_lsst(
-    client,
-    object_ids: list[str],
-    chunk_size: int = 2000,
-) -> dict[str, list[dict]]:
-    """Query LSST SuperNNova for all objects in one pass.
+def _build_lsst_sql(object_ids: list[str]) -> str:
+    id_list = ",".join(object_ids)
+    return (
+        "SELECT diaSourceId, diaObjectId, prob_class0, prob_class1, "
+        "predicted_class, kafkaPublishTimestamp "
+        f"FROM {_LSST_SUPERNNOVA_TABLE} "
+        f"WHERE diaObjectId IN ({id_list}) "
+        "ORDER BY diaObjectId, kafkaPublishTimestamp"
+    )
 
-    Returns {object_id: [row_dicts]}.
+
+def _build_ztf_sql(object_ids: list[str]) -> str:
+    id_list = ",".join(f"'{x}'" for x in object_ids)
+    return (
+        "SELECT objectId, candid, prob_class0, prob_class1, predicted_class "
+        f"FROM {_ZTF_SUPERNNOVA_TABLE} "
+        f"WHERE objectId IN ({id_list}) "
+        "ORDER BY objectId, candid"
+    )
+
+
+def _dry_run_gb(client, sql: str) -> float:
+    """Return estimated bytes (GB) the query will scan, without executing."""
+    from google.cloud import bigquery
+    job = client.query(
+        sql,
+        job_config=bigquery.QueryJobConfig(dry_run=True, use_query_cache=False),
+    )
+    return job.total_bytes_processed / 1024**3
+
+
+def _run_query(client, sql: str) -> list[dict]:
+    """Execute a query; return rows as list of plain dicts.
+
+    BigQuery TIMESTAMP/DATETIME columns come back as Python ``datetime`` objects —
+    convert them to Unix epoch milliseconds so downstream code (which expects
+    numeric/string timestamps matching the pittgoogle-client JSON format) works.
     """
-    results: dict[str, list[dict]] = {}
+    import datetime as _dt
+    job = client.query(sql)
 
-    # Chunk to avoid SQL IN clause limits
-    for i in range(0, len(object_ids), chunk_size):
-        chunk = object_ids[i:i + chunk_size]
-        id_list = ",".join(chunk)
-        sql = (
-            f"SELECT diaSourceId, diaObjectId, prob_class0, prob_class1, "
-            f"predicted_class, kafkaPublishTimestamp "
-            f"FROM {_LSST_SUPERNNOVA_TABLE} "
-            f"WHERE diaObjectId IN ({id_list}) "
-            f"ORDER BY diaObjectId, kafkaPublishTimestamp"
-        )
-        print(f"  LSST batch query: {len(chunk)} objects (chunk {i // chunk_size + 1})...",
-              flush=True)
-        df = client.query(sql)
-        rows = json.loads(df.to_json(orient="records"))
-        print(f"    → {len(rows):,} rows returned", flush=True)
+    def _norm(v):
+        if isinstance(v, _dt.datetime):
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=_dt.timezone.utc)
+            return int(v.timestamp() * 1000)
+        if isinstance(v, _dt.date):
+            return v.isoformat()
+        return v
 
-        for row in rows:
-            oid = str(row.get("diaObjectId", ""))
-            results.setdefault(oid, []).append(row)
-
-    return results
-
-
-def _batch_query_ztf(
-    client,
-    object_ids: list[str],
-    chunk_size: int = 2000,
-) -> dict[str, list[dict]]:
-    """Query ZTF SuperNNova for all objects in one pass."""
-    results: dict[str, list[dict]] = {}
-
-    for i in range(0, len(object_ids), chunk_size):
-        chunk = object_ids[i:i + chunk_size]
-        id_list = ",".join(f"'{x}'" for x in chunk)
-        sql = (
-            f"SELECT objectId, candid, prob_class0, prob_class1, predicted_class "
-            f"FROM {_ZTF_SUPERNNOVA_TABLE} "
-            f"WHERE objectId IN ({id_list}) "
-            f"ORDER BY objectId, candid"
-        )
-        print(f"  ZTF batch query: {len(chunk)} objects (chunk {i // chunk_size + 1})...",
-              flush=True)
-        df = client.query(sql)
-        rows = json.loads(df.to_json(orient="records"))
-        print(f"    → {len(rows):,} rows returned", flush=True)
-
-        for row in rows:
-            oid = str(row.get("objectId", ""))
-            results.setdefault(oid, []).append(row)
-
-    return results
+    return [{k: _norm(v) for k, v in r.items()} for r in job.result()]
 
 
 def _rows_to_broker_output(
@@ -114,7 +110,6 @@ def _rows_to_broker_output(
     survey: str,
     expert_key: str,
 ) -> BrokerOutput:
-    """Convert raw BigQuery rows into a BrokerOutput."""
     raw = {"rows": rows, "survey": survey}
     fields = adapter._extract_supernnova_fields(raw, survey=survey, expert_key=expert_key)
 
@@ -141,13 +136,16 @@ def _rows_to_broker_output(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Batch backfill Pitt-Google SuperNNova via BigQuery (2 queries total)"
+        description="Batch backfill Pitt-Google SuperNNova via BigQuery (cost-safe single-query mode)"
     )
     parser.add_argument("--objects", nargs="+", default=None)
     parser.add_argument("--from-labels", default=None)
     parser.add_argument("--bronze-dir", default="data/bronze")
-    parser.add_argument("--save-fixtures", action="store_true",
-                        help="Also save per-object fixture JSON files")
+    parser.add_argument("--save-fixtures", action="store_true")
+    parser.add_argument("--max-gb", type=float, default=20.0,
+                        help="Abort if any query would scan more than this many GB (default: 20)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Estimate cost only; do not execute real queries")
     args = parser.parse_args()
 
     if args.objects:
@@ -158,81 +156,82 @@ def main() -> None:
         print("Provide --objects or --from-labels")
         sys.exit(1)
 
-    # Split by survey
     lsst_ids = [oid for oid in object_ids if infer_identifier_kind(oid) == "lsst_dia_object_id"]
     ztf_ids = [oid for oid in object_ids if infer_identifier_kind(oid) == "ztf_object_id"]
     print(f"Objects: {len(lsst_ids)} LSST + {len(ztf_ids)} ZTF = {len(object_ids)} total")
 
-    # Import BigQuery client
-    try:
-        import pittgoogle
-        client = pittgoogle.bigquery.Client()
-    except Exception as e:
-        print(f"Cannot connect to BigQuery: {e}")
-        sys.exit(1)
+    from google.cloud import bigquery
+    client = bigquery.Client()
+    print(f"Billing project: {client.project}")
 
+    # ----- Cost gate -----
+    total_gb = 0.0
+    plans: list[tuple[str, str, list[str], str]] = []  # (survey, sql, ids, expert_key)
+    if lsst_ids:
+        sql = _build_lsst_sql(lsst_ids)
+        gb = _dry_run_gb(client, sql)
+        print(f"  LSST SNN:  {gb:6.3f} GB  ({len(lsst_ids)} ids)")
+        total_gb += gb
+        plans.append(("LSST", sql, lsst_ids, "pittgoogle/supernnova_lsst"))
+    if ztf_ids:
+        sql = _build_ztf_sql(ztf_ids)
+        gb = _dry_run_gb(client, sql)
+        print(f"  ZTF  SNN:  {gb:6.3f} GB  ({len(ztf_ids)} ids)")
+        total_gb += gb
+        plans.append(("ZTF", sql, ztf_ids, "pittgoogle/supernnova_ztf"))
+
+    print(f"  TOTAL:     {total_gb:6.3f} GB  ({100*total_gb/1024:.2f}% of 1 TB free tier)")
+
+    for survey, _sql, _ids, _ek in plans:
+        # Check individual queries too — a single >max-gb query should still abort.
+        pass  # already printed per-plan
+
+    if any(_dry_run_gb(client, p[1]) > args.max_gb for p in plans):
+        print(f"ABORT: at least one query exceeds --max-gb={args.max_gb} GB. "
+              "Re-run with --max-gb <N> to override if intentional.")
+        sys.exit(2)
+
+    if args.dry_run:
+        print("--dry-run specified, not executing real queries.")
+        sys.exit(0)
+
+    # ----- Real execution -----
     adapter = PittAdapter()
     bronze_dir = Path(args.bronze_dir)
     all_outputs: list[BrokerOutput] = []
 
-    # ---- LSST batch ----
-    if lsst_ids:
-        print(f"\n=== LSST batch ({len(lsst_ids)} objects) ===")
-        lsst_results = _batch_query_lsst(client, lsst_ids)
-        print(f"  Objects with data: {len(lsst_results)}")
+    for survey, sql, ids, expert_key in plans:
+        print(f"\n=== {survey} batch ({len(ids)} objects) ===")
+        rows = _run_query(client, sql)
+        print(f"  rows returned: {len(rows):,}")
+
+        id_key = "diaObjectId" if survey == "LSST" else "objectId"
+        grouped: dict[str, list[dict]] = {}
+        for r in rows:
+            grouped.setdefault(str(r.get(id_key, "")), []).append(r)
+        print(f"  objects with data: {len(grouped)}")
 
         n_live = 0
-        for oid in lsst_ids:
-            rows = lsst_results.get(oid, [])
+        for oid in ids:
+            obj_rows = grouped.get(oid, [])
             out = _rows_to_broker_output(
-                adapter, oid, rows, survey="LSST",
-                expert_key="pittgoogle/supernnova_lsst",
+                adapter, oid, obj_rows, survey=survey, expert_key=expert_key
             )
-            if not rows:
+            if not obj_rows:
                 out.availability = False
             all_outputs.append(out)
             if out.availability:
                 n_live += 1
                 if args.save_fixtures:
                     fixture_path = _FIXTURE_DIR / f"{oid}_supernnova.json"
-                    adapter.save_fixture({"rows": rows, "survey": "LSST"}, fixture_path)
+                    adapter.save_fixture({"rows": obj_rows, "survey": survey}, fixture_path)
+        print(f"  live: {n_live}, empty: {len(ids) - n_live}")
 
-        print(f"  Live: {n_live}, Unavailable: {len(lsst_ids) - n_live}")
-
-    # ---- ZTF batch ----
-    if ztf_ids:
-        print(f"\n=== ZTF batch ({len(ztf_ids)} objects) ===")
-        ztf_results = _batch_query_ztf(client, ztf_ids)
-        print(f"  Objects with data: {len(ztf_results)}")
-
-        n_live = 0
-        for oid in ztf_ids:
-            rows = ztf_results.get(oid, [])
-            out = _rows_to_broker_output(
-                adapter, oid, rows, survey="ZTF",
-                expert_key="pittgoogle/supernnova_ztf",
-            )
-            if not rows:
-                out.availability = False
-            all_outputs.append(out)
-            if out.availability:
-                n_live += 1
-                if args.save_fixtures:
-                    fixture_path = _FIXTURE_DIR / f"{oid}_supernnova.json"
-                    adapter.save_fixture({"rows": rows, "survey": "ZTF"}, fixture_path)
-
-        print(f"  Live: {n_live}, Unavailable: {len(ztf_ids) - n_live}")
-
-    # ---- Write bronze ----
     if all_outputs:
         available = [o for o in all_outputs if o.availability]
         if available:
             path = write_bronze(available, bronze_dir=bronze_dir)
             print(f"\nWrote {len(available)} available records → {path}")
-        else:
-            print("\nNo available records to write")
-
-        # Also write unavailable for completeness
         unavailable = [o for o in all_outputs if not o.availability]
         if unavailable:
             path2 = write_bronze(unavailable, bronze_dir=bronze_dir)

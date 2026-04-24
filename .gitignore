@@ -31,6 +31,10 @@ tmp/
 
 # Credentials / secrets
 .env
+.secrets/
+*-sa.json
+*service-account*.json
+*application_default_credentials.json
 
 # macOS
 .DS_Store

@@ -73,7 +73,7 @@ def _prepare_frame(df: pd.DataFrame, feature_cols: list[str], fill_values: dict[
     return numeric, fill_values
 
 
-def _fit_binary_model(X: pd.DataFrame, y: np.ndarray, *, n_estimators: int = 500, n_jobs: int = 1):
+def _fit_binary_model(X: pd.DataFrame, y: np.ndarray, *, n_estimators: int = 500, n_jobs: int = 1, sample_weight: np.ndarray | None = None):
     from lightgbm import LGBMClassifier
 
     unique = np.unique(y)
@@ -95,7 +95,10 @@ def _fit_binary_model(X: pd.DataFrame, y: np.ndarray, *, n_estimators: int = 500
         n_jobs=n_jobs,
         verbose=-1,
     )
-    model.fit(X, y)
+    if sample_weight is not None:
+        model.fit(X, y, sample_weight=sample_weight)
+    else:
+        model.fit(X, y)
     return {"kind": "sklearn", "model": model}  # sklearn-compat API
 
 
@@ -177,6 +180,7 @@ def train_followup_model(
     model_dir: Path,
     n_estimators: int = 200,
     n_jobs: int = 1,
+    weak_weight: float = 1.0,
 ):
     from sklearn.metrics import brier_score_loss, roc_auc_score
 
@@ -198,12 +202,23 @@ def train_followup_model(
     X_train, fill_values = _prepare_frame(train_df, feature_cols)
     y_train = train_df["target_follow_proxy"].astype(int).to_numpy()
 
+    # Downweight weak / context labels to prevent them from dominating the decision
+    # boundary at the Ia vs non-Ia cut. Weak rows still teach "not Ia", but with
+    # reduced leverage so spectroscopic positives drive the hard boundary.
+    if weak_weight != 1.0 and "label_quality" in train_df.columns:
+        lq = train_df["label_quality"].astype(str)
+        sample_weight = np.where(lq.isin(["weak", "context"]), float(weak_weight), 1.0).astype(float)
+        n_weak = int((lq.isin(["weak", "context"])).sum())
+        print(f"  weak_weight={weak_weight} applied to {n_weak}/{len(train_df)} train rows")
+    else:
+        sample_weight = None
+
     train_pos_rate = float(np.mean(y_train)) if len(y_train) > 0 else 0.0
     print(f"  followup: {len(train_df):,} train rows, {len(cal_df):,} cal, "
           f"{len(test_df):,} test, {len(feature_cols)} features, "
           f"train_pos_rate={train_pos_rate:.3f}")
 
-    model_bundle = _fit_binary_model(X_train, y_train, n_estimators=n_estimators, n_jobs=n_jobs)
+    model_bundle = _fit_binary_model(X_train, y_train, n_estimators=n_estimators, n_jobs=n_jobs, sample_weight=sample_weight)
 
     # Phase 0.1: Fit IsotonicCalibrator on cal-set raw predictions vs cal y.
     calibrator: Any = None
