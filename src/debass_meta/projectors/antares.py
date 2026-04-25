@@ -24,6 +24,7 @@ from .base import summarize_ternary
 _ORACLE_IA = {"snia", "sniamain", "sn_ia", "ia", "sn ia"}
 _ORACLE_NONIA = {
     "sn91bg",
+    "sni91bg",  # dev-ved30/Oracle leaf name
     "sniax",
     "iax",
     "snii",
@@ -34,6 +35,7 @@ _ORACLE_NONIA = {
     "snib",
     "snic",
     "snibc",
+    "snib/c",   # dev-ved30/Oracle leaf name
     "ib/c",
     "ib",
     "ic",
@@ -54,9 +56,12 @@ _ORACLE_OTHER_TRANSIENT = {
     "pisn",
     "mulens",
     "microlens",
+    "ulens",       # dev-ved30/Oracle leaf name
     "mdwarf",
     "mdwarf_flare",
+    "m-dwarfflare",  # dev-ved30/Oracle leaf "M-dwarf Flare"
     "dwarfnova",
+    "dwarfnovae",    # dev-ved30/Oracle leaf "Dwarf Novae"
     "dwarf_nova",
     "nova",
 }
@@ -70,6 +75,7 @@ _ORACLE_PERIODIC = {
     "dscu",
     "dscut",
     "dscuti",
+    "deltascuti",  # dev-ved30/Oracle leaf "Delta Scuti"
     "eb",
     "eclipsing_binary",
     "lpv",

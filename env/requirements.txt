@@ -39,7 +39,17 @@ python-dotenv>=1.0
 
 # Phase 1b local experts
 sncosmo>=2.10                 # SALT3 template fit (χ² Ia consistency expert)
+iminuit>=2.20                 # required by sncosmo.fit_lc default minimizer
 light-curve>=0.8              # Rust-fast Bazin/Villar parametric features
+
+# ORACLE local expert (dev-ved30/Oracle, PyTorch).  Weights live at
+#   artifacts/local_experts/oracle/models/ELAsTiCC-lite/revived-star-159/
+# and are pulled from the upstream repo (NOT bundled with pip):
+#   curl -L -o best_model_f1.pth \
+#     https://github.com/dev-ved30/Oracle/raw/main/models/ELAsTiCC-lite/revived-star-159/best_model_f1.pth
+oracle @ git+https://github.com/dev-ved30/Oracle.git
+torch>=2.0                    # CPU inference is fine on SCC
+torchvision>=0.15
 
 # Plots + paper figures
 matplotlib>=3.7

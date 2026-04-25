@@ -39,7 +39,7 @@ from debass_meta.projectors import (
 )
 
 # The 4 working local experts per plan §5 Stage 3 (SCC-verified 2026-04-24).
-LOCAL_EXPERT_KEYS = ("supernnova", "alerce_lc", "lc_features_bv", "salt3_chi2")
+LOCAL_EXPERT_KEYS = ("supernnova", "alerce_lc", "lc_features_bv", "salt3_chi2", "oracle_lsst")
 
 
 def _load_lightcurve(path: Path) -> list[dict[str, Any]]:
@@ -97,12 +97,14 @@ def _init_experts() -> dict[str, Any]:
     from debass_meta.experts.local.alerce_lc import AlerceLCExpert
     from debass_meta.experts.local.lc_features import LcFeaturesExpert
     from debass_meta.experts.local.salt3_fit import Salt3Chi2Expert
+    from debass_meta.experts.local.oracle_local import OracleLocalExpert
 
     return {
         "supernnova": SuperNNovaExpert(),
         "alerce_lc": AlerceLCExpert(),
         "lc_features_bv": LcFeaturesExpert(),
         "salt3_chi2": Salt3Chi2Expert(),
+        "oracle_lsst": OracleLocalExpert(),
     }
 
 

@@ -23,13 +23,17 @@ _BAND_MAP = {
     # ZTF
     1: "ztfg", 2: "ztfr", 3: "ztfi",
     "1": "ztfg", "2": "ztfr", "3": "ztfi",
-    "g": "ztfg", "r": "ztfr", "i": "ztfi",
     "ztfg": "ztfg", "ztfr": "ztfr", "ztfi": "ztfi",
     # LSST (sncosmo ships these)
-    "u": "lsstu", "z": "lsstz", "y": "lssty",
     "lsstu": "lsstu", "lsstg": "lsstg", "lsstr": "lsstr",
     "lssti": "lssti", "lsstz": "lsstz", "lssty": "lssty",
 }
+
+# Single-letter bands are ambiguous (LSST and ZTF share g/r/i). The detection's
+# `survey` field disambiguates. Fall through to ZTF for backward compatibility
+# when survey is unset (legacy ZTF-only LCs).
+_LSST_BANDS = frozenset("ugrizy")
+_ZTF_BANDS = frozenset("gri")
 
 _IA_MODEL = "salt3"
 _NONIA_MODEL = "nugent-sn2p"
@@ -42,6 +46,7 @@ def _mag_to_flux(mag: float, magerr: float, zp: float = 25.0) -> tuple[float, fl
 
 
 def _band_name(det: dict[str, Any]) -> str | None:
+    survey = (det.get("survey") or "").upper()
     for key in ("band", "filter", "flt", "fid"):
         val = det.get(key)
         if val is None:
@@ -49,6 +54,19 @@ def _band_name(det: dict[str, Any]) -> str | None:
         mapped = _BAND_MAP.get(val) or _BAND_MAP.get(str(val).strip().lower())
         if mapped:
             return mapped
+        # Single-letter band: route by survey
+        v = str(val).strip().lower()
+        if len(v) == 1:
+            if survey == "LSST" and v in _LSST_BANDS:
+                return f"lsst{v}"
+            if survey == "ZTF" and v in _ZTF_BANDS:
+                return f"ztf{v}"
+            # No survey hint: prefer LSST if band is u/z/y (ZTF doesn't have those),
+            # otherwise prefer ZTF for g/r/i (legacy default).
+            if v in {"u", "z", "y"}:
+                return f"lsst{v}"
+            if v in _ZTF_BANDS:
+                return f"ztf{v}"
     return None
 
 
