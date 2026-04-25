@@ -152,6 +152,11 @@ def main() -> None:
                         help="Only run experts that do not require GPU (e.g. alerce_lc)")
     parser.add_argument("--gpu-only", action="store_true",
                         help="Only run experts that require GPU (e.g. supernnova, parsnip)")
+    parser.add_argument("--shard-id", type=int, default=None,
+                        help="0-indexed shard. Selects objects where idx %% n-shards == shard-id "
+                             "after sorting the input object list. Use with --n-shards.")
+    parser.add_argument("--n-shards", type=int, default=None,
+                        help="Total shard count. Required with --shard-id.")
     args = parser.parse_args()
 
     lc_dir = Path(args.lc_dir)
@@ -168,6 +173,16 @@ def main() -> None:
     if not object_ids:
         print("No objects found. Run download_alerce_training.py first.")
         sys.exit(1)
+
+    if (args.shard_id is None) ^ (args.n_shards is None):
+        parser.error("--shard-id and --n-shards must be used together")
+    if args.shard_id is not None:
+        if not (0 <= args.shard_id < args.n_shards):
+            parser.error(f"--shard-id must be in [0, {args.n_shards}), got {args.shard_id}")
+        sorted_ids = sorted(object_ids)
+        object_ids = [o for i, o in enumerate(sorted_ids) if i % args.n_shards == args.shard_id]
+        print(f"Shard {args.shard_id}/{args.n_shards}: {len(object_ids):,} objects "
+              f"(of {len(sorted_ids):,} total)")
 
     # Select expert pool based on CPU/GPU flags
     if args.cpu_only:
