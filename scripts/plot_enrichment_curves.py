@@ -17,6 +17,7 @@ Outputs (reports/v6_dp1_50k/)
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -24,8 +25,8 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
-PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
-OUT_DIR = REPO / "reports/v6_dp1_50k"
+DEFAULT_PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
+DEFAULT_OUT_DIR = REPO / "reports/v6_dp1_50k"
 
 K_GRID = np.logspace(np.log10(0.001), np.log10(0.50), 200)
 HEADLINE_K = 0.01
@@ -72,9 +73,16 @@ def enrichment_curve(
 
 
 def main() -> None:
-    if not PRED.exists():
-        raise SystemExit(f"Missing: {PRED}")
-    pred = pd.read_parquet(PRED)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--pred", type=Path, default=DEFAULT_PRED)
+    ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    args = ap.parse_args()
+    pred_path = args.pred
+    out_dir = args.out_dir
+
+    if not pred_path.exists():
+        raise SystemExit(f"Missing: {pred_path}")
+    pred = pd.read_parquet(pred_path)
     latest = latest_per_object(pred)
     scores = np.nan_to_num(latest[RANKER_COL].to_numpy(float), nan=0.0)
     masks = class_masks(latest)
@@ -132,8 +140,9 @@ def main() -> None:
     leg.set_zorder(10)
 
     fig.subplots_adjust(left=0.10, right=0.97, top=0.93, bottom=0.10)
-    png = OUT_DIR / "enrichment_curves.png"
-    pdf = OUT_DIR / "enrichment_curves.pdf"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    png = out_dir / "enrichment_curves.png"
+    pdf = out_dir / "enrichment_curves.pdf"
     fig.savefig(png, dpi=300)
     fig.savefig(pdf)
     plt.close(fig)

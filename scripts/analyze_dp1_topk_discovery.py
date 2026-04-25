@@ -17,14 +17,15 @@ Outputs
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
-PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
-OUT_DIR = REPO / "reports/v6_dp1_50k"
+DEFAULT_PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
+DEFAULT_OUT_DIR = REPO / "reports/v6_dp1_50k"
 
 
 def load_latest_snapshot_per_object(df: pd.DataFrame) -> pd.DataFrame:
@@ -87,10 +88,17 @@ def build_markdown_top20(df: pd.DataFrame) -> str:
 
 
 def main() -> None:
-    if not PRED.exists():
-        raise SystemExit(f"Missing predictions parquet: {PRED}")
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--pred", type=Path, default=DEFAULT_PRED)
+    ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    args = ap.parse_args()
+    pred_path = args.pred
+    out_dir = args.out_dir
 
-    pred = pd.read_parquet(PRED)
+    if not pred_path.exists():
+        raise SystemExit(f"Missing predictions parquet: {pred_path}")
+
+    pred = pd.read_parquet(pred_path)
     n_snap = len(pred)
     latest = load_latest_snapshot_per_object(pred)
     n_obj = len(latest)
@@ -113,13 +121,13 @@ def main() -> None:
     keep = [c for c in keep_cols if c in unl_sorted.columns]
     top200 = unl_sorted[keep].head(200).copy()
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    top200.to_csv(OUT_DIR / "topk_unlabeled.csv", index=False)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    top200.to_csv(out_dir / "topk_unlabeled.csv", index=False)
 
     md_table = build_markdown_top20(top200.head(20))
-    (OUT_DIR / "topk_unlabeled_top20.md").write_text(md_table + "\n")
+    (out_dir / "topk_unlabeled_top20.md").write_text(md_table + "\n")
 
-    break_path = OUT_DIR / "topk_filter_breakdown.txt"
+    break_path = out_dir / "topk_filter_breakdown.txt"
     tau_topk_pct = 0.05
     tau_row_idx = max(int(len(unl_sorted) * tau_topk_pct) - 1, 0)
     tau_threshold_unlabeled = float(unl_sorted.iloc[tau_row_idx]["p_follow_proxy"])
@@ -140,8 +148,8 @@ def main() -> None:
             f"{int((unl_sorted['p_follow_proxy'] >= tau_threshold_unlabeled).sum()):,}\n"
         )
 
-    print(f"Wrote: {OUT_DIR/'topk_unlabeled.csv'} ({len(top200)} rows)")
-    print(f"Wrote: {OUT_DIR/'topk_unlabeled_top20.md'}")
+    print(f"Wrote: {out_dir/'topk_unlabeled.csv'} ({len(top200)} rows)")
+    print(f"Wrote: {out_dir/'topk_unlabeled_top20.md'}")
     print(f"Wrote: {break_path}")
     print()
     print("─── TOP 20 UNLABELED FOLLOW-UP CANDIDATES ───")

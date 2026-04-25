@@ -16,6 +16,7 @@ Outputs (reports/v6_dp1_50k/):
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -23,8 +24,8 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
-PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
-OUT_DIR = REPO / "reports/v6_dp1_50k"
+DEFAULT_PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
+DEFAULT_OUT_DIR = REPO / "reports/v6_dp1_50k"
 
 K_GRID = np.logspace(np.log10(0.001), np.log10(0.50), 200)  # 0.1% → 50%
 K_TABLE = [0.005, 0.01, 0.02, 0.05, 0.10, 0.20, 0.50]        # table rows
@@ -68,9 +69,16 @@ def fraction_in_topk(
 
 
 def main() -> None:
-    if not PRED.exists():
-        raise SystemExit(f"Missing: {PRED}")
-    pred = pd.read_parquet(PRED)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--pred", type=Path, default=DEFAULT_PRED)
+    ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    args = ap.parse_args()
+    pred_path = args.pred
+    out_dir = args.out_dir
+
+    if not pred_path.exists():
+        raise SystemExit(f"Missing: {pred_path}")
+    pred = pd.read_parquet(pred_path)
     latest = latest_per_object(pred)
     scores = latest["p_follow_proxy"].to_numpy(dtype=float)
     scores = np.nan_to_num(scores, nan=0.0)
@@ -120,8 +128,9 @@ def main() -> None:
     ax.legend(loc="upper left", fontsize=8, frameon=False, ncol=1)
 
     fig.tight_layout()
-    png = OUT_DIR / "contamination_vs_threshold.png"
-    pdf = OUT_DIR / "contamination_vs_threshold.pdf"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    png = out_dir / "contamination_vs_threshold.png"
+    pdf = out_dir / "contamination_vs_threshold.pdf"
     fig.savefig(png, dpi=300)
     fig.savefig(pdf)
     plt.close(fig)
@@ -135,11 +144,11 @@ def main() -> None:
             row[name] = float(frac) if not np.isnan(frac) else None
         rows.append(row)
     tbl = pd.DataFrame(rows).round(4)
-    tbl.to_csv(OUT_DIR / "contamination_vs_threshold.csv", index=False)
+    tbl.to_csv(out_dir / "contamination_vs_threshold.csv", index=False)
 
     print(f"Wrote: {png}")
     print(f"Wrote: {pdf}")
-    print(f"Wrote: {OUT_DIR/'contamination_vs_threshold.csv'}")
+    print(f"Wrote: {out_dir/'contamination_vs_threshold.csv'}")
     print(f"Scored pool: N = {n_objects:,}")
     for name, n in counts.items():
         print(f"  {name:24s} n = {n:>6,}")

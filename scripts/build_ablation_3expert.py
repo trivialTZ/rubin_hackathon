@@ -35,6 +35,7 @@ Outputs (reports/v6_dp1_50k/)
 """
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -42,8 +43,8 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
-PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
-OUT_DIR = REPO / "reports/v6_dp1_50k"
+DEFAULT_PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
+DEFAULT_OUT_DIR = REPO / "reports/v6_dp1_50k"
 
 K_GRID = [0.005, 0.01, 0.02, 0.05]
 HEADLINE_K = 0.01
@@ -127,9 +128,18 @@ def fmt(mean: float, lo: float, hi: float) -> str:
 
 
 def main() -> None:
-    if not PRED.exists():
-        raise SystemExit(f"Missing: {PRED}")
-    df = pd.read_parquet(PRED)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--pred", type=Path, default=DEFAULT_PRED,
+                    help=f"predictions.parquet path (default: {DEFAULT_PRED})")
+    ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR,
+                    help=f"output directory (default: {DEFAULT_OUT_DIR})")
+    args = ap.parse_args()
+    pred_path = args.pred
+    out_dir = args.out_dir
+
+    if not pred_path.exists():
+        raise SystemExit(f"Missing: {pred_path}")
+    df = pd.read_parquet(pred_path)
     latest = latest_per_object(df)
     n_pool = len(latest)
     rng = np.random.default_rng(RNG_SEED)
@@ -145,16 +155,42 @@ def main() -> None:
     else:
         sc_bv = np.zeros(n_pool, float)
 
+    has_salt3 = "proj__salt3_chi2__p_snia" in latest.columns
+    if has_salt3:
+        sc_salt3 = np.where(np.isnan(latest["proj__salt3_chi2__p_snia"]), 0.0,
+                            latest["proj__salt3_chi2__p_snia"]).astype(float)
+
     rankers = {
         "p_follow_proxy":     latest["p_follow_proxy"].to_numpy(float),
         "ensemble_p_snia":    latest["ensemble_p_snia"].to_numpy(float),
         "alerce_lc_only":     sc_alerce,
         "supernnova_only":    sc_snn,
         "lc_features_bv_only": sc_bv,
-        "naive_mean_3expert": naive_mean_score(latest),
-        "random":             rng.random(n_pool),
     }
+    if has_salt3:
+        rankers["salt3_chi2_only"] = sc_salt3
+    rankers["naive_mean_3expert"] = naive_mean_score(latest)
+    if has_salt3:
+        # 4-expert naive mean (alerce_lc, supernnova, lc_features_bv, salt3_chi2)
+        cols4 = [c for c in [
+            "proj__alerce_lc__p_snia",
+            "proj__supernnova__p_snia",
+            "proj__lc_features_bv__p_snia",
+            "proj__salt3_chi2__p_snia",
+        ] if c in latest.columns]
+        arr4 = latest[cols4].to_numpy(dtype=float)
+        s4 = np.nanmean(arr4, axis=1)
+        rankers["naive_mean_4expert"] = np.where(np.isnan(s4), 0.0, s4)
+    rankers["random"] = rng.random(n_pool)
     masks = class_masks(latest)
+
+    # Compute actual avail % from snapshot-level df (not latest-per-object)
+    avail_pct: dict[str, float] = {}
+    for c in sorted(df.columns):
+        if not c.startswith("avail__"):
+            continue
+        n_avail = int(df[c].fillna(0).astype(float).gt(0.5).sum())
+        avail_pct[c.removeprefix("avail__")] = round(100.0 * n_avail / len(df), 1)
 
     out = {
         "n_pool": n_pool,
@@ -164,12 +200,7 @@ def main() -> None:
         "n_bootstrap": N_BOOT,
         "rng_seed": RNG_SEED,
         "by_class": {},
-        "expert_availability_on_dp1": {
-            "alerce_lc":     "100% (local rerunnable)",
-            "supernnova":    "100% (local rerunnable)",
-            "lc_features_bv": "16%  (Bazin/Villar fits — needs n_det≥5 with quality)",
-            "8 broker experts": "0% — brokers don't index DP1",
-        },
+        "expert_avail_pct_snapshots": avail_pct,
     }
     flat_rows = []
     for cname, mask in masks.items():
@@ -193,10 +224,10 @@ def main() -> None:
             out["by_class"][cname]["by_K"][f"{k:.4f}"] = cell
             flat_rows.append(row)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    json_path = OUT_DIR / "ablation_3expert.json"
-    csv_path = OUT_DIR / "ablation_3expert_per_class.csv"
-    md_path = OUT_DIR / "ablation_3expert.md"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / "ablation_3expert.json"
+    csv_path = out_dir / "ablation_3expert_per_class.csv"
+    md_path = out_dir / "ablation_3expert.md"
 
     json_path.write_text(json.dumps(out, indent=2))
     pd.DataFrame(flat_rows).to_csv(csv_path, index=False)
@@ -204,21 +235,23 @@ def main() -> None:
     # Markdown
     headline_classes = ["Gaia stars", "SIMBAD Galaxy", "EclBin+RRLyrae",
                         "Gaia variables", "Published SNe"]
+
+    def _avail_str(key: str) -> str:
+        return f"{avail_pct.get(key, 0.0):.1f}%"
+
     lines = [
         f"## Per-expert ablation on DP1 — top-{HEADLINE_K*100:.0f}% (N={n_pool:,})",
         "",
-        "### Operational availability on DP1",
+        "### Operational availability on DP1 (snapshot-level)",
         "",
-        "| Expert | Availability | Source |",
-        "|---|---|---|",
-        "| alerce_lc | 100% | local rerunnable LightGBM (15,428-label train) |",
-        "| supernnova | 100% | local rerunnable RNN |",
-        "| lc_features_bv | 16% | local Bazin/Villar fits (sparse: needs n_det≥5 quality) |",
-        "| 8 broker experts (fink, fink_lsst, alerce broker, ampel, antares, pittgoogle, lasair, salt3) | 0% | LSST brokers don't index DP1 |",
+        "| Expert | Availability |",
+        "|---|---|",
+    ]
+    for k in sorted(avail_pct):
+        lines.append(f"| {k} | {_avail_str(k)} |")
+    lines += [
         "",
-        "The trust-weighted ensemble on DP1 reduces operationally to a 3-expert",
-        "local-classifier ensemble. The ablation below isolates which expert(s)",
-        "drive the headline galaxy-suppression result.",
+        "The ablation below isolates which expert(s) drive the headline result.",
         "",
         "### Enrichment factor at top-1 % (lower for negatives = better)",
         "",

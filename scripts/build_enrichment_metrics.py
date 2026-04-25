@@ -38,6 +38,7 @@ Outputs (reports/v6_dp1_50k/)
 """
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -45,8 +46,8 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
-PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
-OUT_DIR = REPO / "reports/v6_dp1_50k"
+DEFAULT_PRED = REPO / "reports/v6_dp1_50k/predictions.parquet"
+DEFAULT_OUT_DIR = REPO / "reports/v6_dp1_50k"
 
 K_GRID = [0.005, 0.01, 0.02, 0.05]
 HEADLINE_K = 0.01  # paper headline operating point
@@ -139,9 +140,18 @@ def fmt_ef(mean: float, lo: float, hi: float) -> str:
 
 
 def main() -> None:
-    if not PRED.exists():
-        raise SystemExit(f"Missing: {PRED}")
-    df = pd.read_parquet(PRED)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--pred", type=Path, default=DEFAULT_PRED,
+                    help=f"predictions.parquet path (default: {DEFAULT_PRED})")
+    ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR,
+                    help=f"output directory (default: {DEFAULT_OUT_DIR})")
+    args = ap.parse_args()
+    pred_path = args.pred
+    out_dir = args.out_dir
+
+    if not pred_path.exists():
+        raise SystemExit(f"Missing: {pred_path}")
+    df = pd.read_parquet(pred_path)
     latest = latest_per_object(df)
     n_pool = len(latest)
 
@@ -190,10 +200,10 @@ def main() -> None:
             out["by_class"][cname]["by_K"][f"{k:.4f}"] = cell
             flat_rows.append(row)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    json_path = OUT_DIR / "enrichment_metrics.json"
-    csv_path = OUT_DIR / "enrichment_per_class.csv"
-    md_path = OUT_DIR / "enrichment_headline.md"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / "enrichment_metrics.json"
+    csv_path = out_dir / "enrichment_per_class.csv"
+    md_path = out_dir / "enrichment_headline.md"
 
     json_path.write_text(json.dumps(out, indent=2))
     pd.DataFrame(flat_rows).to_csv(csv_path, index=False)
