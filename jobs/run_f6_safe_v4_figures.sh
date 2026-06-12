@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F6-SAFE-v3: figures from 7-clean-expert snapshots.
+# metaDEBASS Light-up — F6-SAFE-v3: figures from 7-clean-expert snapshots.
 #   qsub -N debass_f6safev4 -cwd -V -l h_rt=01:00:00 -l mem_per_core=8G -pe omp 2 \
 #        -o logs/f6safev4.qsub.out -e logs/f6safev4.qsub.err jobs/run_f6_safe_v4_figures.sh
 set -euo pipefail
@@ -22,7 +22,7 @@ python3 -u scripts/make_paper_figures.py \
     --trust-metrics reports/metrics/expert_trust_metrics_safe_v4.json \
     --snapshots data/gold/object_epoch_snapshots_trust_safe_v4.parquet \
     --trust-models-dir models/trust_safe_v4 \
-    --out-dir paper/debass_aas/figures_safe_v4
+    --out-dir paper/metaDEBASS_aas/figures_safe_v4
 
 python3 -u scripts/plot_ablation.py \
     --snapshots data/gold/object_epoch_snapshots_trust_safe_v4.parquet \

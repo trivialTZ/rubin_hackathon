@@ -4,7 +4,7 @@
 YSE DR1 (Aleo+ 2023): 1,975 SNe observed Nov 2019–Dec 2021, PS1 griz + ZTF gr,
 includes 1,048 spectroscopic Ia, 339 II, 96 Ib/c plus photometric classes.
 
-This feeds DEBASS Truth Tier 1 (spec-confirmed) as a low-z cross-check on
+This feeds metaDEBASS Truth Tier 1 (spec-confirmed) as a low-z cross-check on
 ZTF BTS.  Size ≈ 5 MB total — fast to integrate.
 
 Zenodo: https://zenodo.org/records/7317476

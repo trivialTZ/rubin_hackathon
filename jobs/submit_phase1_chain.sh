@@ -59,7 +59,7 @@ qsub_submit() {
     "${cmd[@]}"
 }
 
-echo "=== DEBASS Phase 1 Pipeline Chain ==="
+echo "=== metaDEBASS Phase 1 Pipeline Chain ==="
 echo "DEBASS_ROOT: $DEBASS_ROOT"
 echo "QSUB common: ${DEBASS_QSUB_COMMON_ARGS:-<none>}"
 echo "QSUB CPU: ${DEBASS_QSUB_CPU_ARGS:-<none>}"

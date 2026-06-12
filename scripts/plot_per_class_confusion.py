@@ -82,7 +82,7 @@ def main() -> None:
         if ax is axes[0]:
             ax.set_ylabel("true")
     fig.colorbar(im, ax=axes, fraction=0.03, pad=0.02, label="row-normalised rate")
-    fig.suptitle("DEBASS per-class confusion — mean-ensemble argmax")
+    fig.suptitle("metaDEBASS per-class confusion — mean-ensemble argmax")
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / "fig_per_class_confusion.pdf", bbox_inches="tight", dpi=150)

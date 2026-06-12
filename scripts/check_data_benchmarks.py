@@ -363,7 +363,7 @@ def evaluate_run(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Check DEBASS data-engineering benchmarks")
+    parser = argparse.ArgumentParser(description="Check metaDEBASS data-engineering benchmarks")
     parser.add_argument("--root", default=".")
     parser.add_argument("--benchmarks", default="benchmarks/data_engineering.toml")
     parser.add_argument("--labels", default=None)

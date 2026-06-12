@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
 done
 if ${INSTALL_ALL}; then INSTALL_SNN=true; INSTALL_RAPID=true; INSTALL_ORACLE=true; fi
 
-echo "=== DEBASS Local Expert Setup ==="
+echo "=== metaDEBASS Local Expert Setup ==="
 echo "DEBASS_ROOT: ${DEBASS_ROOT}"
 echo "Artifacts:   ${ARTIFACTS}"
 echo ""

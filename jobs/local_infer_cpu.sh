@@ -21,7 +21,7 @@ source "$DEBASS_VENV/bin/activate"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: CPU local expert inference ==="
+echo "=== metaDEBASS: CPU local expert inference ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 

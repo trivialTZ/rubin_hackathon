@@ -93,7 +93,7 @@ def main() -> None:
         ax.plot(s["k"], s["auc"], marker="o", lw=1.6, color=color, label=f"n_det={n}")
     ax.set_xlabel("K (number of experts in ensemble, top-K by standalone AUC)")
     ax.set_ylabel("Trust-weighted ensemble AUC")
-    ax.set_title("DEBASS ablation — does every new expert help?")
+    ax.set_title("metaDEBASS ablation — does every new expert help?")
     ax.grid(alpha=0.3)
     ax.legend(frameon=False, fontsize=9)
     fig.tight_layout()

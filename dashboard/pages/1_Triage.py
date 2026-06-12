@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — Page 1: Daily Triage.
+"""metaDEBASS Dashboard — Page 1: Daily Triage.
 
 Ranked candidate table for spectroscopic follow-up prioritisation.
 """
@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lib.data_loader import load_scores, get_all_expert_keys
 from lib.style import CUSTOM_CSS, rec_color, rec_label, expert_name
 
-st.set_page_config(page_title="DEBASS — Triage", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="metaDEBASS — Triage", page_icon="🎯", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("🎯 Daily Triage — Follow-up Candidates")

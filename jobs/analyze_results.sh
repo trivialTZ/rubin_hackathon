@@ -22,7 +22,7 @@ source "$DEBASS_VENV/bin/activate"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: Results Analysis ==="
+echo "=== metaDEBASS: Results Analysis ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 

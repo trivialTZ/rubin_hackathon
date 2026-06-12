@@ -26,7 +26,7 @@ export PYTHONUNBUFFERED=1
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: ALeRCE LC local inference (CPU) ==="
+echo "=== metaDEBASS: ALeRCE LC local inference (CPU) ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 

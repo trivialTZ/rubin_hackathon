@@ -153,7 +153,7 @@ brokers:
       - antares/superphot_plus
     notes: >
       Query `loci_history` to retrieve the tag (and its score) at the exact
-      alert that added it — this gives per-epoch semantics matching DEBASS's
+      alert that added it — this gives per-epoch semantics matching metaDEBASS's
       trust-training requirements.  Filter coverage expands per RTN-090.
 
   ampel:

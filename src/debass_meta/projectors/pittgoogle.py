@@ -34,7 +34,7 @@ def project_events(expert_key: str, events: list[dict[str, Any]]) -> dict[str, A
 
 # UPSILoN class → ternary mapping.  Every UPSILoN class is a periodic variable
 # star and therefore NOT a supernova; all mass goes to p_other, modulated by
-# the classifier's confidence.  The DEBASS trust head learns how reliable this
+# the classifier's confidence.  The metaDEBASS trust head learns how reliable this
 # signal is for excluding SN candidates.
 _UPSILON_PERIODIC = {
     "delta_scuti",

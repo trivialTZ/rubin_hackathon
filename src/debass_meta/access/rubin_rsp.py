@@ -39,7 +39,7 @@ _DEFAULT_REPO_ENV = "DEBASS_ROOT"
 
 
 def _find_repo_root() -> Path:
-    """Resolve the DEBASS repo root from env or this module's path."""
+    """Resolve the metaDEBASS repo root from env or this module's path."""
     env = os.environ.get(_DEFAULT_REPO_ENV)
     if env:
         return Path(env)
@@ -198,7 +198,7 @@ class RSPClient:
 
 
 def normalize_diasource_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Convert a TAP DiaSource row dict into the DEBASS detection schema.
+    """Convert a TAP DiaSource row dict into the metaDEBASS detection schema.
 
     Passes through the keys `detection.normalize_detection()` recognizes as
     LSST. This keeps `midpointMjdTai`, `psfFlux`, `psfFluxErr`, `band`,

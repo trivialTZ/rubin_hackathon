@@ -1,5 +1,5 @@
 #!/bin/bash -l
-# run_gpu_resume.sh — Resume the DEBASS pipeline from a prepared CPU state.
+# run_gpu_resume.sh — Resume the metaDEBASS pipeline from a prepared CPU state.
 #
 # Run this after jobs/submit_cpu_prep.sh has finished and you are already
 # inside a GPU shell/session/node obtained via qrsh or SCC OnDemand.
@@ -127,7 +127,7 @@ if needs_torch and (not torch.cuda.is_available() or torch.cuda.device_count() <
 PY
 
 echo "======================================="
-echo " DEBASS GPU Resume"
+echo " metaDEBASS GPU Resume"
 echo "======================================="
 echo " DEBASS_ROOT:          $DEBASS_ROOT"
 echo " DEBASS_GPU_EXPERTS:   $DEBASS_GPU_EXPERTS"

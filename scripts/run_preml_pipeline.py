@@ -1,4 +1,4 @@
-"""Run the full pre-ML DEBASS pipeline in a fixed, benchmarked order."""
+"""Run the full pre-ML metaDEBASS pipeline in a fixed, benchmarked order."""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ def _run(cmd: list[str], *, cwd: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run DEBASS pre-ML data pipeline")
+    parser = argparse.ArgumentParser(description="Run metaDEBASS pre-ML data pipeline")
     parser.add_argument("--root", default="tmp/preml_run")
     parser.add_argument("--labels", default="data/labels.csv")
     parser.add_argument("--truth-input", default=None, help="Optional curated truth CSV/parquet")

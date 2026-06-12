@@ -11,7 +11,7 @@
 # Uncomment and set your project if on Med Campus:
 ##$ -P your_project_name
 
-# DEBASS SCC GPU job: run configured local experts on truncated lightcurves.
+# metaDEBASS SCC GPU job: run configured local experts on truncated lightcurves.
 # Populates snn_prob_ia / parsnip_prob_ia columns in the epoch table when the
 # corresponding expert produces live model outputs.
 #
@@ -44,7 +44,7 @@ source "$DEBASS_VENV/bin/activate"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: GPU local inference ==="
+echo "=== metaDEBASS: GPU local inference ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 echo "Experts: $DEBASS_GPU_EXPERTS"

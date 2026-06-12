@@ -122,3 +122,64 @@ def test_audit_data_readiness_reports_live_vs_stub_state(tmp_path: Path) -> None
     assert report["local_experts"]["parsnip"]["all_stub_versions"] is True
     assert "weak ALeRCE self-label truth present" in report["warnings"]
     assert "Lasair is not returning live bronze payloads; check LASAIR_TOKEN or fixture fallback" in report["warnings"]
+
+
+def test_audit_data_readiness_separates_unlabelled_candidates_from_labels(tmp_path: Path) -> None:
+    run_root = tmp_path / "run"
+    bronze_dir = run_root / "bronze"
+    silver_dir = run_root / "silver"
+    gold_dir = run_root / "gold"
+    truth_dir = run_root / "truth"
+    for path in [bronze_dir, silver_dir, gold_dir, truth_dir]:
+        path.mkdir(parents=True, exist_ok=True)
+
+    labels_path = tmp_path / "labels.csv"
+    labels_path.write_text("object_id,label\nZTF1,snia\n313123,\n")
+    lc_dir = tmp_path / "lightcurves"
+    lc_dir.mkdir()
+    (lc_dir / "ZTF1.json").write_text("[]")
+
+    pd.DataFrame([{"broker": "fink", "object_id": "ZTF1", "availability": True, "fixture_used": False}]).to_parquet(
+        bronze_dir / "part-000.parquet",
+        index=False,
+    )
+    pd.DataFrame(
+        [
+            {
+                "broker": "fink",
+                "expert_key": "fink/snn",
+                "object_id": "ZTF1",
+                "availability": True,
+                "fixture_used": False,
+                "temporal_exactness": "exact_alert",
+            }
+        ]
+    ).to_parquet(silver_dir / "broker_events.parquet", index=False)
+    pd.DataFrame([{"object_id": "ZTF1", "n_det": 1, "alert_jd": 2460001.0}]).to_parquet(
+        gold_dir / "object_epoch_snapshots.parquet",
+        index=False,
+    )
+    pd.DataFrame(
+        [
+            {
+                "object_id": "ZTF1",
+                "final_class_raw": "snia",
+                "final_class_ternary": "snia",
+                "follow_proxy": 1,
+                "label_source": "alerce_self_label",
+                "label_quality": "weak",
+            }
+        ]
+    ).to_parquet(truth_dir / "object_truth.parquet", index=False)
+
+    report = audit_data_readiness(
+        root=run_root,
+        labels_path=labels_path,
+        lightcurve_dir=lc_dir,
+    )
+
+    assert report["label_rows"] == 2
+    assert report["labelled_rows"] == 1
+    assert report["unlabelled_rows"] == 1
+    assert report["label_objects_missing_lightcurves"] == []
+    assert report["input_objects_missing_lightcurves_count"] == 1

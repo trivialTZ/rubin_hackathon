@@ -215,7 +215,7 @@ TNS_CREDIBLE_GROUPS: set[str] = {
     "SCAT", "UCSC",                     # Santa Cruz / UCSC
     "ePESSTO", "ePESSTO+", "PESSTO",   # Public ESO Spectroscopic Survey
     "YSE",                              # Young Supernova Experiment
-    "DEBASS",                           # Discovery and Early Broadband Analysis of SNe
+    "metaDEBASS",                           # Discovery and Early Broadband Analysis of SNe
     "SNFactory", "SNf",                 # Nearby Supernova Factory
     "CSP",                              # Carnegie Supernova Project
     "LCO", "LCO Global SN Project",    # Las Cumbres Observatory
@@ -793,7 +793,7 @@ def _safe_float(val: Any) -> float | None:
 
 
 def map_tns_type_to_ternary(type_name: str | None) -> str | None:
-    """Map a TNS type string to the DEBASS ternary label.
+    """Map a TNS type string to the metaDEBASS ternary label.
 
     Returns None if the type is unknown or unmappable.
     """

@@ -2,7 +2,7 @@
 
 Replaces the ALeRCE API for LC classification scores.  Runs on CPU
 (LightGBM multiclass) so it slots into the CPU pipeline stage.
-Consistent with all other DEBASS models: native NaN handling,
+Consistent with all other metaDEBASS models: native NaN handling,
 regularisation, is_unbalance=True.
 
 Two feature-extraction tiers:

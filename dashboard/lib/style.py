@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — colour palette and CSS helpers."""
+"""metaDEBASS Dashboard — colour palette and CSS helpers."""
 
 # ── Semantic colours ──────────────────────────────────────────────
 CLASS_COLORS = {

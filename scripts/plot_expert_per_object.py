@@ -82,7 +82,7 @@ def fig_traces(df: pd.DataFrame) -> None:
                 ax.legend(loc="center right", frameon=False, fontsize=8)
             ax.grid(alpha=0.3)
     fig.suptitle(
-        "DEBASS — per-object classification trace (one spec-typed example per class)\n"
+        "metaDEBASS — per-object classification trace (one spec-typed example per class)\n"
         "rows: expert  ·  columns: true class",
         y=1.00,
     )

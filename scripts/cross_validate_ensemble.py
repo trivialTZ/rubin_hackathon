@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""5-fold grouped cross-validation for the DEBASS trust-weighted ensemble.
+"""5-fold grouped cross-validation for the metaDEBASS trust-weighted ensemble.
 
 Groups by object_id so no same-object row appears in both train and test.
 For each fold:

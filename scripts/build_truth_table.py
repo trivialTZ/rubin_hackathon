@@ -56,7 +56,9 @@ def build_truth_table(
         rows = []
         with open(labels_path) as fh:
             for record in csv.DictReader(fh):
-                ternary = record.get("label")
+                ternary = str(record.get("label") or "").strip()
+                if not ternary:
+                    continue
                 rows.append({
                     "object_id": record["object_id"],
                     "final_class_raw": ternary,

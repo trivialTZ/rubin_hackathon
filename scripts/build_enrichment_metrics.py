@@ -210,7 +210,7 @@ def main() -> None:
 
     # Markdown headline at K=1%
     lines = [
-        f"## DEBASS DP1 enrichment factor at top-{HEADLINE_K*100:.0f}% (N={n_pool:,})",
+        f"## metaDEBASS DP1 enrichment factor at top-{HEADLINE_K*100:.0f}% (N={n_pool:,})",
         "",
         "Enrichment factor = (fraction of class in top-K%) / K. EF=1 ↔ random ranking.",
         "EF<1 = the ranker SUPPRESSES the class; EF>1 = the ranker UP-RANKS the class.",

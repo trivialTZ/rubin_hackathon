@@ -96,7 +96,7 @@ job_id_base() {
 }
 
 echo "======================================="
-echo " DEBASS SCC CPU Prep Submission"
+echo " metaDEBASS SCC CPU Prep Submission"
 echo "======================================="
 echo " DEBASS_ROOT:          $DEBASS_ROOT"
 echo " DEBASS_LIMIT:         $DEBASS_LIMIT objects"

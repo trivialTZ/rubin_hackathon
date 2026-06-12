@@ -1,4 +1,4 @@
-# DEBASS — LSST Truth Gap: execution plan (verified)
+# metaDEBASS — LSST Truth Gap: execution plan (verified)
 
 _Authored 2026-04-23 after F3-SAFE-v5 job 4572623 finished with 7 trust heads
 (same as v4). All CLI flags, column names, and snapshot paths below were

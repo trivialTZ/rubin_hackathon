@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score a new transient object using the published DEBASS models.
+"""Score a new transient object using the published metaDEBASS models.
 
 This is the user-facing entry point. Given a lightcurve (JSON file or
 ZTF object ID), it runs the trust-aware pipeline and prints a follow-up
@@ -48,7 +48,7 @@ def _load_lightcurve(path: Path) -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Score a transient with DEBASS trust-aware models",
+        description="Score a transient with metaDEBASS trust-aware models",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -160,7 +160,7 @@ def main() -> None:
 
     # Print results
     print("\n" + "=" * 60)
-    print(f"DEBASS Score — {args.object_id}")
+    print(f"metaDEBASS Score — {args.object_id}")
     print("=" * 60)
 
     for r in results:

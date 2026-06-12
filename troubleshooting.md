@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This file tracks recurring DEBASS data-engineering failures and the fastest known fix.
+This file tracks recurring metaDEBASS data-engineering failures and the fastest known fix.
 
 ## Standard Check Loop
 

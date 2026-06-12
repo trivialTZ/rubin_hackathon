@@ -53,7 +53,7 @@ FOLLOWUP_DIR="${MODELS_DIR}/followup"
 # Global truth table (if it exists — snapshots handle missing truth gracefully)
 TRUTH_PATH="${DEBASS_ROOT}/data/truth/object_truth.parquet"
 
-echo "=== DEBASS Nightly Pipeline ==="
+echo "=== metaDEBASS Nightly Pipeline ==="
 echo "Date:        ${DATE}"
 echo "Lookback:    ${LOOKBACK_DAYS} days"
 echo "Nightly dir: ${NIGHTLY_DIR}"

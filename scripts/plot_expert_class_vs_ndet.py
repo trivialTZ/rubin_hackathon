@@ -76,7 +76,7 @@ def main() -> None:
             ax.grid(alpha=0.3)
 
     fig.suptitle(
-        "DEBASS trust-head experts — mean predicted probability vs detections\n"
+        "metaDEBASS trust-head experts — mean predicted probability vs detections\n"
         "rows: expert   ·   columns: true class   ·   shaded band = ±1 SE",
         y=1.00,
     )

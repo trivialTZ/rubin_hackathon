@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — Page 2: Expert Confidence Matrix.
+"""metaDEBASS Dashboard — Page 2: Expert Confidence Matrix.
 
 Heatmap showing all experts' opinions per object, with trust overlay.
 """
@@ -14,7 +14,7 @@ from lib.data_loader import load_scores, get_all_expert_keys, load_trust_metrics
 from lib.charts import expert_heatmap, expert_agreement_bars
 from lib.style import CUSTOM_CSS, expert_name
 
-st.set_page_config(page_title="DEBASS — Expert Matrix", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="metaDEBASS — Expert Matrix", page_icon="🧠", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("🧠 Expert Confidence Matrix")

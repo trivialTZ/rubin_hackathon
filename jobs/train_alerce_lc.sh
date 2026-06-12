@@ -24,7 +24,7 @@ export OPENBLAS_NUM_THREADS="${NSLOTS:-4}"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: training local ALeRCE LC classifier ==="
+echo "=== metaDEBASS: training local ALeRCE LC classifier ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 echo "Slots: ${NSLOTS:-4}"

@@ -85,7 +85,7 @@ def main() -> None:
     out_json.write_text(inv.to_json(orient="records", indent=2))
     # Markdown summary
     md_lines = [
-        "# DEBASS expert inventory",
+        "# metaDEBASS expert inventory",
         "",
         f"Registered: {len(inv)}   ·   Live (trust head present): **{int(inv['has_trust_head'].sum())}**   ·   With calibrator: {int(inv['has_calibrator'].sum())}",
         "",

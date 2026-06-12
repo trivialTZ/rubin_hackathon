@@ -121,7 +121,10 @@ def _write_parquet_partitions(records: list[dict], silver_dir: Path) -> list[Pat
             df["class_probabilities"] = df["class_probabilities"].apply(
                 lambda value: json.dumps(value, sort_keys=True) if isinstance(value, dict) else value
             )
-        out_dir = base_dir / expert
+        # Sanitize "/" in expert keys (e.g. ampel/snguess) so the
+        # partition lives at depth 1, matching the gold builder's
+        # `*/*.parquet` glob.
+        out_dir = base_dir / expert.replace("/", "__")
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / "part-latest.parquet"
         df.to_parquet(out_path, index=False)

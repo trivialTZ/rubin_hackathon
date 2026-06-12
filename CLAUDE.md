@@ -1,10 +1,10 @@
-# CLAUDE.md — DEBASS Project Context
+# CLAUDE.md — metaDEBASS Project Context
 
 This file tells Claude Code how to work with this repository.
 
 ## Project Summary
 
-DEBASS (Detection-Based Astronomical Source Spectroscopic) meta-classifier.
+metaDEBASS (Detection-Based Astronomical Source Spectroscopic) meta-classifier.
 Fuses heterogeneous broker outputs (ALeRCE, Fink, Lasair) + per-epoch lightcurve
 features to classify transients as **SN Ia / non-Ia SN-like / other** after only
 3-5 detections, for spectroscopic follow-up prioritisation with Rubin/LSST.
@@ -20,8 +20,9 @@ pipeline with a union feature set (51 LC features across ugrizy bands).
   to a common schema via `features/detection.py`. Missing bands are NaN —
   LightGBM handles this natively. `survey_is_lsst` flag lets models learn
   survey-specific trust patterns.
-- **18 registered experts** across both surveys. Each gets a per-expert trust
-  head (LightGBM binary) and projection to ternary (p_snia, p_nonIa, p_other).
+- **28 registered experts** across both surveys (12 with trained trust heads
+  in v7; rest are dormant pending broker deployment). Each gets a per-expert
+  trust head (LightGBM binary) and projection to ternary (p_snia, p_nonIa, p_other).
 - **Fink LSST gives per-alert scores** (`api.lsst.fink-portal.org/api/v1/sources`
   with `diaObjectId`). SNN/CATS/EarlySNIa scores genuinely evolve per detection —
   the richest signal for LSST trust training.
@@ -34,12 +35,13 @@ pipeline with a union feature set (51 LC features across ugrizy bands).
 - **Multi-source truth**: TNS spectroscopic + Fink crossmatch (free) +
   broker consensus + host galaxy context (SIMBAD + photo-z + Gaia).
 
-## Expert Registry (18 experts)
+## Expert Registry (28 registered; 12 trust heads in v7)
 
 | Expert Key | Survey | Temporal | Source |
 |---|---|---|---|
 | `fink/snn` | ZTF | exact_alert | Fink ZTF SuperNNova |
 | `fink/rf_ia` | ZTF | exact_alert | Fink ZTF Random Forest |
+| `fink/slsn` | ZTF | exact_alert | Fink ZTF SLSN-RF (SN-filter) |
 | `fink_lsst/snn` | LSST | exact_alert | Fink LSST SuperNNova |
 | `fink_lsst/cats` | LSST | exact_alert | Fink LSST CATS |
 | `fink_lsst/early_snia` | LSST | exact_alert | Fink LSST EarlySNIa |
@@ -51,13 +53,25 @@ pipeline with a union feature set (51 LC features across ugrizy bands).
 | `alerce/stamp_classifier_2025_beta` | ZTF | static_safe | ALeRCE stamp 2025 |
 | `alerce/stamp_classifier_rubin_beta` | LSST | static_safe | ALeRCE Rubin stamp |
 | `lasair/sherlock` | any | static_safe | Lasair Sherlock context |
+| `babamul` | any | static_safe | Babamul context flags (star/rock/xmatch) |
 | `pittgoogle/supernnova_lsst` | LSST | exact_alert | Pitt-Google LSST SuperNNova (BigQuery) |
 | `pittgoogle/supernnova_ztf` | ZTF | latest_unsafe | Pitt-Google ZTF SuperNNova (BigQuery) |
+| `pittgoogle/upsilon_lsst` | LSST | static_safe | Pitt-Google UPSILoN |
+| `antares/oracle` | any | exact_alert | ANTARES ORACLE (dormant; not deployed) |
+| `antares/superphot_plus` | any | exact_alert | ANTARES Superphot+ |
+| `ampel/snguess` | any | rerun_exact | AMPEL SNGuess vendored (SN-filter; XGBoost) |
+| `ampel/parsnip_followme` | any | rerun_exact | AMPEL ParSNIP FollowMe (dormant) |
 | `parsnip` | any | rerun_exact | Local ParSNIP |
 | `supernnova` | any | rerun_exact | Local SuperNNova |
 | `alerce_lc` | any | rerun_exact | Local ALeRCE LC |
+| `salt3_chi2` | any | rerun_exact | Local SALT3 χ² Ia consistency |
+| `lc_features_bv` | any | rerun_exact | Local Bazin/Villar features |
+| `oracle_lsst` | LSST | rerun_exact | Local ORACLE (dormant; domain mismatch on DP1) |
 
-Defined in `src/debass_meta/projectors/base.py:EXPERT_REGISTRY`.
+Defined in `src/debass_meta/projectors/base.py:EXPERT_REGISTRY`. SN-filter
+experts (`fink/slsn`, `ampel/snguess`, `fink_lsst/snn`, `fink_lsst/cats`)
+are listed in `models/expert_trust.py:SN_FILTER_EXPERTS` and trained with
+`target=is_sn` (NOT `is_topclass_correct`) to avoid inflated AUC.
 
 ## Python Environment
 
@@ -87,7 +101,7 @@ Steps:
 5. Normalize bronze → silver (with dedup)
 6. Build multi-source truth (TNS + Fink xm + host context)
 7. Collect per-epoch local expert history
-8. Build gold tables (51 LC features + 18 expert projections + survey flag)
+8. Build gold tables (51 LC features + 28 expert projections + survey flag)
 9. Train expert trust + followup
 10. Score + analyze
 
@@ -160,7 +174,7 @@ scripts/
   collect_epoch_history.py    Per-epoch local expert scores for LSST trust training
   build_object_epoch_snapshots.py  Build gold table (51 features + 16 experts)
   build_expert_helpfulness.py Build helpfulness rows for ALL 16 experts
-  train_expert_trust.py       Train trust heads (auto-discovers 18 experts from helpfulness)
+  train_expert_trust.py       Train trust heads (auto-discovers experts from helpfulness; SN-filter list in expert_trust.py)
   train_followup.py           Train follow-up head
   score_nightly.py            Emit expert_confidence + trust-weighted ensemble
   fetch_lightcurves.py        Fetch + cache lightcurves (ZTF + LSST)
@@ -178,8 +192,8 @@ data/            (gitignored)
   silver/broker_events.parquet        Event-level (with dedup)
   silver/local_expert_outputs/        Per-epoch local expert scores
   truth/object_truth.parquet          Multi-source truth table
-  gold/object_epoch_snapshots.parquet 51 features + 18 expert projections
-  gold/expert_helpfulness.parquet     Per-expert training rows (ALL 18)
+  gold/object_epoch_snapshots.parquet 51 features + 28 expert projections
+  gold/expert_helpfulness.parquet     Per-expert training rows (auto-discovered)
 
 models/          (gitignored)
   trust/<expert>/model.pkl + metadata.json

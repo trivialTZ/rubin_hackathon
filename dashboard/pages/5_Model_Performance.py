@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — Page 5: Model Performance.
+"""metaDEBASS Dashboard — Page 5: Model Performance.
 
 Publication-quality metrics, ROC curves, coverage analysis.
 """
@@ -18,11 +18,11 @@ from lib.data_loader import (
 from lib.charts import coverage_vs_ndet
 from lib.style import CUSTOM_CSS, expert_name, CLASS_COLORS
 
-st.set_page_config(page_title="DEBASS — Model Performance", page_icon="📊", layout="wide")
+st.set_page_config(page_title="metaDEBASS — Model Performance", page_icon="📊", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("📊 Model Performance")
-st.caption("Metrics for the DEBASS meta-classifier trust heads and follow-up model.")
+st.caption("Metrics for the metaDEBASS meta-classifier trust heads and follow-up model.")
 
 # ── Load metrics ──────────────────────────────────────────────────
 trust_metrics = load_trust_metrics()

@@ -24,3 +24,18 @@ def test_build_truth_table_marks_labels_csv_as_weak(tmp_path: Path) -> None:
     assert truth_df["label_source"].tolist() == ["alerce_self_label", "alerce_self_label"]
     assert truth_df["label_quality"].tolist() == ["weak", "weak"]
     assert truth_df["final_class_ternary"].tolist() == ["snia", "other"]
+
+
+def test_build_truth_table_skips_unlabelled_candidate_rows(tmp_path: Path) -> None:
+    labels_path = tmp_path / "labels.csv"
+    labels_path.write_text("object_id,label\nZTF1,snia\n313123,\n")
+
+    out_path = build_truth_table(
+        input_path=None,
+        labels_path=labels_path,
+        output_path=tmp_path / "object_truth.parquet",
+    )
+    truth_df = pd.read_parquet(out_path)
+
+    assert truth_df["object_id"].tolist() == ["ZTF1"]
+    assert truth_df["final_class_ternary"].tolist() == ["snia"]

@@ -1,4 +1,4 @@
-"""Baseline classifiers for the DEBASS meta-classifier benchmark.
+"""Baseline classifiers for the metaDEBASS meta-classifier benchmark.
 
 All baselines share the same fit(X, y) / predict_proba(X) interface
 so they can be swapped into the evaluation pipeline without changes.

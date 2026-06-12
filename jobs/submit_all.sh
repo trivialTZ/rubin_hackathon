@@ -1,5 +1,5 @@
 #!/bin/bash -l
-# submit_all.sh — Submit the full DEBASS trust-aware SCC pipeline.
+# submit_all.sh — Submit the full metaDEBASS trust-aware SCC pipeline.
 #
 # Usage:
 #   cd $DEBASS_ROOT
@@ -117,7 +117,7 @@ qsub_submit() {
 }
 
 echo "======================================="
-echo " DEBASS SCC Pipeline Submission"
+echo " metaDEBASS SCC Pipeline Submission"
 echo "======================================="
 echo " DEBASS_ROOT:      $DEBASS_ROOT"
 echo " DEBASS_LIMIT:     $DEBASS_LIMIT objects"

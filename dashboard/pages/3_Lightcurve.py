@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — Page 3: Lightcurve Explorer.
+"""metaDEBASS Dashboard — Page 3: Lightcurve Explorer.
 
 Interactive multi-band lightcurve viewer with feature annotations.
 """
@@ -17,7 +17,7 @@ from lib.data_loader import (
 from lib.charts import lightcurve_plot
 from lib.style import CUSTOM_CSS, BAND_COLORS
 
-st.set_page_config(page_title="DEBASS — Lightcurves", page_icon="📈", layout="wide")
+st.set_page_config(page_title="metaDEBASS — Lightcurves", page_icon="📈", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("📈 Lightcurve Explorer")

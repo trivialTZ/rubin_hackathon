@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "debass_meta"
 version = "0.1.0"
-description = "DEBASS meta-classifier: trust-aware fusion of Rubin broker outputs"
+description = "metaDEBASS meta-classifier: trust-aware fusion of Rubin broker outputs"
 requires-python = ">=3.10"
 dependencies = [
     "alerce>=2.3.0,<3",

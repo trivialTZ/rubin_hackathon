@@ -1,10 +1,10 @@
-# AGENTS.md — DEBASS Project Context
+# AGENTS.md — metaDEBASS Project Context
 
 This file tells Codex how to work with this repository.
 
 ## Project Summary
 
-DEBASS is a trust-aware early-epoch transient system.
+metaDEBASS is a trust-aware early-epoch transient system.
 Its primary product is **per-expert confidence** at a given object epoch, with
 an optional trust-weighted follow-up proxy as a secondary output.
 

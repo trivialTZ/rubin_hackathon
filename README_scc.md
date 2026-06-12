@@ -1,4 +1,4 @@
-# DEBASS on BU SCC — Trust Pipeline Guide
+# metaDEBASS on BU SCC — Trust Pipeline Guide
 
 ## 1. One-time environment setup
 

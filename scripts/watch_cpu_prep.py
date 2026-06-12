@@ -212,7 +212,7 @@ def main() -> None:
                 states[build_job] = "failed"
 
             os.system("clear")
-            print("DEBASS CPU Prep Watch")
+            print("metaDEBASS CPU Prep Watch")
             print(f"meta: {meta_path}")
             print(f"download log: {download_log or '<not recorded>'}")
             print(f"build log:    {build_log or '<not recorded>'}")

@@ -6,7 +6,7 @@ We treat it as a container for:
   • `antares/superphot_plus` — de Soto+ 2024 5-class SN classifier
 
 Both emit per-alert tags on a locus; we retrieve the locus history and map
-each tag to a DEBASS-ternary projection.  When `antares-client` is not
+each tag to a metaDEBASS-ternary projection.  When `antares-client` is not
 installed or credentials are missing, the adapter gracefully returns an
 empty BrokerOutput with availability=False.
 
@@ -24,7 +24,7 @@ from .identifiers import infer_identifier_kind
 
 _FIXTURE_DIR = Path("fixtures/raw/antares")
 
-# Subset of tags DEBASS cares about.  Exact tag names are stable per ANTARES
+# Subset of tags metaDEBASS cares about.  Exact tag names are stable per ANTARES
 # filter registration; see RTN-090 for operational filters.
 _DEBASS_TAGS: dict[str, str] = {
     # Superphot+ class tags (one per alert with score)
@@ -165,7 +165,7 @@ class AntaresAdapter(BrokerAdapter):
                 tag_name = tag.get("name") or tag.get("tag") or tag.get("locus_tag")
                 if tag_name is None:
                     continue
-                # Map known tags to DEBASS experts
+                # Map known tags to metaDEBASS experts
                 expert_key = _DEBASS_TAGS.get(tag_name) or _tag_family(tag_name)
                 if expert_key is None:
                     continue

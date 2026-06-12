@@ -33,7 +33,7 @@ export NUMEXPR_NUM_THREADS="${NSLOTS:-1}"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: SuperNNova local inference (CPU, batch mode) ==="
+echo "=== metaDEBASS: SuperNNova local inference (CPU, batch mode) ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 echo "Slots: ${NSLOTS:-1}"

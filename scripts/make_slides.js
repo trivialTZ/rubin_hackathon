@@ -1,7 +1,7 @@
 /**
- * DEBASS Rubin Hackathon – Slide Deck
+ * metaDEBASS Rubin Hackathon – Slide Deck
  * Run: node scripts/make_slides.js
- * Output: docs/DEBASS_slides.pptx
+ * Output: docs/metaDEBASS_slides.pptx
  */
 
 const pptxgen = require("pptxgenjs");
@@ -10,7 +10,7 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const FIGS = path.join(ROOT, "docs", "slides_figures");
-const OUT  = path.join(ROOT, "docs", "DEBASS_slides.pptx");
+const OUT  = path.join(ROOT, "docs", "metaDEBASS_slides.pptx");
 
 // ── Palette (deep-space astronomy theme) ──────────────────────────────────
 const C = {
@@ -84,7 +84,7 @@ function statBlock(slide, x, y, w, h, value, label, col) {
 }
 
 function footer(slide, text) {
-  slide.addText(text || "DEBASS · Rubin Hackathon 2026", {
+  slide.addText(text || "metaDEBASS · Rubin Hackathon 2026", {
     x: 0, y: 5.35, w: 10, h: 0.28,
     fontSize: 8, color: C.muted, fontFace: "Calibri",
     align: "center", margin: 0,
@@ -95,8 +95,8 @@ function footer(slide, text) {
 const pres = new pptxgen();
 const RECT = pres.shapes.RECTANGLE;
 pres.layout = "LAYOUT_16x9";
-pres.author = "DEBASS Team";
-pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
+pres.author = "metaDEBASS Team";
+pres.title  = "metaDEBASS: Real-Time Transient Classification for Rubin/LSST";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Slide 1 – Title
@@ -116,7 +116,7 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
     fill: { color: C.blue }, line: { color: C.blue },
   });
 
-  sl.addText("DEBASS", {
+  sl.addText("metaDEBASS", {
     x: 0.5, y: 0.9, w: 9, h: 1.1,
     fontSize: 64, bold: true, color: C.blue, fontFace: "Calibri",
     charSpacing: 6, margin: 0,
@@ -127,7 +127,7 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
   });
   sl.addText(
     "Broker Fusion · Expert Trust · Follow-up Prioritisation\n" +
-    "3–5 detections → spectroscopic priority score",
+    "3–5 detections → expert_confidence plus follow-up proxy",
     {
       x: 0.5, y: 3.1, w: 9, h: 0.8,
       fontSize: 14, color: C.muted, fontFace: "Calibri", margin: 0,
@@ -137,8 +137,8 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
   // stat pills bottom
   const pills = [
     { v: "6,958",    l: "training objects", c: C.teal },
-    { v: "18",       l: "expert classifiers", c: C.blue },
-    { v: "AUC 0.995",l: "follow-up head", c: C.green },
+    { v: "28",       l: "registered experts", c: C.blue },
+    { v: "AUC 0.970",l: "follow-up proxy", c: C.green },
     { v: "51",       l: "LC features", c: C.orange },
   ];
   pills.forEach((p, i) => {
@@ -211,7 +211,7 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
 {
   const sl = pres.addSlide();
   sl.background = { color: C.bg };
-  headerBar(sl, "DEBASS Pipeline Architecture", "From raw broker alerts to spectroscopic priority score");
+  headerBar(sl, "metaDEBASS Pipeline Architecture", "From raw broker alerts to expert confidence and a secondary follow-up proxy");
 
   sl.addImage({
     path: figPath("fig5_architecture.png"),
@@ -267,7 +267,7 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
     { t: "What is a trust head?", b: "Each broker expert gets its own LightGBM binary model that predicts whether that expert's classification will be correct on this object at this epoch.", c: C.blue },
     { t: "Training signal", b: "Ground truth: is the expert's top class the same as the object's true class? Grouped train/cal/test split prevents object-level leakage.", c: C.teal },
     { t: "Native NaN support", b: "Missing broker scores are passed directly to LightGBM — no imputation. Absence of a score is itself informative.", c: C.orange },
-    { t: "Phase-calibrated", b: "Trust heads are trained on 6 experts in current phase; 18 registered experts targeted for Rubin LSST full deployment.", c: C.purple },
+    { t: "Phase-calibrated", b: "Trust heads are trained for 12 v7 experts; 28 registered experts are tracked for Rubin LSST deployment.", c: C.purple },
   ];
 
   bullets.forEach((b, i) => {
@@ -333,7 +333,7 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
 {
   const sl = pres.addSlide();
   sl.background = { color: C.bg };
-  headerBar(sl, "Follow-up Priority Head", "Trust-weighted ensemble · LightGBM · 165 features");
+  headerBar(sl, "Follow-up Proxy Head", "Secondary triage layer downstream of expert_confidence");
 
   // large AUC callout
   card(sl, 0.45, 1.18, 3.4, 2.1, C.panel);
@@ -345,22 +345,22 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
     x: 0.6, y: 1.3, w: 3.1, h: 0.38,
     fontSize: 12, color: C.muted, fontFace: "Calibri", align: "center", margin: 0,
   });
-  sl.addText("0.9949", {
+  sl.addText("0.970", {
     x: 0.6, y: 1.62, w: 3.1, h: 0.95,
     fontSize: 52, bold: true, color: C.green, fontFace: "Calibri",
     align: "center", margin: 0,
   });
-  sl.addText("held-out test set (n=5,972)", {
+  sl.addText("held-out v7 test set", {
     x: 0.6, y: 2.55, w: 3.1, h: 0.35,
     fontSize: 9, color: C.muted, fontFace: "Calibri", align: "center", margin: 0,
   });
 
   // secondary metrics
   const secondaryStats = [
-    { v: "0.0305", l: "Brier score",         c: C.teal },
-    { v: "39.2%",  l: "SN Ia positive rate", c: C.orange },
-    { v: "5,918",  l: "training objects",    c: C.blue },
-    { v: "165",    l: "total features",      c: C.purple },
+    { v: "0.0596", l: "Brier score",         c: C.teal },
+    { v: "0.0065", l: "calibrated ECE",      c: C.orange },
+    { v: "12",     l: "trust heads",         c: C.blue },
+    { v: "51",     l: "LC features",         c: C.purple },
   ];
   secondaryStats.forEach((s, i) => {
     const x = 0.45 + (i % 2) * 1.82;
@@ -393,7 +393,7 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
   // right: what changed
   const changes = [
     { t: "5,918 → 6,958 objects", d: "+18% more training data including LSST candidates from ALeRCE Rubin beta.", c: C.green },
-    { t: "6 → 18 registered experts", d: "Added Pitt-Google BigQuery (ZTF + LSST), ALeRCE 2025β stamp, Fink LSST SNN/CATS/EarlySNIa.", c: C.blue },
+    { t: "12 calibrated / 28 registered", d: "Added Pitt-Google BigQuery, AMPEL, Babamul context, expanded Fink LSST, and local re-runners.", c: C.blue },
     { t: "Dual-survey support", d: "LSST objects query both native LSST and ZTF-supplement brokers via association table (≤2 arcsec).", c: C.teal },
     { t: "51 LC features (was 32)", d: "Added per-band u/g/r/i/z/y statistics, colour slopes, and survey_is_lsst flag.", c: C.orange },
     { t: "Multi-source truth", d: "TNS spectroscopic + Fink crossmatch + host galaxy context (SIMBAD + photo-z + Gaia).", c: C.purple },
@@ -420,12 +420,12 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Slide 9 – Expert Registry (18 experts table)
+// Slide 9 – Expert Registry (sample table)
 // ═══════════════════════════════════════════════════════════════════════════
 {
   const sl = pres.addSlide();
   sl.background = { color: C.bg };
-  headerBar(sl, "18 Registered Expert Classifiers", "Heterogeneous brokers across ZTF and LSST surveys");
+  headerBar(sl, "Registered Expert Classifiers", "Sample of 28 heterogeneous experts across ZTF and LSST surveys");
 
   const expertRows = [
     [{ text: "Expert Key", options: { bold: true, color: C.blue } },
@@ -507,11 +507,11 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
   });
 
   const nexts = [
-    { n: "01", t: "Activate all 18 experts", d: "Train trust heads for all registered experts once LSST Fink, Pitt-Google LSST, and ALeRCE Rubin stamp data volume is sufficient.", c: C.blue },
+    { n: "01", t: "Activate more experts", d: "Train trust heads for additional registered experts once LSST, Pitt-Google, ALeRCE, and ANTARES data volume is sufficient.", c: C.blue },
     { n: "02", t: "LSST-trained local experts", d: "Retrain SuperNNova & ParSNIP on ELAsTiCC simulations for native LSST lightcurve inference.", c: C.teal },
-    { n: "03", t: "Real-time nightly pipeline", d: "Deploy submit_nightly.sh on SCC, streaming broker alerts → priority scores within 30 min of alert release.", c: C.orange },
-    { n: "04", t: "Calibration study", d: "Formal reliability diagrams for p_follow scores. Brier decomposition: resolution vs. calibration contributions.", c: C.purple },
-    { n: "05", t: "TOO integration", d: "Feed p_follow scores into Target-of-Opportunity queue for 4-m spectroscopic telescopes (NTT, P200, Keck).", c: C.green },
+    { n: "03", t: "Real-time nightly pipeline", d: "Deploy submit_nightly.sh on SCC, streaming broker alerts → expert_confidence within 30 min of alert release.", c: C.orange },
+    { n: "04", t: "Calibration study", d: "Formal reliability diagrams for trust and p_follow_proxy. Brier decomposition: resolution vs. calibration contributions.", c: C.purple },
+    { n: "05", t: "TOO integration", d: "Feed p_follow_proxy and expert_confidence into Target-of-Opportunity queueing for spectroscopic telescopes.", c: C.green },
     { n: "06", t: "Association quality upgrade", d: "Replace 2-arcsec heuristic with proper Bayesian cross-match using Gaia proper motion and host photo-z priors.", c: C.red },
   ];
 
@@ -543,7 +543,7 @@ pres.title  = "DEBASS: Real-Time Transient Classification for Rubin/LSST";
     });
   });
 
-  footer(sl, "DEBASS · Rubin Hackathon 2026 · github.com/rubin_hackathon");
+  footer(sl, "metaDEBASS · Rubin Hackathon 2026 · github.com/rubin_hackathon");
 }
 
 // ── Write output ───────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS — honest alerce_lc retrain: train ONLY on train-fold objects to eliminate
+# metaDEBASS — honest alerce_lc retrain: train ONLY on train-fold objects to eliminate
 # cohort-overlap leakage with downstream trust/followup heads.
 #   qsub -N debass_alerce_honest -cwd -V -l h_rt=02:00:00 -l mem_per_core=8G -pe omp 4 \
 #        -o logs/alerce_lc_honest.out -e logs/alerce_lc_honest.err jobs/run_alerce_lc_honest.sh

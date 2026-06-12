@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — Plotly chart factory functions."""
+"""metaDEBASS Dashboard — Plotly chart factory functions."""
 from __future__ import annotations
 
 import numpy as np

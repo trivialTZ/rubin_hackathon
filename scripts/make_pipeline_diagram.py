@@ -1,5 +1,5 @@
 """
-DEBASS end-to-end pipeline diagram — publication style.
+metaDEBASS end-to-end pipeline diagram — publication style.
 Run: python scripts/make_pipeline_diagram.py
 Output: docs/slides_figures/fig_pipeline.{png,pdf}
 """
@@ -11,16 +11,12 @@ import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch
 from pathlib import Path
 
+from metadebass_plot_style import PALETTE, apply_neurips_style
+
 OUT = Path(__file__).parent.parent / "docs" / "slides_figures"
 OUT.mkdir(parents=True, exist_ok=True)
 
-plt.rcParams.update({
-    "font.family":  "serif",
-    "font.serif":   ["Times New Roman", "DejaVu Serif", "serif"],
-    "font.size":    8,
-    "figure.facecolor": "white",
-    "axes.facecolor":   "white",
-})
+apply_neurips_style(base_font_size=8)
 
 # ── Canvas ────────────────────────────────────────────────────────────
 XW, YH = 10.0, 26.0
@@ -32,11 +28,11 @@ ax.axis("off")
 # ── Section palette ───────────────────────────────────────────────────
 # (background, border/title)
 PAL = {
-    "col": ("#D6EAF8", "#2874A6"),   # blue
-    "tru": ("#D5F5E3", "#1E8449"),   # green
-    "fea": ("#FEFDE7", "#9A7D0A"),   # amber
-    "tra": ("#F4ECF7", "#7D3C98"),   # purple
-    "sco": ("#FDEDEC", "#CB4335"),   # red
+    "col": ("#EFF6FF", PALETTE["blue"]),
+    "tru": ("#ECFDF5", PALETTE["green"]),
+    "fea": ("#FFFBEB", PALETTE["orange"]),
+    "tra": ("#F5F3FF", PALETTE["purple"]),
+    "sco": ("#F8FAFC", PALETTE["black"]),
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -181,7 +177,7 @@ node(5.0, GY, 9.0, GH,
      "For each (object_id,  n_det = 1 … 20):\n"
      "  •  51 LC features           (no-leakage truncated lightcurve)\n"
      "  •  survey flag              (survey_is_lsst:  ZTF = 0,  LSST = 1)\n"
-     "  •  18 expert projections    (p_snia, p_nonIa, p_other per expert)\n"
+     "  •  28 expert projections    (p_snia, p_nonIa, p_other or context)\n"
      "  •  truth label              (if available)\n\n"
      "data/gold/object_epoch_snapshots.parquet",
      fs=7, fc="#FEFBE8", ec="#9A7D0A", mono=False)
@@ -206,11 +202,11 @@ arr(5.0, HY - 0.5, 5.0, 6.95, lc="0.4")
 # Trust heads
 TY, TH = 5.9, 2.3
 node(5.0, TY, 6.5, TH,
-     "Per-Expert Trust Heads  (×6 trained  ·  ×18 registered)\n\n"
+     "Per-Expert Trust Heads  (12 calibrated in v7  ·  28 registered)\n\n"
      "LightGBM binary classifier — one per expert\n"
      "Input :  51 LC features  +  expert projection  +  availability flags\n"
-     "Target:  is_topclass_correct\n"
-     "Output:  trust  q  in  [0, 1]\n\n"
+     "Target:  is_topclass_correct  or  is_sn  (SN-filter experts)\n"
+     "Output:  calibrated trust  q_i  in  [0, 1]\n\n"
      "→  models/trust/{expert_key}/model.pkl",
      fs=7, fc="white", ec="#7D3C98")
 arr(5.0, TY - TH / 2, 5.0, 4.4, lc="0.4")
@@ -218,10 +214,10 @@ arr(5.0, TY - TH / 2, 5.0, 4.4, lc="0.4")
 # Follow-up head
 FUY, FUH = 3.5, 2.1
 node(5.0, FUY, 6.5, FUH,
-     "Follow-Up Head  (shared model)\n\n"
+     "Follow-Up Proxy Head  (secondary shared model)\n\n"
      "Input :  all trust scores  q_i  +  expert projections  +  51 LC features\n"
      "Target:  target_follow_proxy\n"
-     "Output:  p_follow  in  [0, 1]          ROC-AUC = 0.9949  (held-out test)\n\n"
+     "Output:  p_follow_proxy  in  [0, 1]\n\n"
      "→  models/followup/model.pkl",
      fs=7, fc="white", ec="#7D3C98")
 
@@ -234,9 +230,8 @@ panel(0.2, 2.0, "sco", "SCORING OUTPUT")
 
 node(5.0, 1.05, 9.0, 1.3,
      "score_nightly.py\n\n"
-     "Per expert:  trust  ·  projected probs  ·  mapped_pred_class\n"
-     "Ensemble:  p_snia_weighted (trust-weighted avg)  ·  "
-     "p_follow_proxy (learned)  ·  recommended (yes / no)\n"
+     "Primary:  expert_confidence[expert_key] = trust  ·  projected evidence  ·  exactness\n"
+     "Secondary:  p_snia_weighted  ·  p_follow_proxy  ·  recommended (yes / no)\n"
      "→  reports/scores/*.jsonl",
      fs=7, fc="white", ec="#CB4335")
 

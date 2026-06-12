@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyze DEBASS pipeline results and produce a science-ready summary.
+"""Analyze metaDEBASS pipeline results and produce a science-ready summary.
 
 Generates:
   reports/results_summary.json   — Machine-readable metrics digest
@@ -233,7 +233,7 @@ def temporal_evolution(snapshot_df: pd.DataFrame) -> dict:
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Analyze DEBASS pipeline results")
+    parser = argparse.ArgumentParser(description="Analyze metaDEBASS pipeline results")
     parser.add_argument("--snapshots", default="data/gold/object_epoch_snapshots_trust.parquet")
     parser.add_argument("--snapshots-raw", default="data/gold/object_epoch_snapshots.parquet")
     parser.add_argument("--helpfulness", default="data/gold/expert_helpfulness.parquet")
@@ -248,7 +248,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    summary = {"pipeline": "DEBASS trust-aware meta-classifier", "phase": "Phase 1 (CPU)"}
+    summary = {"pipeline": "metaDEBASS trust-aware meta-classifier", "phase": "Phase 1 (CPU)"}
 
     # ── Load data ────────────────────────────────────────────────────────
     snapshot_path = Path(args.snapshots)
@@ -403,7 +403,7 @@ def main() -> None:
     txt_out = output_dir / "results_summary.txt"
     lines = []
     lines.append("=" * 72)
-    lines.append("DEBASS Trust-Aware Meta-Classifier — Results Summary")
+    lines.append("metaDEBASS Trust-Aware Meta-Classifier — Results Summary")
     lines.append("=" * 72)
     lines.append("")
     lines.append(f"Objects:      {summary['n_objects']}")

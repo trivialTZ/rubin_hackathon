@@ -1,4 +1,4 @@
-# DEBASS Light-up Runbook — exact SCC commands
+# metaDEBASS Light-up Runbook — exact SCC commands
 
 **Companion to `plan_lightup_campaign.md`.** Every phase has copy-pasteable commands. Run from `/project/pi-brout/rubin_hackathon/` with `source .venv/bin/activate` active.
 
@@ -378,7 +378,7 @@ python3 scripts/analyze_results.py \
 python3 scripts/make_paper_figures.py \
     --latency reports/metrics/latency_curves.parquet \
     --trust-metrics reports/metrics/expert_trust_metrics.json \
-    --out-dir paper/debass_aas/figures \
+    --out-dir paper/metaDEBASS_aas/figures \
     2>&1 | tee logs/figures_$(date +%Y%m%d).log
 ```
 

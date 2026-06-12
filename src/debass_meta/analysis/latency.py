@@ -392,7 +392,7 @@ def plot_auc_vs_ndet(latency: LatencyResult, out_path: str) -> None:
     ax.axhline(0.9, color="gray", ls="--", lw=0.7, label="AUC = 0.9")
     ax.set_xlabel("n_det")
     ax.set_ylabel("AUC (is_SN Ia)")
-    ax.set_title("DEBASS — AUC vs n_det (95% CI bootstrap)")
+    ax.set_title("metaDEBASS — AUC vs n_det (95% CI bootstrap)")
     ax.legend(loc="lower right", frameon=False, fontsize=9)
     ax.set_ylim(0.4, 1.0)
     ax.grid(alpha=0.3)

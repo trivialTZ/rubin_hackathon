@@ -158,7 +158,7 @@ def evaluate_preml_readiness(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Check pre-ML readiness for DEBASS")
+    parser = argparse.ArgumentParser(description="Check pre-ML readiness for metaDEBASS")
     parser.add_argument("--root", default=".")
     parser.add_argument("--labels", default=None)
     parser.add_argument("--lightcurves-dir", default=None)

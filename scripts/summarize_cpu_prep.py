@@ -1,4 +1,4 @@
-"""Summarize DEBASS CPU-prep outputs and on-disk data structures.
+"""Summarize metaDEBASS CPU-prep outputs and on-disk data structures.
 
 Usage:
     python scripts/summarize_cpu_prep.py
@@ -392,7 +392,7 @@ def _print_summary(summary: dict[str, Any]) -> None:
     local_experts = summary["local_expert_outputs"]
     checks = summary["checks"]
 
-    p("DEBASS CPU Prep Summary")
+    p("metaDEBASS CPU Prep Summary")
     p(f"generated_at_utc: {summary['generated_at_utc']}")
     p(f"data_root:         {summary['data_root']}")
     p("")
@@ -451,7 +451,7 @@ def _print_summary(summary: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Summarize DEBASS CPU-prep outputs")
+    parser = argparse.ArgumentParser(description="Summarize metaDEBASS CPU-prep outputs")
     parser.add_argument("--data-root", default="data")
     parser.add_argument("--json-out", default=None, help="Optional JSON report path")
     parser.add_argument("--strict", action="store_true", help="Exit nonzero if core CPU checks fail")

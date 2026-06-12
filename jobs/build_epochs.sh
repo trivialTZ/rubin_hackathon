@@ -27,7 +27,7 @@ source "$DEBASS_VENV/bin/activate"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: building trust-aware CPU artifacts ==="
+echo "=== metaDEBASS: building trust-aware CPU artifacts ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 

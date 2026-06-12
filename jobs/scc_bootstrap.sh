@@ -127,7 +127,7 @@ fi
 export DEBASS_ROOT DEBASS_VENV DEBASS_PYTHON_MODULE DEBASS_LIMIT DEBASS_MAX_N_DET
 
 echo "======================================="
-echo " DEBASS SCC Bootstrap"
+echo " metaDEBASS SCC Bootstrap"
 echo "======================================="
 echo " DEBASS_ROOT:          $DEBASS_ROOT"
 echo " DEBASS_VENV:          $DEBASS_VENV"

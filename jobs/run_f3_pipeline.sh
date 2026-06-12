@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F3 pipeline: gold snapshots → helpfulness → trust heads → followup → analyze
+# metaDEBASS Light-up — F3 pipeline: gold snapshots → helpfulness → trust heads → followup → analyze
 # Run from /project/pi-brout/rubin_hackathon after normalize (F2) finishes.
 # Submit as:  qsub -N debass_f3 -cwd -V -l h_rt=04:00:00 -l mem_per_core=16G -pe omp 4 \
 #                  -o logs/f3.qsub.out -e logs/f3.qsub.err jobs/run_f3_pipeline.sh

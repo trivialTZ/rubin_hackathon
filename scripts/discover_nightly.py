@@ -400,7 +400,7 @@ def main() -> None:
     since_date = (datetime.now(timezone.utc) - timedelta(days=args.lookback_days)).strftime("%Y-%m-%d")
     until_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    print(f"=== DEBASS Nightly Discovery ===")
+    print(f"=== metaDEBASS Nightly Discovery ===")
     print(f"Date: {until_date}")
     print(f"Lookback: {args.lookback_days} days (since MJD {since_mjd:.1f})")
     print()

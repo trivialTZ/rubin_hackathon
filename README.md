@@ -1,6 +1,6 @@
-# DEBASS_meta — Trust-Aware Early-Epoch Transient Meta-Classifier
+# metaDEBASS — Trust-Aware Early-Epoch Transient Meta-Classifier
 
-DEBASS estimates **which expert/classifier is trustworthy at a given early epoch**
+metaDEBASS estimates **which expert/classifier is trustworthy at a given early epoch**
 and then turns those trust estimates into a follow-up recommendation.
 
 The primary science product is not a single fused class posterior. It is
@@ -14,7 +14,7 @@ resources are scarce — you need to decide *which transients are worth observin
 within hours, often before a full lightcurve is available.
 
 Existing brokers (ALeRCE, Fink, Lasair) and local experts (ParSNIP, SuperNNova)
-provide heterogeneous signals with different failure modes. DEBASS models those
+provide heterogeneous signals with different failure modes. metaDEBASS models those
 experts separately, preserves temporal exactness, and produces calibrated
 per-expert trust before any follow-up score.
 

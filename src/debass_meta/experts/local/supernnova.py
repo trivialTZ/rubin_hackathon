@@ -368,7 +368,7 @@ class SuperNNovaExpert(LocalExpert):
         return lightcurve
 
     def _lc_to_snn_dataframe(self, object_id: str, lightcurve: list[dict]) -> Any:
-        """Convert DEBASS lightcurve to SuperNNova DataFrame format.
+        """Convert metaDEBASS lightcurve to SuperNNova DataFrame format.
 
         SuperNNova expects columns: SNID, MJD, FLUXCAL, FLUXCALERR, FLT.
         Our cache stores magnitudes; this converts mag → flux at zeropoint=27.5

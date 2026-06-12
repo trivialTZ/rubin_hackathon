@@ -6,7 +6,7 @@ exposes a CSV endpoint for the ~11,500 spectroscopically-confirmed transients
 with ZTF IDs, TNS names, types (Ia, II, Ib/c, IIn, SLSN-I/II, TDE, nova,
 LBV, ILRT), redshifts, and host properties.
 
-This is DEBASS Truth Tier 1.5 (real-sky, spec-confirmed, fine subtypes),
+This is metaDEBASS Truth Tier 1.5 (real-sky, spec-confirmed, fine subtypes),
 sitting between TNS spectroscopic and broker consensus.
 
 Output: data/truth/ztf_bts.parquet
@@ -51,7 +51,7 @@ def _download_csv(url: str, timeout: int = 60) -> pd.DataFrame:
 
 
 def _normalise_bts(df: pd.DataFrame) -> pd.DataFrame:
-    """Canonicalise column names and map subtype → DEBASS ternary."""
+    """Canonicalise column names and map subtype → metaDEBASS ternary."""
     col_map = {
         # Canonical BTS headers: ZTFID,IAUID,RA,Dec,peakt,peakfilt,peakmag,
         # peakabs,duration,rise,fade,type,redshift,b,A_V

@@ -1,6 +1,6 @@
 # Science Contract
 
-DEBASS is a trust-aware early-epoch transient system.
+metaDEBASS is a trust-aware early-epoch transient system.
 
 ## Primary Output
 

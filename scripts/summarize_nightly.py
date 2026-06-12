@@ -67,7 +67,7 @@ def format_table(summaries: list[dict], top: int = 100) -> str:
                    reverse=True)
 
     lines = []
-    lines.append(f"DEBASS Nightly Follow-up Candidates (top {min(top, len(summaries))} of {len(summaries)})")
+    lines.append(f"metaDEBASS Nightly Follow-up Candidates (top {min(top, len(summaries))} of {len(summaries)})")
     lines.append("=" * 110)
     header = (
         f"{'Rank':>4}  {'Object ID':<22} {'n_det':>5}  {'p_follow':>8}  "

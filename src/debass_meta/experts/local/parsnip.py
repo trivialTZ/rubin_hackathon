@@ -5,7 +5,7 @@ ParSNIP inference requires two artifacts:
   - ``classifier.pkl``: a trained ``parsnip.Classifier`` that maps ParSNIP
     latent predictions to calibrated class probabilities
 
-The DEBASS lightcurve cache stores ZTF detections as MJD + magnitudes. This
+The metaDEBASS lightcurve cache stores ZTF detections as MJD + magnitudes. This
 wrapper converts those detections into the lcdata/ParSNIP table format expected
 by ``astro-parsnip``.
 """
@@ -408,7 +408,7 @@ class ParSNIPExpert(LocalExpert):
             redshift = table.meta.get("redshift", math.nan)
             if redshift is None or not math.isfinite(float(redshift)):
                 raise ValueError(
-                    "ParSNIP model requires redshift metadata, but the DEBASS lightcurve cache "
+                    "ParSNIP model requires redshift metadata, but the metaDEBASS lightcurve cache "
                     "does not provide one. Use a photo-z ParSNIP model or attach redshift metadata."
                 )
 

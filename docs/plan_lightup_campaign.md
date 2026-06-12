@@ -1,4 +1,4 @@
-# DEBASS Light-up Campaign — Strategic Plan
+# metaDEBASS Light-up Campaign — Strategic Plan
 
 **Created**: 2026-04-20
 **Goal**: Go from 3 → ~15+ live classifiers on BU SCC, covering every broker at least once, plus local physics experts. Strengthen the "heterogeneous broker fusion wins" paper claim.
@@ -175,7 +175,7 @@ After F6, "at least one live classifier per broker" means:
 - Gold: `/project/pi-brout/rubin_hackathon/data/gold/object_epoch_snapshots_trust.parquet`
 - Models: `/project/pi-brout/rubin_hackathon/models/trust/<expert>/`
 - Metrics: `/project/pi-brout/rubin_hackathon/reports/metrics/latency_curves.parquet`
-- Figures: `/project/pi-brout/rubin_hackathon/paper/debass_aas/figures/fig_*.pdf`
+- Figures: `/project/pi-brout/rubin_hackathon/paper/metaDEBASS_aas/figures/fig_*.pdf`
 - Live expert inventory: `/project/pi-brout/rubin_hackathon/reports/expert_inventory.json` (new — emitted by F6)
 
 ---

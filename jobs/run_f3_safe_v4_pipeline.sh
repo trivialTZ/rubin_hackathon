@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F3-SAFE-v3: SAFE + SALT3 + alerce_lc (7 clean experts).
+# metaDEBASS Light-up — F3-SAFE-v3: SAFE + SALT3 + alerce_lc (7 clean experts).
 #   qsub -N debass_f3safev3 -cwd -V -l h_rt=04:00:00 -l mem_per_core=16G -pe omp 4 \
 #        -o logs/f3safev3.qsub.out -e logs/f3safev3.qsub.err jobs/run_f3_safe_v4_pipeline.sh
 set -euo pipefail

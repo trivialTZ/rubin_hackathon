@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F6-SAFE: regenerate analyze + figures + ablation + CV from SAFE snapshots
+# metaDEBASS Light-up — F6-SAFE: regenerate analyze + figures + ablation + CV from SAFE snapshots
 # Run from /project/pi-brout/rubin_hackathon AFTER F3-SAFE finishes.
 #   qsub -N debass_f6safe -cwd -V -l h_rt=01:00:00 -l mem_per_core=8G -pe omp 2 \
 #        -o logs/f6safe.qsub.out -e logs/f6safe.qsub.err jobs/run_f6_safe_figures.sh
@@ -28,7 +28,7 @@ python3 -u scripts/make_paper_figures.py \
     --trust-metrics reports/metrics/expert_trust_metrics_safe.json \
     --snapshots data/gold/object_epoch_snapshots_trust_safe.parquet \
     --trust-models-dir models/trust_safe \
-    --out-dir paper/debass_aas/figures_safe
+    --out-dir paper/metaDEBASS_aas/figures_safe
 
 echo "$(ts) Step 3/5: plot_ablation (SAFE)"
 python3 -u scripts/plot_ablation.py \
@@ -56,6 +56,6 @@ echo "$(ts)   UNSAFE trust heads:  $(ls -1 models/trust/ 2>/dev/null | grep -v '
 echo "$(ts)   SAFE   trust heads:  $(ls -1 models/trust_safe/ 2>/dev/null | grep -v 'metadata.json$' | wc -l)"
 echo "$(ts)   UNSAFE followup AUC: $(python3 -c 'import json; print(json.load(open(\"reports/metrics/followup_metrics.json\"))[\"test\"][\"roc_auc\"])' 2>/dev/null || echo '?')"
 echo "$(ts)   SAFE   followup AUC: $(python3 -c 'import json; print(json.load(open(\"reports/metrics/followup_metrics_safe.json\"))[\"test\"][\"roc_auc\"])' 2>/dev/null || echo '?')"
-echo "$(ts)   UNSAFE figures: paper/debass_aas/figures/"
-echo "$(ts)   SAFE   figures: paper/debass_aas/figures_safe/"
+echo "$(ts)   UNSAFE figures: paper/metaDEBASS_aas/figures/"
+echo "$(ts)   SAFE   figures: paper/metaDEBASS_aas/figures_safe/"
 echo "$(ts) ============================================================"

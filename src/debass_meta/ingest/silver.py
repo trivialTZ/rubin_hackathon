@@ -15,6 +15,57 @@ from typing import Any
 _BRONZE_DIR = Path("data/bronze")
 _SILVER_DIR = Path("data/silver")
 
+EVENT_COLUMNS = [
+    "object_id",
+    "primary_object_id",
+    "requested_object_id",
+    "primary_identifier_kind",
+    "requested_identifier_kind",
+    "associated_object_id",
+    "association_kind",
+    "association_source",
+    "association_sep_arcsec",
+    "broker",
+    "classifier",
+    "classifier_version",
+    "expert_key",
+    "field",
+    "class_name",
+    "semantic_type",
+    "event_scope",
+    "event_time_jd",
+    "alert_id",
+    "n_det",
+    "raw_label_or_score",
+    "canonical_projection",
+    "ranking",
+    "availability",
+    "fixture_used",
+    "temporal_exactness",
+    "payload_hash",
+    "provenance_json",
+    "survey",
+    "source_endpoint",
+    "request_params_json",
+    "status_code",
+    "query_time_unix",
+]
+
+LEGACY_COLUMNS = [
+    "broker",
+    "object_id",
+    "query_time",
+    "survey",
+    "field",
+    "raw_label_or_score",
+    "semantic_type",
+    "canonical_projection",
+    "classifier",
+    "class",
+    "fixture_used",
+    "payload_hash",
+]
+
 
 def _serialize_raw_label_or_score(value: Any) -> str | None:
     """Return a parquet-safe string representation preserving the original value.
@@ -149,7 +200,7 @@ def bronze_to_silver(
     out_path = silver_dir / "broker_events.parquet"
     legacy_path = silver_dir / "broker_outputs.parquet"
 
-    silver_df = pd.DataFrame(event_rows)
+    silver_df = pd.DataFrame(event_rows, columns=EVENT_COLUMNS)
     if "raw_label_or_score" in silver_df.columns:
         silver_df["raw_label_or_score"] = silver_df["raw_label_or_score"].astype("string")
 
@@ -161,16 +212,16 @@ def bronze_to_silver(
     # pandas drop_duplicates treats NaN != NaN, so context experts with
     # event_time_jd=NaN are never deduped.  Fill NaN with a sentinel before
     # dedup, then restore.
-    dedup_cols = ["object_id", "expert_key", "event_time_jd", "field", "raw_label_or_score"]
-    _SENTINEL = -999.0
-    silver_df["_dedup_jd"] = silver_df["event_time_jd"].fillna(_SENTINEL)
-    _dedup_on = ["object_id", "expert_key", "_dedup_jd", "field", "raw_label_or_score"]
-    n_before = len(silver_df)
-    silver_df = silver_df.drop_duplicates(subset=_dedup_on, keep="last")
-    silver_df = silver_df.drop(columns=["_dedup_jd"])
-    n_dropped = n_before - len(silver_df)
-    if n_dropped > 0:
-        print(f"  silver dedup: {n_before:,} → {len(silver_df):,} ({n_dropped:,} duplicates removed)")
+    if len(silver_df) > 0:
+        _SENTINEL = -999.0
+        silver_df["_dedup_jd"] = silver_df["event_time_jd"].fillna(_SENTINEL)
+        _dedup_on = ["object_id", "expert_key", "_dedup_jd", "field", "raw_label_or_score"]
+        n_before = len(silver_df)
+        silver_df = silver_df.drop_duplicates(subset=_dedup_on, keep="last")
+        silver_df = silver_df.drop(columns=["_dedup_jd"])
+        n_dropped = n_before - len(silver_df)
+        if n_dropped > 0:
+            print(f"  silver dedup: {n_before:,} → {len(silver_df):,} ({n_dropped:,} duplicates removed)")
 
     # Ensure classifier_version is uniform string type — broker APIs return
     # a mix of str ("2.1.0"), int, and None which pyarrow rejects as mixed.
@@ -178,7 +229,7 @@ def bronze_to_silver(
         silver_df["classifier_version"] = silver_df["classifier_version"].astype("string")
     silver_df.to_parquet(out_path, index=False)
 
-    legacy_df = pd.DataFrame(legacy_rows)
+    legacy_df = pd.DataFrame(legacy_rows, columns=LEGACY_COLUMNS)
     if len(legacy_df) > 0:
         legacy_df["raw_label_or_score"] = legacy_df["raw_label_or_score"].astype("string")
     legacy_df.to_parquet(legacy_path, index=False)
@@ -206,6 +257,7 @@ def _default_event_scope(broker: str) -> str:
         "fink": "alert",
         "alerce": "object_snapshot",
         "lasair": "static_context",
+        "babamul": "static_context",
     }.get(broker, "object_snapshot")
 
 
@@ -214,4 +266,5 @@ def _default_exactness(broker: str) -> str:
         "fink": "exact_alert",
         "alerce": "latest_object_unsafe",
         "lasair": "static_safe",
+        "babamul": "static_safe",
     }.get(broker, "latest_object_unsafe")

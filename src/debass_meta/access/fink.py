@@ -29,6 +29,7 @@ _PROB_FIELDS = {
     "snn_snia_vs_nonia",
     "snn_sn_vs_all",
     "rf_kn_vs_nonkn",
+    "slsn_score",  # Superluminous SN classification, 0-1, returns -1 if insufficient
 }
 # ZTF: Fields that are heuristic / non-probability scores
 _SCORE_FIELDS = {
@@ -116,7 +117,7 @@ class FinkAdapter(BrokerAdapter):
         request_payload = {
             "objectId": object_id,
             "output-format": "json",
-            "columns": "i:jd,i:candid,i:ndethist,d:rf_snia_vs_nonia,d:snn_snia_vs_nonia,d:snn_sn_vs_all,d:rf_kn_vs_nonkn,d:mulens_class_1,d:finkclass",
+            "columns": "i:jd,i:candid,i:ndethist,d:rf_snia_vs_nonia,d:snn_snia_vs_nonia,d:snn_sn_vs_all,d:rf_kn_vs_nonkn,d:slsn_score,d:mulens_class_1,d:finkclass",
         }
 
         try:
@@ -378,6 +379,8 @@ class FinkAdapter(BrokerAdapter):
             return "fink/snn"
         if field_name == "rf_snia_vs_nonia":
             return "fink/rf_ia"
+        if field_name == "slsn_score":
+            return "fink/slsn"
         return "fink/aux"
 
     def _request(self, method: str, url: str, **kwargs):

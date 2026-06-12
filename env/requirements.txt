@@ -1,4 +1,4 @@
-# DEBASS meta-classifier — pinned dependencies
+# metaDEBASS meta-classifier — pinned dependencies
 # Install into a virtualenv on SCC:
 #   python3 -m venv ~/debass_meta_env
 #   source ~/debass_meta_env/bin/activate
@@ -20,6 +20,7 @@ numpy>=1.26
 # ML
 scikit-learn>=1.4
 lightgbm>=4.0
+xgboost>=2.0                  # AMPEL SNGuess vendored XGBoost classifier (T2BrightSNProb)
 scipy>=1.12
 
 # Positional crossmatch (TNS bulk CSV cone search)

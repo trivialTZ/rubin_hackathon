@@ -1,5 +1,5 @@
 {
-  "pipeline": "DEBASS trust-aware meta-classifier",
+  "pipeline": "metaDEBASS trust-aware meta-classifier",
   "phase": "Phase 1 (CPU)",
   "snapshot_file": "data/gold/object_epoch_snapshots_trust.parquet",
   "n_snapshot_rows": 29539,

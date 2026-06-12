@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate DEBASS infrastructure readiness for SCC deployment.
+"""Validate metaDEBASS infrastructure readiness for SCC deployment.
 
 Checks:
 - Python dependencies installed
@@ -228,7 +228,7 @@ def check_credentials():
 
 def main():
     print("=" * 60)
-    print("DEBASS Infrastructure Validation")
+    print("metaDEBASS Infrastructure Validation")
     print("=" * 60)
 
     issues = []

@@ -1,4 +1,4 @@
-# DEBASS GPU-stage dependencies
+# metaDEBASS GPU-stage dependencies
 # Install AFTER base requirements (env/requirements.txt).
 #
 # Step 1: Install PyTorch with CUDA support.

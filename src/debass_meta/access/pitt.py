@@ -207,7 +207,7 @@ class PittAdapter(BrokerAdapter):
 
         UPSILoN classes (7): delta_scuti, rr_lyrae, cepheid, type_ii_cepheid,
         eclipsing_binary, long_period_variable, non_variable.  All feed p_other
-        in the DEBASS ternary via the projector.
+        in the metaDEBASS ternary via the projector.
 
         Returns empty list on any error (table missing, no creds, etc.).
         """

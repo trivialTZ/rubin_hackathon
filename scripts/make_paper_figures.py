@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate DEBASS paper figures from the latency / metrics / models output.
+"""Generate metaDEBASS paper figures from the latency / metrics / models output.
 
-Writes to paper/debass_aas/figures/:
+Writes to paper/metaDEBASS_aas/figures/:
   fig_latency_curve.pdf          AUC vs n_det, trust-weighted vs baselines
   fig_calibration.pdf            Reliability diagrams per trust head (raw vs calibrated)
   fig_purity_completeness.pdf    Purity-completeness curves at n_det=3/5/10
@@ -56,7 +56,7 @@ def fig_latency_curve(latency_parquet: Path, out_dir: Path) -> None:
     ax.axhline(0.9, color="gray", ls="--", lw=0.7, label="AUC = 0.9")
     ax.set_xlabel("n_det (detections)")
     ax.set_ylabel("AUC (P(SN Ia))")
-    ax.set_title("DEBASS latency curve — 95% bootstrap CI")
+    ax.set_title("metaDEBASS latency curve — 95% bootstrap CI")
     ax.set_ylim(0.35, 1.0)
     ax.legend(loc="lower right", frameon=False, fontsize=9)
     ax.grid(alpha=0.3)
@@ -80,7 +80,7 @@ def fig_ensemble_gain(latency_parquet: Path, out_dir: Path) -> None:
     ax.axhline(0, color="gray", lw=0.7)
     ax.set_xlabel("n_det (detections)")
     ax.set_ylabel("Δ-AUC (trust-weighted − baseline)")
-    ax.set_title("DEBASS trust-weighted ensemble gain")
+    ax.set_title("metaDEBASS trust-weighted ensemble gain")
     ax.legend(frameon=False, fontsize=9)
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -116,7 +116,7 @@ def fig_purity_completeness(latency_parquet: Path, out_dir: Path) -> None:
     axes[1].set_xlabel("purity target")
     axes[1].legend(frameon=False)
     axes[1].grid(alpha=0.3)
-    fig.suptitle("DEBASS trust-weighted ensemble — purity × completeness tradeoffs")
+    fig.suptitle("metaDEBASS trust-weighted ensemble — purity × completeness tradeoffs")
     fig.tight_layout()
     _savefig(fig, out_dir / "fig_purity_completeness.pdf")
 
@@ -165,7 +165,7 @@ def fig_calibration(trust_metrics_json: Path, snapshot_parquet: Path,
     for i in range(n, rows * cols):
         axes[i // cols][i % cols].set_visible(False)
 
-    fig.suptitle("DEBASS calibration: Brier + ECE, raw vs isotonic-calibrated", y=1.02)
+    fig.suptitle("metaDEBASS calibration: Brier + ECE, raw vs isotonic-calibrated", y=1.02)
     fig.tight_layout()
     _savefig(fig, out_dir / "fig_calibration.pdf")
 
@@ -176,7 +176,7 @@ def main() -> None:
     parser.add_argument("--trust-metrics", default="reports/metrics/expert_trust_metrics.json")
     parser.add_argument("--snapshots", default="data/gold/object_epoch_snapshots_trust.parquet")
     parser.add_argument("--trust-models-dir", default="models/trust")
-    parser.add_argument("--out-dir", default="paper/debass_aas/figures")
+    parser.add_argument("--out-dir", default="paper/metaDEBASS_aas/figures")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)

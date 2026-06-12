@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "=== DEBASS v2 Retrain Pipeline ==="
+echo "=== metaDEBASS v2 Retrain Pipeline ==="
 echo "DEBASS_ROOT:    ${DEBASS_ROOT}"
 echo "Labels:         ${LABELS}"
 echo "Discover LSST:  ${DISCOVER_LSST} objects (0=skip)"

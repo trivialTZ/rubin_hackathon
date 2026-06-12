@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F3-SAFE: no-leakage rebuild for apples-to-apples comparison vs F3e.
+# metaDEBASS Light-up — F3-SAFE: no-leakage rebuild for apples-to-apples comparison vs F3e.
 # Drops `--allow-unsafe-latest-snapshot` on gold build AND `--allow-unsafe-alerce` on trust.
 # All outputs write to *_safe paths so F3e artifacts are preserved.
 # Submit as:  qsub -N debass_f3safe -cwd -V -l h_rt=04:00:00 -l mem_per_core=16G -pe omp 4 \

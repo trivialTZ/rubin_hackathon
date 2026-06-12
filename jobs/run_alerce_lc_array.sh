@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS — alerce_lc inference SGE array.
+# metaDEBASS — alerce_lc inference SGE array.
 #   N_SHARDS=30 qsub -t 1-30 -N debass_alerce -cwd -V -l h_rt=02:00:00 -l mem_per_core=8G -pe omp 1 \
 #        -o logs/alerce.\$TASK_ID.out -e logs/alerce.\$TASK_ID.err -v N_SHARDS=30 jobs/run_alerce_lc_array.sh
 set -euo pipefail

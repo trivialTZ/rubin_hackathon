@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F6/F7 pipeline: analyze + figures + inventory + honesty pass
+# metaDEBASS Light-up — F6/F7 pipeline: analyze + figures + inventory + honesty pass
 # Run from /project/pi-brout/rubin_hackathon after F3 trust heads are trained.
 #   qsub -N debass_f6 -cwd -V -l h_rt=01:00:00 -l mem_per_core=8G -pe omp 2 \
 #        -o logs/f6.qsub.out -e logs/f6.qsub.err jobs/run_f6_figures.sh
@@ -28,7 +28,7 @@ python3 -u scripts/make_paper_figures.py \
     --trust-metrics reports/metrics/expert_trust_metrics.json \
     --snapshots data/gold/object_epoch_snapshots_trust.parquet \
     --trust-models-dir models/trust \
-    --out-dir paper/debass_aas/figures
+    --out-dir paper/metaDEBASS_aas/figures
 
 echo "$(ts) Step 3/6: plot_ablation (fig_ablation.pdf)"
 python3 -u scripts/plot_ablation.py \
@@ -62,7 +62,7 @@ echo "$(ts) ============================================================"
 echo "$(ts) F6/F7 DONE. Summary:"
 echo "$(ts)   Trust heads:   $(ls -1 models/trust/ | grep -v 'metadata.json$' | wc -l)"
 echo "$(ts)   Latency table: reports/metrics/latency_curves.parquet"
-echo "$(ts)   Paper figures: paper/debass_aas/figures/fig_*.pdf"
+echo "$(ts)   Paper figures: paper/metaDEBASS_aas/figures/fig_*.pdf"
 echo "$(ts)   Inventory:     reports/expert_inventory.md"
 echo "$(ts)   CV metrics:    reports/metrics/cv_summary.json"
 echo "$(ts)   Failure modes: reports/failure_modes.csv"

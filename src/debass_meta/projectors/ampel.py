@@ -1,4 +1,4 @@
-"""AMPEL projector — SNGuess binary + ParSNIP FollowMe 14-class → DEBASS ternary.
+"""AMPEL projector — SNGuess binary + ParSNIP FollowMe 14-class → metaDEBASS ternary.
 
 Two experts live here:
   • `ampel/snguess`         — T2MultiXGBClassifier binary "young extragalactic

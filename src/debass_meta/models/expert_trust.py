@@ -23,7 +23,12 @@ from .calibrate import IsotonicCalibrator
 # AGN-heavy samples and inverts on spec-Ia rows.
 # For these experts we train trust with target=is_sn (bool target_class != 'other').
 # Honest SN-filter AUC: ~0.85 instead of inflated 0.99.
-SN_FILTER_EXPERTS = {"fink_lsst/snn", "fink_lsst/cats"}
+SN_FILTER_EXPERTS = {
+    "fink_lsst/snn",
+    "fink_lsst/cats",
+    "fink/slsn",        # Fink ZTF SLSN-RF — projector caps p_snia=0
+    "ampel/snguess",    # AMPEL SNGuess — projector caps p_snia=0.5
+}
 
 
 def trust_target_col(expert_key: str) -> str:

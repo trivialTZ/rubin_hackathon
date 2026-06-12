@@ -46,4 +46,21 @@ def project_events(expert_key: str, events: list[dict[str, Any]]) -> dict[str, A
         out["p_non_snia_scalar"] = 1.0 - p_snia
         return out
 
+    if expert_key == "fink/slsn":
+        # Fink ZTF SLSN-RF: PCA + RF binary "is this a superluminous SN?",
+        # returns -1 if insufficient detections (treat as missing).
+        # SLSN are NON-Ia by definition → SN-filter projection: cap p_snia at 0,
+        # route score to p_nonIa_snlike (SLSN are SN-like), put complement in p_other.
+        # Trust target should be is_sn (NOT is_topclass_correct) per
+        # feedback_trust_target_capability.md.
+        p_slsn = _row_value(events, "slsn_score")
+        if p_slsn is None or p_slsn < 0:
+            return {"prediction_type": "class_correctness", "reason": "slsn_score missing or sentinel(-1)"}
+        p_snia = 0.0
+        p_nonia_snlike = float(p_slsn)
+        p_other = 1.0 - p_nonia_snlike
+        out = summarize_ternary(p_snia, p_nonia_snlike, p_other)
+        out["raw_slsn_score"] = float(p_slsn)
+        return out
+
     return {"prediction_type": "unknown", "reason": f"unsupported fink expert {expert_key}"}

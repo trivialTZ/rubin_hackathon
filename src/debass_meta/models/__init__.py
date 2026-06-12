@@ -1,4 +1,4 @@
-"""Model utilities for DEBASS."""
+"""Model utilities for metaDEBASS."""
 
 from .calibrate import TemperatureScaler
 from .early_meta import DEFAULT_FEATURES, EarlyMetaClassifier, LABEL_MAP, LABEL_NAMES, N_CLASSES

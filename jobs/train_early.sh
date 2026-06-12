@@ -28,7 +28,7 @@ source "$DEBASS_VENV/bin/activate"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: training early-epoch meta-classifier ==="
+echo "=== metaDEBASS: training early-epoch meta-classifier ==="
 echo "Node:  $(hostname)"
 echo "NSLOTS: $NSLOTS"
 echo "Start: $(date)"

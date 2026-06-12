@@ -1,5 +1,5 @@
 """
-DEBASS Meta-Classifier Dashboard
+metaDEBASS Meta-Classifier Dashboard
 =================================
 Transient alert triage for spectroscopic follow-up prioritisation.
 
@@ -9,14 +9,14 @@ import streamlit as st
 from pathlib import Path
 
 st.set_page_config(
-    page_title="DEBASS — Transient Alert Dashboard",
+    page_title="metaDEBASS — Transient Alert Dashboard",
     page_icon="🔭",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ── Sidebar branding ──────────────────────────────────────────────
-st.sidebar.title("🔭 DEBASS")
+st.sidebar.title("🔭 metaDEBASS")
 st.sidebar.caption(
     "Detection-Based Astronomical\n"
     "Source Spectroscopic Meta-Classifier"
@@ -35,9 +35,9 @@ st.sidebar.markdown(
 )
 
 # ── Landing / home ────────────────────────────────────────────────
-st.title("🔭 DEBASS — Transient Alert Dashboard")
+st.title("🔭 metaDEBASS — Transient Alert Dashboard")
 st.markdown(
-    "Welcome to the DEBASS meta-classifier dashboard. "
+    "Welcome to the metaDEBASS meta-classifier dashboard. "
     "Use the sidebar to navigate between views."
 )
 

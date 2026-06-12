@@ -1,1 +1,1 @@
-"""Analysis / reporting helpers for DEBASS evaluation."""
+"""Analysis / reporting helpers for metaDEBASS evaluation."""

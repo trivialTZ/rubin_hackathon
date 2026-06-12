@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F4b: SALT3 χ² sharded SGE array job.
+# metaDEBASS Light-up — F4b: SALT3 χ² sharded SGE array job.
 # Expects N_SHARDS task slots. Each slot processes objects[i] where (i % N_SHARDS == SGE_TASK_ID-1).
 # Submit as:
 #   qsub -t 1-30 -N debass_salt3 -cwd -V -l h_rt=03:00:00 -l mem_per_core=8G -pe omp 1 \

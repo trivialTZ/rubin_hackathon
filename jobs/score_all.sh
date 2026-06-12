@@ -28,7 +28,7 @@ source "$DEBASS_VENV/bin/activate"
 
 cd "$DEBASS_ROOT"
 
-echo "=== DEBASS: scoring all objects ==="
+echo "=== metaDEBASS: scoring all objects ==="
 echo "Node:  $(hostname)"
 echo "Start: $(date)"
 echo "Mode:  $DEBASS_SCORE_MODE"

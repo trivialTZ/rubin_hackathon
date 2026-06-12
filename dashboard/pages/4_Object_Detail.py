@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — Page 4: Object Detail.
+"""metaDEBASS Dashboard — Page 4: Object Detail.
 
 Single-object deep dive: ensemble verdict, expert cards, lightcurve, context.
 """
@@ -20,7 +20,7 @@ from lib.style import (
     CUSTOM_CSS, CLASS_COLORS, STATUS_COLORS, expert_name, rec_label, rec_color,
 )
 
-st.set_page_config(page_title="DEBASS — Object Detail", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="metaDEBASS — Object Detail", page_icon="🔍", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("🔍 Object Detail")

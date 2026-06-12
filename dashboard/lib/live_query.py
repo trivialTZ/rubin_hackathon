@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — on-demand broker re-query for a single object.
+"""metaDEBASS Dashboard — on-demand broker re-query for a single object.
 
 Wraps the existing broker adapters in src/debass_meta/access/ to provide
 a "Refresh Now" capability in the dashboard.

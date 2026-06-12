@@ -5,7 +5,7 @@ Every T2 classifier result is stored per-state (per-alert), so retrieval of
 "the classifier output at the state with N detections" is native — this is
 the cleanest per-epoch semantics of any full-stream broker.
 
-DEBASS targets two T2 units:
+metaDEBASS targets two T2 units:
   • SNGuess (T2MultiXGBClassifier) — binary young-extragalactic-transient P
   • FollowMe (T2RunParsnip)         — 14-class ParSNIP + priors
 
@@ -31,7 +31,7 @@ from .identifiers import infer_identifier_kind
 _FIXTURE_DIR = Path("fixtures/raw/ampel")
 _DEFAULT_BASE_URL = "https://ampel.zeuthen.desy.de"
 
-# Map T2 unit name → DEBASS expert key
+# Map T2 unit name → metaDEBASS expert key
 _T2_TO_EXPERT: dict[str, str] = {
     "T2MultiXGBClassifier": "ampel/snguess",
     "T2SNGuess": "ampel/snguess",

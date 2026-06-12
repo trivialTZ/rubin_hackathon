@@ -32,7 +32,7 @@ source "$DEBASS_VENV/bin/activate"
 cd "$DEBASS_ROOT"
 mkdir -p logs data/lightcurves
 
-echo "=== DEBASS: downloading weakly labelled ALeRCE seed data ==="
+echo "=== metaDEBASS: downloading weakly labelled ALeRCE seed data ==="
 echo "Limit: ${DEBASS_LIMIT:-2000} objects"
 echo "Node:  $(hostname)"
 echo "Start: $(date)"

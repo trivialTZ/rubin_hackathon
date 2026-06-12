@@ -1,4 +1,4 @@
-"""DEBASS Dashboard — data loading and caching utilities.
+"""metaDEBASS Dashboard — data loading and caching utilities.
 
 All loaders use @st.cache_data so re-runs are instant.
 """

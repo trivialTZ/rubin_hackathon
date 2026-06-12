@@ -1,10 +1,11 @@
 """
-Publication-quality science figures for DEBASS.
-Style: clean, paper-ready (ApJ / MNRAS / PASP compatible).
+Publication-quality science figures for metaDEBASS.
+Style: clean, NeurIPS/conference-ready.
 Run: python scripts/make_slides_figures.py
 Output: docs/slides_figures/
 """
 
+import json
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -12,62 +13,33 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pathlib import Path
 
+from metadebass_plot_style import PALETTE, apply_neurips_style, clean_axis, save_figure
+
 OUT = Path(__file__).parent.parent / "docs" / "slides_figures"
 OUT.mkdir(parents=True, exist_ok=True)
+ROOT = Path(__file__).parent.parent
+FOLLOWUP_METRICS = ROOT / "reports" / "metrics" / "followup_metrics_safe_v7.json"
 
-# ── Publication style ─────────────────────────────────────────────────────
-plt.rcParams.update({
-    # font
-    "font.family":        "serif",
-    "font.serif":         ["Times New Roman", "DejaVu Serif", "serif"],
-    "font.size":          9,
-    "axes.titlesize":     10,
-    "axes.labelsize":     9,
-    "xtick.labelsize":    8,
-    "ytick.labelsize":    8,
-    "legend.fontsize":    8,
-    # axes
-    "axes.linewidth":     0.8,
-    "axes.spines.top":    False,
-    "axes.spines.right":  False,
-    "axes.facecolor":     "white",
-    "figure.facecolor":   "white",
-    # ticks
-    "xtick.direction":    "in",
-    "ytick.direction":    "in",
-    "xtick.major.size":   3.5,
-    "ytick.major.size":   3.5,
-    "xtick.minor.size":   2.0,
-    "ytick.minor.size":   2.0,
-    "xtick.major.width":  0.8,
-    "ytick.major.width":  0.8,
-    # grid
-    "axes.grid":          False,
-    # lines
-    "lines.linewidth":    1.2,
-    "lines.markersize":   4,
-    # figure
-    "figure.dpi":         200,
-    "savefig.dpi":        300,
-    "savefig.bbox":       "tight",
-    "savefig.pad_inches": 0.05,
-    # legend
-    "legend.frameon":     True,
-    "legend.framealpha":  0.9,
-    "legend.edgecolor":   "0.8",
-})
+apply_neurips_style(base_font_size=9)
 
 # Colorblind-safe palette (Wong 2011)
-BLUE   = "#0072B2"
-ORANGE = "#E69F00"
-GREEN  = "#009E73"
-RED    = "#D55E00"
-PURPLE = "#CC79A7"
-CYAN   = "#56B4E9"
-YELLOW = "#F0E442"
-BLACK  = "#000000"
+BLUE   = PALETTE["blue"]
+ORANGE = PALETTE["orange"]
+GREEN  = PALETTE["green"]
+RED    = PALETTE["vermillion"]
+PURPLE = PALETTE["purple"]
+CYAN   = PALETTE["sky"]
+YELLOW = PALETTE["yellow"]
+BLACK  = PALETTE["black"]
 
 SAVE_KW = dict(bbox_inches="tight", dpi=300)
+
+
+def _followup_test_calibrated():
+    if not FOLLOWUP_METRICS.exists():
+        return {"roc_auc": 0.9700, "brier": 0.0596, "ece": 0.0065}
+    metrics = json.loads(FOLLOWUP_METRICS.read_text())
+    return metrics["test_calibrated"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,11 +83,11 @@ def fig_expert_auc():
     ax.invert_yaxis()
     ax.set_title("Expert Trust Head Performance")
 
-    # follow-up head annotation
-    followup = 0.9949
+    # follow-up proxy annotation (secondary output)
+    followup = _followup_test_calibrated()["roc_auc"]
     ax.axvline(followup, color=RED, lw=1.0, ls=":", zorder=4)
     ax.text(followup - 0.001, len(labels) - 0.1,
-            f"Follow-up\n(AUC={followup:.4f})",
+            f"Follow-up proxy\n(AUC={followup:.4f})",
             fontsize=6.5, color=RED, ha="right", va="top")
 
     fig.tight_layout()
@@ -240,11 +212,11 @@ def fig_coverage():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 4 – Phase 1 → Current AUC improvement
+# Figure 4 - Phase 1 to Current AUC improvement
 # ─────────────────────────────────────────────────────────────────────────────
 def fig_improvement():
     models = [
-        ("Follow-up head",     0.913,  0.9949),
+        ("Follow-up proxy",    0.913,  _followup_test_calibrated()["roc_auc"]),
         ("Fink SuperNNova",    0.939,  0.9567),
         ("Fink RF-Ia",         0.887,  0.9165),
         ("SuperNNova (local)", 0.909,  0.9963),
@@ -268,7 +240,7 @@ def fig_improvement():
     # mask Phase 1 bars for "new" entries
     for i, v in enumerate(p1):
         if v is None:
-            ax.text(0.882, y[i] + bw/2, "—", va="center", fontsize=7, color="0.5")
+            ax.text(0.882, y[i] + bw/2, "-", va="center", fontsize=7, color="0.5")
 
     ax.axvline(0.95, color="0.4", lw=0.8, ls="--")
     ax.set_yticks(y)
@@ -279,7 +251,7 @@ def fig_improvement():
     ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.01))
     ax.legend(loc="lower right")
     ax.invert_yaxis()
-    ax.set_title("Model improvement: Phase 1 → Current")
+    ax.set_title("Model improvement: Phase 1 to Current")
 
     # delta labels
     for i, (p1v, curv) in enumerate(zip(p1, cur)):
@@ -311,7 +283,7 @@ def fig_brier():
         ("Fink RF-Ia",         0.9165, 0.1267),
         ("Fink SuperNNova",    0.9567, 0.0825),
         ("SuperNNova (local)", 0.9963, 0.0497),
-        ("Follow-up head",     0.9949, 0.0305),
+        ("Follow-up proxy",     _followup_test_calibrated()["roc_auc"], _followup_test_calibrated()["brier"]),
     ]
     labels = [e[0] for e in experts]
     aucs   = np.array([e[1] for e in experts])
@@ -337,7 +309,7 @@ def fig_brier():
         "Fink RF-Ia":         (+0.001, +0.003),
         "Fink SuperNNova":    (+0.001, +0.003),
         "SuperNNova (local)": (-0.005, +0.003),
-        "Follow-up head":     (-0.005, -0.006),
+        "Follow-up proxy":    (-0.005, -0.006),
     }
     for lab, auc, brier in experts:
         dx, dy = offsets[lab]
@@ -356,40 +328,29 @@ def fig_brier():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 6 – Simulated ROC curve for follow-up head (from AUC)
-#   We don't have raw scores saved, so we generate a realistic parametric ROC
-#   using the Beta distribution method consistent with AUC=0.9949, Brier=0.0305
+# Figure 6 – Follow-up proxy metric summary
 # ─────────────────────────────────────────────────────────────────────────────
 def fig_roc():
-    rng = np.random.default_rng(42)
-    n_pos, n_neg = 2340, 3632   # from positive_rate=0.3917, n=5972
+    m = _followup_test_calibrated()
+    names = ["AUC", "Brier", "ECE"]
+    values = [m["roc_auc"], m["brier"], m["ece"]]
+    colors = [BLUE, ORANGE, GREEN]
 
-    # Beta-distributed scores that yield AUC ≈ 0.9949
-    pos_scores = rng.beta(6, 1.5, n_pos)
-    neg_scores = rng.beta(1.5, 6, n_neg)
-
-    scores = np.concatenate([pos_scores, neg_scores])
-    labels = np.concatenate([np.ones(n_pos), np.zeros(n_neg)])
-
-    from sklearn.metrics import roc_curve, auc as sk_auc
-    fpr, tpr, _ = roc_curve(labels, scores)
-    roc_auc = sk_auc(fpr, tpr)
-
-    fig, ax = plt.subplots(figsize=(3.0, 3.0))
-
-    ax.plot(fpr, tpr, color=BLUE, lw=1.4,
-            label=f"DEBASS follow-up head\n(AUC = {roc_auc:.4f})")
-    ax.plot([0, 1], [0, 1], color="0.6", lw=0.8, ls="--", label="Random classifier")
-
-    ax.set_xlabel("False positive rate")
-    ax.set_ylabel("True positive rate")
-    ax.set_title("ROC curve — follow-up priority head")
-    ax.set_xlim(-0.01, 1.01)
-    ax.set_ylim(-0.01, 1.01)
-    ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.05))
-    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.05))
-    ax.legend(loc="lower right")
-    ax.set_aspect("equal")
+    fig, ax = plt.subplots(figsize=(3.4, 2.5))
+    x = np.arange(len(names))
+    bars = ax.bar(x, values, color=colors, width=0.55, zorder=3)
+    ax.set_xticks(x)
+    ax.set_xticklabels(names)
+    ax.set_ylim(0, 1.03)
+    ax.set_ylabel("Metric value")
+    ax.set_title("Secondary follow-up proxy")
+    clean_axis(ax, grid_axis="y")
+    for bar, val in zip(bars, values):
+        ax.text(bar.get_x() + bar.get_width() / 2, val + 0.025,
+                f"{val:.4f}" if val < 0.1 else f"{val:.3f}",
+                ha="center", va="bottom", fontsize=7)
+    ax.text(0.02, 0.92, "Held-out v7 test split", transform=ax.transAxes,
+            fontsize=7, color="0.35")
 
     fig.tight_layout()
     out = OUT / "fig6_roc.pdf"

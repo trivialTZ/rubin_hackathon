@@ -443,8 +443,8 @@ We need operational gates that prevent premature science claims.
 
 Until `R4`, `R5`, `R6`, and `R7` are complete, the honest project description is:
 
-`DEBASS is a ZTF-bootstrapped, Rubin-oriented trust-aware broker fusion system.`
+`metaDEBASS is a ZTF-bootstrapped, Rubin-oriented trust-aware broker fusion system.`
 
 After those are complete, and only after Rubin holdout evaluation exists, the claim can move to:
 
-`DEBASS provides Rubin cross-checked broker confidence for new transient candidates.`
+`metaDEBASS provides Rubin cross-checked broker confidence for new transient candidates.`

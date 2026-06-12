@@ -1,5 +1,5 @@
 #!/bin/bash
-# DEBASS Light-up — F3-SAFE-v2: no-leakage rebuild with SALT3 χ² as 6th clean expert.
+# metaDEBASS Light-up — F3-SAFE-v2: no-leakage rebuild with SALT3 χ² as 6th clean expert.
 # Outputs write to *_safe_v2 paths; preserves the 5-expert SAFE baseline.
 # Submit as:  qsub -N debass_f3safev2 -cwd -V -l h_rt=04:00:00 -l mem_per_core=16G -pe omp 4 \
 #                  -o logs/f3safev2.qsub.out -e logs/f3safev2.qsub.err jobs/run_f3_safe_v2_pipeline.sh

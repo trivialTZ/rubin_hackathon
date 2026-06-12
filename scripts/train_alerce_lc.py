@@ -3,7 +3,7 @@
 Uses our cached lightcurves + TNS spectroscopic labels to produce a model
 that replaces the ALeRCE API LC classification scores.  Runs on CPU.
 
-Consistent with the rest of the DEBASS pipeline: LightGBM with native NaN
+Consistent with the rest of the metaDEBASS pipeline: LightGBM with native NaN
 handling, regularisation, is_unbalance=True for class-weight correction.
 
 Usage:
@@ -231,7 +231,7 @@ def main() -> None:
     print(f"  Val:   {len(X_val)} samples ({n_val} objects)")
 
     # Train LightGBM multiclass classifier — consistent with all other
-    # DEBASS models (native NaN handling, regularisation, leaf-wise boosting).
+    # metaDEBASS models (native NaN handling, regularisation, leaf-wise boosting).
     from lightgbm import LGBMClassifier
 
     clf = LGBMClassifier(

@@ -1,5 +1,5 @@
 ========================================================================
-DEBASS Trust-Aware Meta-Classifier — Results Summary
+metaDEBASS Trust-Aware Meta-Classifier — Results Summary
 ========================================================================
 
 Objects:      1920

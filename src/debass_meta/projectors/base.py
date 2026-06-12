@@ -12,6 +12,9 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     # --- Fink (ZTF alerts only for now) ---
     "fink/snn":                        ("ztf",  "fink"),
     "fink/rf_ia":                      ("ztf",  "fink"),
+    # SLSN-RF: SN-filter projection (caps p_snia=0; routes score to p_nonIa).
+    # Trust target = is_sn (NOT is_topclass_correct) — see feedback_trust_target_capability.md
+    "fink/slsn":                       ("ztf",  "fink"),
     # --- Local experts (any survey) ---
     "parsnip":                         ("any",  "local"),
     "supernnova":                      ("any",  "local"),
@@ -32,6 +35,8 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     "fink_lsst/early_snia":                            ("lsst", "fink_lsst"),
     # --- Lasair (both surveys) ---
     "lasair/sherlock":                 ("any",  "lasair"),
+    # --- Babamul (any survey; static_safe alert-time flags) ---
+    "babamul":                         ("any",  "babamul"),
     # --- Pitt-Google Broker (SuperNNova via BigQuery) ---
     "pittgoogle/supernnova_lsst":      ("lsst", "pittgoogle"),
     "pittgoogle/supernnova_ztf":       ("ztf",  "pittgoogle"),
@@ -153,7 +158,7 @@ def project_expert_events(expert_key: str, events: list[dict[str, Any]]) -> dict
 
 
 def _dispatch_projector(expert_key: str, events: list[dict[str, Any]]) -> dict[str, Any]:
-    if expert_key == "fink/snn" or expert_key == "fink/rf_ia":
+    if expert_key in {"fink/snn", "fink/rf_ia", "fink/slsn"}:
         from .fink import project_events
 
         return project_events(expert_key, events)
@@ -167,6 +172,10 @@ def _dispatch_projector(expert_key: str, events: list[dict[str, Any]]) -> dict[s
         return project_events(expert_key, events)
     if expert_key == "lasair/sherlock":
         from .lasair import project_events
+
+        return project_events(expert_key, events)
+    if expert_key == "babamul":
+        from .babamul import project_events
 
         return project_events(expert_key, events)
     if expert_key in {"parsnip", "supernnova", "alerce_lc"}:
