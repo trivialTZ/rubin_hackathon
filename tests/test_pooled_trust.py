@@ -440,3 +440,29 @@ def test_trust_target_parity_real_base_rates() -> None:
         rows = long_df[long_df["expert_key"] == expert_key]
         assert len(rows) > 0, f"no Stage-A rows assembled for {expert_key}"
         assert rows["y"].mean() == pytest.approx(base_rate, abs=0.005), expert_key
+
+
+def test_dedicated_head_handles_empty_test_split(synthetic):
+    """Regression (SCC v9c crash): a data-rich expert whose rows all come from
+    train/cal-only objects (the LSST weak-label cohort) has ZERO rows in the
+    locked test set — the dedicated-head comparison must degrade gracefully,
+    never feed LightGBM an empty frame."""
+    from debass_meta.models.pooled_trust import _should_fallback, _train_dedicated_head
+
+    snapshots, helpfulness, train_ids, cal_ids, test_ids = synthetic
+    expert_key = sorted(helpfulness["expert_key"].unique())[0]
+    rows = helpfulness[helpfulness["expert_key"] == expert_key].copy()
+    # Re-split so NO object of this expert is in test: would-be-test → train.
+    all_ids = set(rows["object_id"].astype(str))
+    new_train = (set(train_ids) | set(test_ids)) & all_ids
+    new_cal = set(cal_ids) & all_ids
+    result = _train_dedicated_head(
+        rows, expert_key, "is_topclass_correct",
+        new_train, new_cal, {"NO_SUCH_OBJECT"},
+        seed=42, n_jobs=2,
+    )
+    assert result is not None
+    assert len(result["q_test"]) == 0 and len(result["y_test"]) == 0
+    assert result["test_auc"] is None
+    assert len(result["q_cal"]) == len(result["y_cal"]) > 0
+    assert _should_fallback(result["test_auc"], 0.9) is False

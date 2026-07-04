@@ -13,6 +13,7 @@ from debass_meta.models.conformal import MondrianAPS
 from debass_meta.models.multiclass_followup import (
     CLASSES,
     MulticlassFollowupArtifact,
+    PerClassIsotonicCalibrator,
     _fit_calibrator_ladder,
     _weighted_log_loss,
     apply_provenance_masking,
@@ -169,6 +170,140 @@ def test_calibrator_ladder_fixes_overconfidence():
     loss_true = _weighted_log_loss(y, p_true)
     assert loss_cal < loss_over
     assert loss_cal < loss_true + 0.05
+
+
+def _overconfident_ternary(n: int, seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(p_true, p_overconfident, y) with y ~ Categorical(p_true)."""
+    rng = np.random.default_rng(seed)
+    p_true = rng.dirichlet((1.5, 1.2, 0.9), size=n)
+    u = rng.random(n)
+    y = (u[:, None] > p_true.cumsum(axis=1)).sum(axis=1).astype(int)
+    p_over = p_true ** 3
+    p_over = p_over / p_over.sum(axis=1, keepdims=True)
+    return p_true, p_over, y
+
+
+def test_ladder_per_class_isotonic_rung_with_missing_class():
+    """2-class strict cal + down-weighted lower-tier rows for the missing
+    class → the OvR isotonic rung is offered, wins on miscalibrated probs,
+    and actually calibrates p_other (which temperature can never do)."""
+    p_true, p_over, y = _overconfident_ternary(1500, seed=9)
+    groups = np.array([f"G{i}" for i in range(len(y))])
+    weights = np.ones(len(y))
+
+    strict = y != 2                    # spec/tns tier has zero 'other'
+    lower = ~strict                    # context/weak tier carries 'other'
+    extra = (p_over[lower], y[lower], np.full(lower.sum(), 0.15),
+             groups[lower])
+
+    calibrator, kind, info = _fit_calibrator_ladder(
+        p_over[strict], y[strict], weights[strict], groups[strict],
+        seed=SEED, extra=extra,
+    )
+    assert info["missing_classes"] == ["other"]
+    assert info["ovr_isotonic_n_extra_rows"] == int(lower.sum())
+    assert "per_class_isotonic" in info["candidates"]
+    assert kind == "per_class_isotonic"
+    assert info["cal_cv_logloss_chosen"] <= info["cal_cv_logloss_raw"] + 1e-9
+
+    # transform: valid simplex rows, and p_other genuinely re-mapped
+    out = calibrator.transform(p_over)
+    assert np.allclose(out.sum(axis=1), 1.0, atol=1e-6)
+    assert not np.allclose(out[:, 2], p_over[:, 2], atol=1e-3), (
+        "p_other must be calibrated, not passed through"
+    )
+    # calibration quality: beats the overconfident input on fresh data
+    p_true2, p_over2, y2 = _overconfident_ternary(1500, seed=10)
+    assert _weighted_log_loss(y2, calibrator.transform(p_over2)) < \
+        _weighted_log_loss(y2, p_over2)
+
+
+def test_ladder_missing_class_graceful_fallback():
+    """With a missing class the ladder must never offer Dirichlet/vector
+    scaling, and must degrade exactly as today when data is insufficient."""
+    p_true, p_over, y = _overconfident_ternary(400, seed=13)
+    strict = y != 2
+    groups = np.array([f"G{i}" for i in range(len(y))])
+
+    # (a) no extra rows at all — rung offered on strict-only, no crash;
+    #     dirichlet / vector_temperature must NOT be candidates
+    calibrator, kind, info = _fit_calibrator_ladder(
+        p_over[strict], y[strict], np.ones(strict.sum()), groups[strict],
+        seed=SEED,
+    )
+    assert kind in ("none", "temperature", "per_class_isotonic")
+    assert "vector_temperature" not in info["candidates"]
+    assert not any(k.startswith("dirichlet") for k in info["candidates"])
+    assert info["ovr_isotonic_n_extra_rows"] == 0
+    if kind == "none":
+        assert info.get("skip_reason") is not None
+    if calibrator is not None:
+        out = calibrator.transform(p_over)
+        assert np.allclose(out.sum(axis=1), 1.0, atol=1e-6)
+
+    # (b) cal too small — identical skip to today, extra rows or not
+    tiny = np.flatnonzero(strict)[:10]
+    _, kind_tiny, info_tiny = _fit_calibrator_ladder(
+        p_over[tiny], y[tiny], np.ones(len(tiny)), groups[tiny],
+        seed=SEED,
+        extra=(p_over[~strict], y[~strict],
+               np.full((~strict).sum(), 0.15), groups[~strict]),
+    )
+    assert kind_tiny == "none"
+    assert "cal too small" in info_tiny["skip_reason"]
+
+
+def test_per_class_isotonic_calibrator_unit():
+    """Fit/transform contract: weighted OvR isotonic per class, identity for
+    classes without both labels, simplex output, pickle-safe."""
+    import pickle
+
+    p_true, p_over, y = _overconfident_ternary(800, seed=21)
+    cal = PerClassIsotonicCalibrator().fit(p_over, y, sample_weight=np.ones(len(y)))
+    out = cal.transform(p_over)
+    assert out.shape == p_over.shape
+    assert np.allclose(out.sum(axis=1), 1.0, atol=1e-6)
+    assert _weighted_log_loss(y, out) < _weighted_log_loss(y, p_over)
+
+    # class with a single label value -> identity map for that class
+    y_two = np.where(y == 2, 1, y)     # class 2 has zero positives
+    cal2 = PerClassIsotonicCalibrator().fit(p_over, y_two)
+    assert cal2._maps[2] is None
+
+    # pickle roundtrip (the artifact saves calibrator.pkl)
+    clone = pickle.loads(pickle.dumps(cal))
+    assert np.allclose(clone.transform(p_over), out)
+
+
+def test_train_followup_missing_other_in_strict_cal(tmp_path):
+    """End-to-end: when every 'other' object is context-tier, the strict cal
+    tier is 2-class — training must complete, record the missing class, and
+    roundtrip whatever calibrator the ladder picked."""
+    snapshots = _make_snapshots(n_objects=400, seed=17)
+    other_mask = snapshots["target_class"] == "other"
+    snapshots.loc[other_mask, "label_quality"] = "context"
+    snapshots.loc[other_mask, "label_source"] = "fink_xm_host_context"
+
+    labels = snapshots.groupby("object_id")["target_class"].first().to_dict()
+    split = group_train_cal_test_split(labels, seed=SEED)
+    out_dir = tmp_path / "followup_missing_other"
+    metrics = train_multiclass_followup(
+        snapshots, split.train_ids, split.cal_ids, split.test_ids,
+        str(out_dir), grid_small=True, n_jobs=2, seed=SEED,
+    )
+    calibration = metrics["calibration"]
+    assert calibration["missing_classes"] == ["other"]
+    # lower-tier 'other' rows were offered to the rung
+    assert calibration["ovr_isotonic_n_extra_rows"] > 0
+    assert "per_class_isotonic" in calibration["candidates"]
+    # never a full-simplex calibrator with a missing class
+    assert calibration["kind"] in ("none", "temperature", "per_class_isotonic")
+
+    artifact = MulticlassFollowupArtifact.load(str(out_dir))
+    test_df = snapshots[snapshots["object_id"].isin(split.test_ids)].head(40)
+    proba = artifact.predict_proba(test_df)
+    assert proba.shape == (len(test_df), 3)
+    assert np.allclose(proba.sum(axis=1), 1.0, atol=1e-6)
 
 
 def test_artifact_roundtrip(trained):

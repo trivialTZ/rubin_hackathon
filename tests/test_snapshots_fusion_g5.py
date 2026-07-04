@@ -156,7 +156,9 @@ def test_bts_mapping_known_types() -> None:
     # Pre-existing fetch_ztf_bts quirk (replicated, not fixed): non-SN types
     # fall through the "SN "-prefix fallback to nonIa_snlike.
     assert snapmod.bts_type_to_ternary("TDE") == "nonIa_snlike"
-    assert snapmod.bts_type_to_ternary("-") == "nonIa_snlike"
+    # v10 repair: '-' = spectroscopically observed but NEVER classified —
+    # the legacy "SN -" fabrication (nonIa_snlike) is gone.
+    assert snapmod.bts_type_to_ternary("-") is None
     assert snapmod.bts_type_to_ternary(None) is None
     assert snapmod.bts_type_to_ternary("") is None
     assert snapmod.bts_type_to_ternary(float("nan")) is None
@@ -172,6 +174,18 @@ def test_bts_parity_check_passes_and_fails() -> None:
     bad = pd.DataFrame([{"object_id": "c", "bts_type": "Ia", "ternary": "other"}])
     with pytest.raises(AssertionError, match="parity FAILED"):
         snapmod.check_bts_mapping_parity(bad)
+
+    # '-' rows are exempt from parity in BOTH directions: legacy parquets
+    # store the fabricated nonIa_snlike, repaired parquets store None —
+    # either way the label-honesty demotion clears them downstream.
+    legacy = pd.DataFrame([
+        {"object_id": "d", "bts_type": "-", "ternary": "nonIa_snlike"},
+    ])
+    snapmod.check_bts_mapping_parity(legacy)  # must not raise
+    repaired = pd.DataFrame([
+        {"object_id": "e", "bts_type": "-", "ternary": None},
+    ])
+    snapmod.check_bts_mapping_parity(repaired)  # must not raise
 
 
 @pytest.mark.skipif(
