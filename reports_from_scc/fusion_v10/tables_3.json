@@ -1,0 +1,627 @@
+{
+  "table": 3,
+  "title": "Ranking per science goal (object-level test slices)",
+  "protocol": {
+    "budgets": [
+      20,
+      50,
+      100
+    ],
+    "n_boot": 1000,
+    "note": "v6e2 comparator exists for the Ia goal only \u2014 the other goals have no v6e2 counterpart"
+  },
+  "rows": [
+    {
+      "goal": "ia",
+      "n_det": 3,
+      "method": "fusion_v8",
+      "n_objects": 777,
+      "n_target": 448,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.044642857142857144,
+          "lo": 0.04237064177446519,
+          "hi": 0.047505938242280284,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.11160714285714286,
+          "lo": 0.10592660443616296,
+          "hi": 0.1187648456057007,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.22321428571428573,
+          "lo": 0.21185320887232592,
+          "hi": 0.2375296912114014,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "ia",
+      "n_det": 3,
+      "method": "v6e2_p_follow_proxy",
+      "n_objects": 777,
+      "n_target": 448,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.044642857142857144,
+          "lo": 0.04219409282700422,
+          "hi": 0.047505938242280284,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 0.96,
+          "lo": 0.9,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.10714285714285714,
+          "lo": 0.10021774879105871,
+          "hi": 0.11650485436893204,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 0.98,
+          "lo": 0.94,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.21875,
+          "lo": 0.20568623224736318,
+          "hi": 0.2336448598130841,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 0.9712654749234207,
+          "lo": 0.9276299408695687,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "ia",
+      "n_det": 5,
+      "method": "fusion_v8",
+      "n_objects": 765,
+      "n_target": 442,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.04524886877828054,
+          "lo": 0.0425531914893617,
+          "hi": 0.047961630695443645,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.11312217194570136,
+          "lo": 0.10638297872340426,
+          "hi": 0.11990407673860912,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 0.99,
+          "lo": 0.97,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.2239819004524887,
+          "lo": 0.21185625814863102,
+          "hi": 0.23855694855795498,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "ia",
+      "n_det": 5,
+      "method": "v6e2_p_follow_proxy",
+      "n_objects": 765,
+      "n_target": 442,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 0.95,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.04524886877828054,
+          "lo": 0.042504524145399625,
+          "hi": 0.04831210302838895,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 0.94,
+          "lo": 0.84,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.10633484162895927,
+          "lo": 0.09534104107274838,
+          "hi": 0.11491512801056684,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 0.87,
+          "lo": 0.79,
+          "hi": 0.92,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.19683257918552036,
+          "lo": 0.1767211720974375,
+          "hi": 0.21204819277108433,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 0.9551986172154566,
+          "lo": 0.8826100650411116,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "ia",
+      "n_det": 10,
+      "method": "fusion_v8",
+      "n_objects": 712,
+      "n_target": 409,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.0488997555012225,
+          "lo": 0.04608294930875576,
+          "hi": 0.05222273864366464,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.12224938875305623,
+          "lo": 0.1152073732718894,
+          "hi": 0.13055684660916161,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.24449877750611246,
+          "lo": 0.2304147465437788,
+          "hi": 0.26111369321832323,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "ia",
+      "n_det": 10,
+      "method": "v6e2_p_follow_proxy",
+      "n_objects": 712,
+      "n_target": 409,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 0.95,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.0488997555012225,
+          "lo": 0.04597701149425287,
+          "hi": 0.05195143398268398,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 0.96,
+          "lo": 0.9,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.11735941320293398,
+          "lo": 0.10849056603773585,
+          "hi": 0.12626327710090599,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 0.97,
+          "lo": 0.92,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.2371638141809291,
+          "lo": 0.22041763341067286,
+          "hi": 0.2519485632477758,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 0.9696962515705738,
+          "lo": 0.9250813177917228,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "nonia",
+      "n_det": 3,
+      "method": "fusion_v8",
+      "n_objects": 777,
+      "n_target": 329,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.060790273556231005,
+          "lo": 0.056338028169014086,
+          "hi": 0.066006600660066,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.1519756838905775,
+          "lo": 0.14084507042253522,
+          "hi": 0.16501650165016502,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 0.97,
+          "lo": 0.94,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.2948328267477204,
+          "lo": 0.27298850574712646,
+          "hi": 0.32026461069864837,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 1.0,
+          "lo": 1.0,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "nonia",
+      "n_det": 5,
+      "method": "fusion_v8",
+      "n_objects": 765,
+      "n_target": 323,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 0.9,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.06191950464396285,
+          "lo": 0.054214948967845907,
+          "hi": 0.06711409395973154,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 0.98,
+          "lo": 0.92,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.15170278637770898,
+          "lo": 0.1373742583295299,
+          "hi": 0.16556291390728478,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 0.96,
+          "lo": 0.91,
+          "hi": 0.99,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.29721362229102166,
+          "lo": 0.2754415724763491,
+          "hi": 0.32131440281030443,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 0.9826137020047634,
+          "lo": 0.9335930925046436,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "nonia",
+      "n_det": 10,
+      "method": "fusion_v8",
+      "n_objects": 712,
+      "n_target": 303,
+      "metrics": {
+        "purity@20": {
+          "value": 1.0,
+          "lo": 0.95,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": 0.066006600660066,
+          "lo": 0.06060606060606061,
+          "hi": 0.07220216606498195,
+          "n_boot_ok": 1000
+        },
+        "purity@50": {
+          "value": 0.98,
+          "lo": 0.94,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": 0.1617161716171617,
+          "lo": 0.14803625377643503,
+          "hi": 0.1779485110267367,
+          "n_boot_ok": 1000
+        },
+        "purity@100": {
+          "value": 0.97,
+          "lo": 0.93,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": 0.3201320132013201,
+          "lo": 0.294870820668693,
+          "hi": 0.348618019304639,
+          "n_boot_ok": 1000
+        },
+        "ndcg@50": {
+          "value": 0.984199157185123,
+          "lo": 0.9516061184999033,
+          "hi": 1.0,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "goal": "other",
+      "n_det": 3,
+      "method": "fusion_v8",
+      "n_objects": 777,
+      "n_target": 0,
+      "metrics": {
+        "purity@20": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "purity@50": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "purity@100": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "ndcg@50": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "goal": "other",
+      "n_det": 5,
+      "method": "fusion_v8",
+      "n_objects": 765,
+      "n_target": 0,
+      "metrics": {
+        "purity@20": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "purity@50": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "purity@100": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "ndcg@50": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "goal": "other",
+      "n_det": 10,
+      "method": "fusion_v8",
+      "n_objects": 712,
+      "n_target": 0,
+      "metrics": {
+        "purity@20": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@20": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "purity@50": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@50": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "purity@100": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "n_boot_ok": 1000
+        },
+        "recall@100": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "ndcg@50": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    }
+  ]
+}

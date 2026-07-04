@@ -1,0 +1,4165 @@
+{
+  "table": 1,
+  "title": "Classification per slice (object-level, locked test, spec-only)",
+  "protocol": {
+    "n_boot": 1000,
+    "qualities": [
+      "spectroscopic"
+    ],
+    "best_single_cal_chosen": "alerce_lc",
+    "best_single_cal_macro_aucs": {
+      "alerce_lc": 0.8905504259779652,
+      "ampel__snguess": 0.5,
+      "fink__rf_ia": 0.3833478042315953,
+      "fink__snn": 0.5239638075218206,
+      "lc_features_bv": 0.5661306629793181,
+      "salt3_chi2": 0.445665506936081,
+      "supernnova": 0.5553685897435898
+    },
+    "v6e2_rescored": true,
+    "v6e2_reason": null
+  },
+  "rows": [
+    {
+      "n_det": 3,
+      "survey": "all",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9365230134607034,
+          "lo": 0.9186262977184887,
+          "hi": 0.9518272031226445,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.931074956578376,
+          "lo": 0.9108123575666588,
+          "hi": 0.9471070040386214,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9337989850195397,
+          "lo": 0.9152682618588697,
+          "hi": 0.9485670396862866,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8674012158054711,
+          "lo": 0.8415384503366354,
+          "hi": 0.8908788370868251,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.34132985872407867,
+          "lo": 0.30432846726712337,
+          "hi": 0.3862619091956575,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "all",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8465520516717324,
+          "lo": 0.8196130409571019,
+          "hi": 0.8724795656988334,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "all",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8487299174989145,
+          "lo": 0.8211329183157046,
+          "hi": 0.8740725861098274,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8496187038645245,
+          "lo": 0.8212099977856208,
+          "hi": 0.8764223278435356,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8491743106817196,
+          "lo": 0.8217687616034917,
+          "hi": 0.8750955029111576,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7581212006079028,
+          "lo": 0.7262982962414668,
+          "hi": 0.7874912989153909,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.5209549293585619,
+          "lo": 0.4936026702843634,
+          "hi": 0.5490812454715241,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "all",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7632639491966998,
+          "lo": 0.7278646887986052,
+          "hi": 0.7943669342772414,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8014071320017369,
+          "lo": 0.7690422904665148,
+          "hi": 0.82938245197291,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.7823355405992183,
+          "lo": 0.7521225067290952,
+          "hi": 0.8080419994585082,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7296020136778115,
+          "lo": 0.6980993408491405,
+          "hi": 0.7592224023372043,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.9032484809962936,
+          "lo": 0.8898825245096287,
+          "hi": 0.9167347182227135,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "all",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8134634172818064,
+          "lo": 0.7826925998232456,
+          "hi": 0.8428126361217699,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8472644376899695,
+          "lo": 0.8169855988631151,
+          "hi": 0.8750998472671573,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8303639274858879,
+          "lo": 0.8042717327260306,
+          "hi": 0.8562595945312893,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7650788373860182,
+          "lo": 0.7341126436562393,
+          "hi": 0.7950399735823889,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.848929669583128,
+          "lo": 0.8329211499377562,
+          "hi": 0.8658369769657966,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "ztf",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9365230134607034,
+          "lo": 0.9186400177569692,
+          "hi": 0.9520507586383622,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.931074956578376,
+          "lo": 0.9121699708345749,
+          "hi": 0.9477395888280911,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9337989850195397,
+          "lo": 0.9156077741355879,
+          "hi": 0.9495004764324345,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8674012158054711,
+          "lo": 0.842041680168372,
+          "hi": 0.8912426959434926,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.34132985872407867,
+          "lo": 0.30170265679130365,
+          "hi": 0.38460131164852773,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "ztf",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8465520516717324,
+          "lo": 0.817166339032661,
+          "hi": 0.8738378582470057,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "ztf",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8487299174989145,
+          "lo": 0.8215706859165145,
+          "hi": 0.8728470201307394,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8496187038645245,
+          "lo": 0.8224980489787848,
+          "hi": 0.87359696123989,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8491743106817196,
+          "lo": 0.8225899115132455,
+          "hi": 0.8731674873795103,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7581212006079028,
+          "lo": 0.7269381217354122,
+          "hi": 0.787011927434921,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.5209549293585619,
+          "lo": 0.4959019705446991,
+          "hi": 0.5475058839616578,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "ztf",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7632639491966998,
+          "lo": 0.7272513885705106,
+          "hi": 0.7957040179954471,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8014071320017369,
+          "lo": 0.7690090968827914,
+          "hi": 0.8314339482001529,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.7823355405992183,
+          "lo": 0.7524592521067986,
+          "hi": 0.8115333074095762,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7296020136778115,
+          "lo": 0.6978875343633452,
+          "hi": 0.7607634728978506,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.9032484809962936,
+          "lo": 0.8890006553661748,
+          "hi": 0.9174577887500072,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "ztf",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 777,
+      "n_per_class": {
+        "snia": 448,
+        "nonia": 329,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8134634172818064,
+          "lo": 0.7817155888386718,
+          "hi": 0.8418003776785824,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8472644376899695,
+          "lo": 0.8181281757422899,
+          "hi": 0.8736754518851152,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8303639274858879,
+          "lo": 0.8031984286260165,
+          "hi": 0.8548162082758272,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7650788373860182,
+          "lo": 0.7325804339414176,
+          "hi": 0.7942486336369052,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.848929669583128,
+          "lo": 0.8328560367450699,
+          "hi": 0.8679081757513425,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 3,
+      "survey": "lsst",
+      "status": "too_few_rows",
+      "n_objects": 0,
+      "informational": false
+    },
+    {
+      "n_det": 5,
+      "survey": "all",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9249331073224717,
+          "lo": 0.9052362694943785,
+          "hi": 0.943729468050777,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9194065813989326,
+          "lo": 0.8990432321495684,
+          "hi": 0.9387386215162884,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9221698443607022,
+          "lo": 0.9022551460179439,
+          "hi": 0.9411490693988575,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8503810431055013,
+          "lo": 0.8250927275462612,
+          "hi": 0.8767364320616042,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.36458437392820653,
+          "lo": 0.3245610246996425,
+          "hi": 0.40616906511723566,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "all",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7934662314556686,
+          "lo": 0.7616846672232186,
+          "hi": 0.8257805801390635,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "all",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8805527926817309,
+          "lo": 0.8573391567506232,
+          "hi": 0.9020734162883355,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8763220934956502,
+          "lo": 0.8506248011661756,
+          "hi": 0.898857220237336,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8784374430886905,
+          "lo": 0.8537978759156267,
+          "hi": 0.8998022213625705,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7966182424386758,
+          "lo": 0.7677084715710641,
+          "hi": 0.8256543490723735,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.4741466992691597,
+          "lo": 0.44858045051957884,
+          "hi": 0.5017304035179856,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "all",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7057562725018561,
+          "lo": 0.6648796340539103,
+          "hi": 0.7408283040795955,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.7211661039743357,
+          "lo": 0.6877578939066186,
+          "hi": 0.7546886842077712,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.7134611882380959,
+          "lo": 0.6811361674901028,
+          "hi": 0.7434612958310147,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.6472969754703501,
+          "lo": 0.6184417366110634,
+          "hi": 0.6765747213692123,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.86778499065461,
+          "lo": 0.8541024350291981,
+          "hi": 0.882288064093347,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "all",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8121541543504756,
+          "lo": 0.7794699741612338,
+          "hi": 0.8411180983049089,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.7965902245632712,
+          "lo": 0.7632907605050205,
+          "hi": 0.8289315704465557,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8043721894568734,
+          "lo": 0.7740740154197664,
+          "hi": 0.8322766343515599,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7329125982376756,
+          "lo": 0.7008769112885168,
+          "hi": 0.7630589746717295,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.7808067991588539,
+          "lo": 0.7637202185021061,
+          "hi": 0.7989107932964866,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "ztf",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9249331073224717,
+          "lo": 0.9047628904265506,
+          "hi": 0.9426751856445263,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9194065813989326,
+          "lo": 0.8994371258214814,
+          "hi": 0.9366397627478689,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9221698443607022,
+          "lo": 0.902781187857865,
+          "hi": 0.9395359637681325,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8503810431055013,
+          "lo": 0.8245418880651558,
+          "hi": 0.8749569433716098,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.36458437392820653,
+          "lo": 0.3279261518006255,
+          "hi": 0.40515072672338837,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "ztf",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7934662314556686,
+          "lo": 0.7603784195300611,
+          "hi": 0.8257250634625277,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "ztf",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8805527926817309,
+          "lo": 0.8560499070353323,
+          "hi": 0.9034916872156198,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8763220934956502,
+          "lo": 0.8504031899059156,
+          "hi": 0.8997091704163879,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8784374430886905,
+          "lo": 0.8532430156958387,
+          "hi": 0.9017410679131777,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7966182424386758,
+          "lo": 0.76661897110954,
+          "hi": 0.824493414814623,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.4741466992691597,
+          "lo": 0.4463227270911912,
+          "hi": 0.5033953864393343,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "ztf",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7057562725018561,
+          "lo": 0.6693880448468922,
+          "hi": 0.7434915207280547,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.7211661039743357,
+          "lo": 0.6841804418766946,
+          "hi": 0.7543951998182343,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.7134611882380959,
+          "lo": 0.6814621112040332,
+          "hi": 0.7431025573045433,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.6472969754703501,
+          "lo": 0.6162996837001062,
+          "hi": 0.6785743532869123,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.86778499065461,
+          "lo": 0.8534833228170653,
+          "hi": 0.8823629491460369,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "ztf",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 765,
+      "n_per_class": {
+        "snia": 442,
+        "nonia": 323,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8121541543504756,
+          "lo": 0.7803035322334582,
+          "hi": 0.8406425035221342,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.7965902245632712,
+          "lo": 0.7642942819388908,
+          "hi": 0.8279234182505587,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8043721894568734,
+          "lo": 0.7755206618955695,
+          "hi": 0.8306507357307337,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7329125982376756,
+          "lo": 0.6996202482188584,
+          "hi": 0.7623697478991596,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.7808067991588539,
+          "lo": 0.763910949351623,
+          "hi": 0.7995763616287715,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 5,
+      "survey": "lsst",
+      "status": "too_few_rows",
+      "n_objects": 0,
+      "informational": false
+    },
+    {
+      "n_det": 10,
+      "survey": "all",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9518587555577074,
+          "lo": 0.9358812749917316,
+          "hi": 0.9654287328714433,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9495186682482429,
+          "lo": 0.9331589546891839,
+          "hi": 0.9633432057467617,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9506887119029752,
+          "lo": 0.9344571573110482,
+          "hi": 0.9644880573569098,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8868043283545959,
+          "lo": 0.8622318103248541,
+          "hi": 0.9096700605862378,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.2901025838677727,
+          "lo": 0.2504485202699104,
+          "hi": 0.3366118399811097,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "all",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8482816496808604,
+          "lo": 0.8182927448360563,
+          "hi": 0.874488080071818,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "all",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9100034697846313,
+          "lo": 0.8892033029642117,
+          "hi": 0.9298840256917587,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9077198673412573,
+          "lo": 0.8859103653776196,
+          "hi": 0.9286412736789056,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9088616685629443,
+          "lo": 0.8873039914381317,
+          "hi": 0.9289976788192409,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8123007899811986,
+          "lo": 0.7840765505932247,
+          "hi": 0.8430669551330527,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.4165515945233904,
+          "lo": 0.38611557517349165,
+          "hi": 0.44462715662421093,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "all",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7718092102608793,
+          "lo": 0.7380727673005402,
+          "hi": 0.8088368627451459,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8347252818191355,
+          "lo": 0.8023583996415651,
+          "hi": 0.8624405223885615,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8032672460400074,
+          "lo": 0.7730756681664087,
+          "hi": 0.8339996793718456,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.6483897778530909,
+          "lo": 0.6200508824700767,
+          "hi": 0.6775034837984982,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.7621348983044239,
+          "lo": 0.7394388643466182,
+          "hi": 0.7850619609479077,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "all",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8727073196317188,
+          "lo": 0.846667973544175,
+          "hi": 0.8982886503016364,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8832135047245556,
+          "lo": 0.8581879383122721,
+          "hi": 0.9058809138748651,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8779604121781373,
+          "lo": 0.8538415946933641,
+          "hi": 0.9008283140271025,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7733100938455704,
+          "lo": 0.744244597516281,
+          "hi": 0.8027201177633169,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.6629760062711857,
+          "lo": 0.6394476653310275,
+          "hi": 0.6857248120243312,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "ztf",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9518587555577074,
+          "lo": 0.9378472511330334,
+          "hi": 0.9659911268770576,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9495186682482429,
+          "lo": 0.9347841116513048,
+          "hi": 0.9637854093892615,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9506887119029752,
+          "lo": 0.9363072772177194,
+          "hi": 0.964938588605795,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8868043283545959,
+          "lo": 0.8632601263442803,
+          "hi": 0.9105639005068931,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.2901025838677727,
+          "lo": 0.24948889414491843,
+          "hi": 0.3319972744913315,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "ztf",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8482816496808604,
+          "lo": 0.8180038047176853,
+          "hi": 0.8756731604137943,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "ztf",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9100034697846313,
+          "lo": 0.8889552150940903,
+          "hi": 0.9303282578746422,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9077198673412573,
+          "lo": 0.8871853348940254,
+          "hi": 0.9281161412738483,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9088616685629443,
+          "lo": 0.8882041477855489,
+          "hi": 0.9291678233803119,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8123007899811986,
+          "lo": 0.7832811458661965,
+          "hi": 0.8391113035855511,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.4165515945233904,
+          "lo": 0.38691324747898176,
+          "hi": 0.4466402273871576,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "ztf",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.7718092102608793,
+          "lo": 0.7382904940167826,
+          "hi": 0.8051164913171085,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8347252818191355,
+          "lo": 0.8031051861086791,
+          "hi": 0.8621679947898512,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8032672460400074,
+          "lo": 0.7734049486431305,
+          "hi": 0.8311350181960251,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.6483897778530909,
+          "lo": 0.6199345744215323,
+          "hi": 0.6775786115333996,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.7621348983044239,
+          "lo": 0.7390896797520953,
+          "hi": 0.784251463478867,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "ztf",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 712,
+      "n_per_class": {
+        "snia": 409,
+        "nonia": 303,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8727073196317188,
+          "lo": 0.8455717694799615,
+          "hi": 0.8980135090676804,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.8832135047245556,
+          "lo": 0.8586719720122112,
+          "hi": 0.9080465872839606,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.8779604121781373,
+          "lo": 0.8530858746298763,
+          "hi": 0.9027401583293576,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7733100938455704,
+          "lo": 0.743634826754191,
+          "hi": 0.8043722076831942,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.6629760062711857,
+          "lo": 0.6405246395401982,
+          "hi": 0.685350705119372,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 10,
+      "survey": "lsst",
+      "status": "too_few_rows",
+      "n_objects": 0,
+      "informational": false
+    },
+    {
+      "n_det": 20,
+      "survey": "all",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9863946484728958,
+          "lo": 0.9792717063050412,
+          "hi": 0.9923222618398966,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9845557273066469,
+          "lo": 0.9766684552608923,
+          "hi": 0.9912401811522749,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9854751878897714,
+          "lo": 0.9782768248354429,
+          "hi": 0.9916432984091019,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.9283220510633761,
+          "lo": 0.9068411168906653,
+          "hi": 0.949224979071538,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.166580996278066,
+          "lo": 0.13070877329321187,
+          "hi": 0.2030802846404737,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "all",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9225854165556205,
+          "lo": 0.8999996313376412,
+          "hi": 0.9421670421642676,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "all",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9727226693673046,
+          "lo": 0.9607493406163118,
+          "hi": 0.9828136781767487,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9717499067213902,
+          "lo": 0.9595218165322292,
+          "hi": 0.9820504206512266,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9722362880443474,
+          "lo": 0.9601924245425998,
+          "hi": 0.9824116003392319,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8986727786365332,
+          "lo": 0.8725815667916766,
+          "hi": 0.9225503001828128,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.27419980935304517,
+          "lo": 0.24849739387037728,
+          "hi": 0.3029037655447445,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "all",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8892916155855232,
+          "lo": 0.8607487377092746,
+          "hi": 0.9153703787466799,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9323596823197058,
+          "lo": 0.9103810860992252,
+          "hi": 0.9527369688814009,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9108256489526145,
+          "lo": 0.8866211526785663,
+          "hi": 0.9307282937984693,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7452894302009487,
+          "lo": 0.7136857771671641,
+          "hi": 0.7784061394293856,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.6981959566312478,
+          "lo": 0.6757553814909825,
+          "hi": 0.72187162100175,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "all",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9532007888705292,
+          "lo": 0.9363371311864819,
+          "hi": 0.9682140211652752,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9650205212941741,
+          "lo": 0.9519934990178007,
+          "hi": 0.9775243918629893,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9591106550823516,
+          "lo": 0.9460679428679709,
+          "hi": 0.9718153612162492,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8748600820851767,
+          "lo": 0.8471670928060364,
+          "hi": 0.9022460943761375,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.5446938052717515,
+          "lo": 0.5204812749870722,
+          "hi": 0.5686626966467107,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "ztf",
+      "method": "fusion_v8",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9863946484728958,
+          "lo": 0.9796943217724343,
+          "hi": 0.9920431761439468,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9845557273066469,
+          "lo": 0.9768702524127828,
+          "hi": 0.9908077810198597,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9854751878897714,
+          "lo": 0.9782684163348154,
+          "hi": 0.9912035545399511,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.9283220510633761,
+          "lo": 0.9069550254301729,
+          "hi": 0.9497557693324693,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.166580996278066,
+          "lo": 0.13203149206831316,
+          "hi": 0.2034146428905741,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "ztf",
+      "method": "v6e2_rescored",
+      "binary_only": true,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9225854165556205,
+          "lo": 0.899374218699175,
+          "hi": 0.943968668480191,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "balanced_acc": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "log_loss": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "ztf",
+      "method": "best_single_cal[alerce_lc]",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9727226693673046,
+          "lo": 0.960922969956158,
+          "hi": 0.982771397227349,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9717499067213902,
+          "lo": 0.9601383901704824,
+          "hi": 0.982342156094981,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9722362880443474,
+          "lo": 0.9605427376847125,
+          "hi": 0.9825251528046863,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8986727786365332,
+          "lo": 0.8735996218053488,
+          "hi": 0.9226470001445463,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.27419980935304517,
+          "lo": 0.24754403530272162,
+          "hi": 0.30126033789485535,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "ztf",
+      "method": "mean_fusion",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.8892916155855232,
+          "lo": 0.860145944425775,
+          "hi": 0.9154934542954091,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9323596823197058,
+          "lo": 0.9096817150936021,
+          "hi": 0.9515861145245956,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9108256489526145,
+          "lo": 0.886431846717407,
+          "hi": 0.9317626051522278,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.7452894302009487,
+          "lo": 0.7135833169007676,
+          "hi": 0.7759530744355656,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.6981959566312478,
+          "lo": 0.6753777201905388,
+          "hi": 0.7213412907479201,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "ztf",
+      "method": "trust_weighted_pool",
+      "binary_only": false,
+      "informational": false,
+      "n_objects": 549,
+      "n_per_class": {
+        "snia": 292,
+        "nonia": 257,
+        "other": 0
+      },
+      "metrics": {
+        "auc_snia": {
+          "value": 0.9532007888705292,
+          "lo": 0.9363165049840342,
+          "hi": 0.9686066999248784,
+          "n_boot_ok": 1000
+        },
+        "auc_nonia": {
+          "value": 0.9650205212941741,
+          "lo": 0.9510003850951655,
+          "hi": 0.9767536667533494,
+          "n_boot_ok": 1000
+        },
+        "auc_other": {
+          "value": null,
+          "lo": null,
+          "hi": null,
+          "n_boot_ok": 0
+        },
+        "macro_auc": {
+          "value": 0.9591106550823516,
+          "lo": 0.9445042013904688,
+          "hi": 0.9716158767071916,
+          "n_boot_ok": 1000
+        },
+        "balanced_acc": {
+          "value": 0.8748600820851767,
+          "lo": 0.8463938267465105,
+          "hi": 0.9002809734855595,
+          "n_boot_ok": 1000
+        },
+        "log_loss": {
+          "value": 0.5446938052717515,
+          "lo": 0.5213626611444464,
+          "hi": 0.5692317007165095,
+          "n_boot_ok": 1000
+        }
+      }
+    },
+    {
+      "n_det": 20,
+      "survey": "lsst",
+      "status": "too_few_rows",
+      "n_objects": 0,
+      "informational": false
+    }
+  ],
+  "secondary_informational": {
+    "label": "locked test, spec+tns_untyped (INFORMATIONAL ONLY)",
+    "rows": [
+      {
+        "n_det": 3,
+        "survey": "all",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9365230134607034,
+            "lo": 0.9197524364164343,
+            "hi": 0.9523979564501058,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.931074956578376,
+            "lo": 0.9140417113280985,
+            "hi": 0.9466836846191653,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9337989850195397,
+            "lo": 0.9172544186866666,
+            "hi": 0.9488547263565429,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8674012158054711,
+            "lo": 0.8440509968492007,
+            "hi": 0.8903899246153959,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.34132985872407867,
+            "lo": 0.30416400064126975,
+            "hi": 0.38064681422936086,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "all",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8465520516717324,
+            "lo": 0.8188320606240562,
+            "hi": 0.8743610482161762,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "all",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8487299174989145,
+            "lo": 0.8208387142889091,
+            "hi": 0.8733342727752037,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8496187038645245,
+            "lo": 0.8211639967044734,
+            "hi": 0.8747897100841111,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8491743106817196,
+            "lo": 0.8208365460257034,
+            "hi": 0.8724344267425594,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7581212006079028,
+            "lo": 0.7274681256629253,
+            "hi": 0.787672229915772,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.5209549293585619,
+            "lo": 0.4965008546823312,
+            "hi": 0.5479718759125205,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "all",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7632639491966998,
+            "lo": 0.7264682112727111,
+            "hi": 0.7939995432269216,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8014071320017369,
+            "lo": 0.7682578144808951,
+            "hi": 0.8304729698202354,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.7823355405992183,
+            "lo": 0.7527129783546369,
+            "hi": 0.8076940529713796,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7296020136778115,
+            "lo": 0.6972615978628388,
+            "hi": 0.7591927682448382,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.9032484809962936,
+            "lo": 0.8898414827555011,
+            "hi": 0.9171253779207731,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "all",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8134634172818064,
+            "lo": 0.7831037605023317,
+            "hi": 0.8422068194792157,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8472644376899695,
+            "lo": 0.820153628352293,
+            "hi": 0.8738796758329429,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8303639274858879,
+            "lo": 0.8056052785450335,
+            "hi": 0.8542503511951969,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7650788373860182,
+            "lo": 0.7361088908017708,
+            "hi": 0.7925098770648222,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.848929669583128,
+            "lo": 0.8317389219281012,
+            "hi": 0.8652903324079908,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "ztf",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9365230134607034,
+            "lo": 0.9177621238471884,
+            "hi": 0.9518475668615857,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.931074956578376,
+            "lo": 0.9116929491515978,
+            "hi": 0.9473850098683643,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9337989850195397,
+            "lo": 0.9154946741884564,
+            "hi": 0.9493406027189343,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8674012158054711,
+            "lo": 0.8417255619475009,
+            "hi": 0.8900297026156697,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.34132985872407867,
+            "lo": 0.30304988117770376,
+            "hi": 0.3838977837541515,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "ztf",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8465520516717324,
+            "lo": 0.8184615252873434,
+            "hi": 0.8733645161381096,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "ztf",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8487299174989145,
+            "lo": 0.8213339413334938,
+            "hi": 0.8733938143425548,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8496187038645245,
+            "lo": 0.8232681193084455,
+            "hi": 0.8751421517920072,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8491743106817196,
+            "lo": 0.8222723032044281,
+            "hi": 0.8740982761675444,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7581212006079028,
+            "lo": 0.7272076112934689,
+            "hi": 0.7874375379489026,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.5209549293585619,
+            "lo": 0.4963572455188883,
+            "hi": 0.5473468791072277,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "ztf",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7632639491966998,
+            "lo": 0.7280842895921,
+            "hi": 0.7971161935219419,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8014071320017369,
+            "lo": 0.7712795135973362,
+            "hi": 0.8321134015699482,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.7823355405992183,
+            "lo": 0.7543591876356779,
+            "hi": 0.8101908271977568,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7296020136778115,
+            "lo": 0.6977625144385557,
+            "hi": 0.7607356731162193,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.9032484809962936,
+            "lo": 0.8895643132288644,
+            "hi": 0.917303943437491,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "ztf",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 777,
+        "n_per_class": {
+          "snia": 448,
+          "nonia": 329,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8134634172818064,
+            "lo": 0.7834377272386607,
+            "hi": 0.8425174062690862,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8472644376899695,
+            "lo": 0.8186610318286938,
+            "hi": 0.8738391722080627,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8303639274858879,
+            "lo": 0.8052982509037377,
+            "hi": 0.8559902500300092,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7650788373860182,
+            "lo": 0.7349830074613752,
+            "hi": 0.7928879139221372,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.848929669583128,
+            "lo": 0.831661328930332,
+            "hi": 0.8659620804624747,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 3,
+        "survey": "lsst",
+        "status": "too_few_rows",
+        "n_objects": 0,
+        "informational": true
+      },
+      {
+        "n_det": 5,
+        "survey": "all",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9249331073224717,
+            "lo": 0.9071580547295377,
+            "hi": 0.9428885051566614,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9194065813989326,
+            "lo": 0.9009960026430255,
+            "hi": 0.9383981412651633,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9221698443607022,
+            "lo": 0.9044013170573602,
+            "hi": 0.9402916517932408,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8503810431055013,
+            "lo": 0.8255236984977274,
+            "hi": 0.8747477627637569,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.36458437392820653,
+            "lo": 0.3254697338501431,
+            "hi": 0.40188072445772427,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "all",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7934662314556686,
+            "lo": 0.7616716490251556,
+            "hi": 0.823432999547164,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "all",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8805527926817309,
+            "lo": 0.854960247842996,
+            "hi": 0.9055846545375832,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8763220934956502,
+            "lo": 0.8503194108005044,
+            "hi": 0.901828491516908,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8784374430886905,
+            "lo": 0.8525187193471677,
+            "hi": 0.9035478502473018,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7966182424386758,
+            "lo": 0.7652373112623208,
+            "hi": 0.8252910882222281,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.4741466992691597,
+            "lo": 0.44503246044357436,
+            "hi": 0.502569424312908,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "all",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7057562725018561,
+            "lo": 0.6688955043309678,
+            "hi": 0.7415722173311798,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.7211661039743357,
+            "lo": 0.6856309722460093,
+            "hi": 0.7554106939391088,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.7134611882380959,
+            "lo": 0.6823535764694303,
+            "hi": 0.7445092404322738,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.6472969754703501,
+            "lo": 0.6187633219954648,
+            "hi": 0.6769280127371444,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.86778499065461,
+            "lo": 0.8536096904424683,
+            "hi": 0.8820860321464032,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "all",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8121541543504756,
+            "lo": 0.7797506608877235,
+            "hi": 0.8432578257314237,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.7965902245632712,
+            "lo": 0.7608337157569667,
+            "hi": 0.8309960828848408,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8043721894568734,
+            "lo": 0.7744553142644742,
+            "hi": 0.8346878555450101,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7329125982376756,
+            "lo": 0.7022644901640991,
+            "hi": 0.7647109133455186,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.7808067991588539,
+            "lo": 0.7629495375266738,
+            "hi": 0.800324061172609,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "ztf",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9249331073224717,
+            "lo": 0.905332240387078,
+            "hi": 0.9435943546883679,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9194065813989326,
+            "lo": 0.8996047045832861,
+            "hi": 0.9385855522637339,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9221698443607022,
+            "lo": 0.9024578774279051,
+            "hi": 0.940483693096884,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8503810431055013,
+            "lo": 0.8223746213416596,
+            "hi": 0.8776213679205822,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.36458437392820653,
+            "lo": 0.3255552950416697,
+            "hi": 0.4022897100356554,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "ztf",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7934662314556686,
+            "lo": 0.7610350633507562,
+            "hi": 0.8257164798911173,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "ztf",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8805527926817309,
+            "lo": 0.8553055885844729,
+            "hi": 0.9035406894585065,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8763220934956502,
+            "lo": 0.8510552221359406,
+            "hi": 0.8988939399384571,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8784374430886905,
+            "lo": 0.8529532011289145,
+            "hi": 0.9006159042837155,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7966182424386758,
+            "lo": 0.7665678413749606,
+            "hi": 0.823534856273134,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.4741466992691597,
+            "lo": 0.4476331566877859,
+            "hi": 0.5023076152074424,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "ztf",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7057562725018561,
+            "lo": 0.6655445720945721,
+            "hi": 0.7457540451740807,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.7211661039743357,
+            "lo": 0.6839134762269168,
+            "hi": 0.7569097446730126,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.7134611882380959,
+            "lo": 0.6814190226156549,
+            "hi": 0.7454085924936584,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.6472969754703501,
+            "lo": 0.6177874305326645,
+            "hi": 0.6770467070262786,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.86778499065461,
+            "lo": 0.8539172411756494,
+            "hi": 0.8828576444111053,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "ztf",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 765,
+        "n_per_class": {
+          "snia": 442,
+          "nonia": 323,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8121541543504756,
+            "lo": 0.7802970001691818,
+            "hi": 0.8433184215286982,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.7965902245632712,
+            "lo": 0.7628067180202056,
+            "hi": 0.8295136143434726,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8043721894568734,
+            "lo": 0.7732563698140001,
+            "hi": 0.8337720721279704,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7329125982376756,
+            "lo": 0.7019173492987323,
+            "hi": 0.76556093691676,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.7808067991588539,
+            "lo": 0.761858606254192,
+            "hi": 0.800052518204279,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 5,
+        "survey": "lsst",
+        "status": "too_few_rows",
+        "n_objects": 0,
+        "informational": true
+      },
+      {
+        "n_det": 10,
+        "survey": "all",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9518587555577074,
+            "lo": 0.9356607447008388,
+            "hi": 0.9656515447522868,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9495186682482429,
+            "lo": 0.9332303932245892,
+            "hi": 0.9635587384609489,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9506887119029752,
+            "lo": 0.9340170127858718,
+            "hi": 0.9646880885599516,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8868043283545959,
+            "lo": 0.8637433862433862,
+            "hi": 0.9094844807540579,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.2901025838677727,
+            "lo": 0.248928305306358,
+            "hi": 0.33608453944815814,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "all",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8482816496808604,
+            "lo": 0.8185858409197356,
+            "hi": 0.8741944051353765,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "all",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9100034697846313,
+            "lo": 0.8878063476718336,
+            "hi": 0.9301292633758308,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9077198673412573,
+            "lo": 0.8852809181257664,
+            "hi": 0.928128931440981,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9088616685629443,
+            "lo": 0.8873392611037902,
+            "hi": 0.928883383085684,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8123007899811986,
+            "lo": 0.7834848618873701,
+            "hi": 0.8398434654708099,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.4165515945233904,
+            "lo": 0.38712810488096383,
+            "hi": 0.44756674021278176,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "all",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7718092102608793,
+            "lo": 0.7366968310237613,
+            "hi": 0.806527536561987,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8347252818191355,
+            "lo": 0.8039637352555018,
+            "hi": 0.8630337498503731,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8032672460400074,
+            "lo": 0.7738426987256242,
+            "hi": 0.8327198435812144,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.6483897778530909,
+            "lo": 0.6199479570470691,
+            "hi": 0.6780349413494697,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.7621348983044239,
+            "lo": 0.7395313418615069,
+            "hi": 0.7849365730519359,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "all",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8727073196317188,
+            "lo": 0.845348764875015,
+            "hi": 0.8976358426257585,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8832135047245556,
+            "lo": 0.8571292336803107,
+            "hi": 0.9077171040778798,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8779604121781373,
+            "lo": 0.8521825769593693,
+            "hi": 0.9012259692810072,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7733100938455704,
+            "lo": 0.7405670386610107,
+            "hi": 0.8058392209351372,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.6629760062711857,
+            "lo": 0.6387337507397328,
+            "hi": 0.6875590994528681,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "ztf",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9518587555577074,
+            "lo": 0.9359685644584387,
+            "hi": 0.9651322612969803,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9495186682482429,
+            "lo": 0.9330363121811225,
+            "hi": 0.9628485414248423,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9506887119029752,
+            "lo": 0.9348076897771047,
+            "hi": 0.964108138459996,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8868043283545959,
+            "lo": 0.8607474389301445,
+            "hi": 0.9090024549270201,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.2901025838677727,
+            "lo": 0.2511023040849298,
+            "hi": 0.33744039893855343,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "ztf",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8482816496808604,
+            "lo": 0.8207931664456258,
+            "hi": 0.8744455673011984,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "ztf",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9100034697846313,
+            "lo": 0.8879570559936514,
+            "hi": 0.9297684733019072,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9077198673412573,
+            "lo": 0.8833921215745034,
+            "hi": 0.9286410611266995,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9088616685629443,
+            "lo": 0.8856097142567531,
+            "hi": 0.9289348865812609,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8123007899811986,
+            "lo": 0.7803605554571857,
+            "hi": 0.841354065112906,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.4165515945233904,
+            "lo": 0.38719697554985977,
+            "hi": 0.44896768326616576,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "ztf",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.7718092102608793,
+            "lo": 0.7347052353916536,
+            "hi": 0.8060505200084362,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8347252818191355,
+            "lo": 0.80449227340433,
+            "hi": 0.863333300845919,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8032672460400074,
+            "lo": 0.7743769709149364,
+            "hi": 0.8324246988969525,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.6483897778530909,
+            "lo": 0.6169424050640138,
+            "hi": 0.6762792633431428,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.7621348983044239,
+            "lo": 0.7386028769697852,
+            "hi": 0.7857261189417069,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "ztf",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 712,
+        "n_per_class": {
+          "snia": 409,
+          "nonia": 303,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8727073196317188,
+            "lo": 0.8462368919935818,
+            "hi": 0.8980563171973734,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.8832135047245556,
+            "lo": 0.8584638128308042,
+            "hi": 0.9088736383061063,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.8779604121781373,
+            "lo": 0.8536466006733148,
+            "hi": 0.9025813493148054,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7733100938455704,
+            "lo": 0.740176770274507,
+            "hi": 0.8040119263238374,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.6629760062711857,
+            "lo": 0.6387676754147926,
+            "hi": 0.6876063454462443,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 10,
+        "survey": "lsst",
+        "status": "too_few_rows",
+        "n_objects": 0,
+        "informational": true
+      },
+      {
+        "n_det": 20,
+        "survey": "all",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9863946484728958,
+            "lo": 0.9793418393134324,
+            "hi": 0.9920681873821653,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9845557273066469,
+            "lo": 0.9766927865773527,
+            "hi": 0.9909387675602757,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9854751878897714,
+            "lo": 0.9782540245708575,
+            "hi": 0.9914505840493799,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.9283220510633761,
+            "lo": 0.9070291284355775,
+            "hi": 0.9496075253909848,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.166580996278066,
+            "lo": 0.1317549056122446,
+            "hi": 0.20386742866866134,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "all",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9225854165556205,
+            "lo": 0.8993699569763949,
+            "hi": 0.9436568848871736,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "all",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9727226693673046,
+            "lo": 0.9606045937810331,
+            "hi": 0.9831355444972586,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9717499067213902,
+            "lo": 0.9596157727284728,
+            "hi": 0.9820723234212717,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9722362880443474,
+            "lo": 0.9603068048778148,
+            "hi": 0.9824767620782342,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8986727786365332,
+            "lo": 0.8729088660351019,
+            "hi": 0.9219071833457739,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.27419980935304517,
+            "lo": 0.2473230938580469,
+            "hi": 0.3039880974326893,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "all",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8892916155855232,
+            "lo": 0.862234636060877,
+            "hi": 0.9162334294336368,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9323596823197058,
+            "lo": 0.9098703977444523,
+            "hi": 0.9511791392293012,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9108256489526145,
+            "lo": 0.8877378534443927,
+            "hi": 0.9321859752785326,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7452894302009487,
+            "lo": 0.7126686649756578,
+            "hi": 0.7766981840370822,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.6981959566312478,
+            "lo": 0.6748157806145011,
+            "hi": 0.7202019941000304,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "all",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9532007888705292,
+            "lo": 0.9356938028708166,
+            "hi": 0.9680991886131711,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9650205212941741,
+            "lo": 0.9504186848557001,
+            "hi": 0.9769409425845799,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9591106550823516,
+            "lo": 0.943492047843997,
+            "hi": 0.9713604559328191,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8748600820851767,
+            "lo": 0.8448330751223174,
+            "hi": 0.8995480707923978,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.5446938052717515,
+            "lo": 0.522489472456351,
+            "hi": 0.5679883461025387,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "ztf",
+        "method": "fusion_v8",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9863946484728958,
+            "lo": 0.9789986940509922,
+            "hi": 0.9923857096652462,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9845557273066469,
+            "lo": 0.9767945766291957,
+            "hi": 0.9910768049319926,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9854751878897714,
+            "lo": 0.978056849240565,
+            "hi": 0.991551789616758,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.9283220510633761,
+            "lo": 0.90516902929819,
+            "hi": 0.9487624954099956,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.166580996278066,
+            "lo": 0.13249241496807046,
+            "hi": 0.2065817822595477,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "ztf",
+        "method": "v6e2_rescored",
+        "binary_only": true,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9225854165556205,
+            "lo": 0.8992333937648328,
+            "hi": 0.9437545701006048,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "balanced_acc": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "log_loss": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "ztf",
+        "method": "best_single_cal[alerce_lc]",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9727226693673046,
+            "lo": 0.9610148218981592,
+            "hi": 0.9826475665219184,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9717499067213902,
+            "lo": 0.9594379396721198,
+            "hi": 0.9817098072151473,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9722362880443474,
+            "lo": 0.9600008841338763,
+            "hi": 0.9821775193743647,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8986727786365332,
+            "lo": 0.8722098917009007,
+            "hi": 0.9232571816282001,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.27419980935304517,
+            "lo": 0.2488835052401549,
+            "hi": 0.3027466866296877,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "ztf",
+        "method": "mean_fusion",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.8892916155855232,
+            "lo": 0.8600282453543324,
+            "hi": 0.9150016673336001,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9323596823197058,
+            "lo": 0.9119745891986151,
+            "hi": 0.9526497265572895,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9108256489526145,
+            "lo": 0.8881345755188067,
+            "hi": 0.9327523775425024,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.7452894302009487,
+            "lo": 0.714336455893833,
+            "hi": 0.7791103661965991,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.6981959566312478,
+            "lo": 0.6747032462963161,
+            "hi": 0.7207784593918444,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "ztf",
+        "method": "trust_weighted_pool",
+        "binary_only": false,
+        "informational": true,
+        "n_objects": 549,
+        "n_per_class": {
+          "snia": 292,
+          "nonia": 257,
+          "other": 0
+        },
+        "metrics": {
+          "auc_snia": {
+            "value": 0.9532007888705292,
+            "lo": 0.937491212120061,
+            "hi": 0.9684210667045698,
+            "n_boot_ok": 1000
+          },
+          "auc_nonia": {
+            "value": 0.9650205212941741,
+            "lo": 0.9511536730437697,
+            "hi": 0.9771417898023566,
+            "n_boot_ok": 1000
+          },
+          "auc_other": {
+            "value": null,
+            "lo": null,
+            "hi": null,
+            "n_boot_ok": 0
+          },
+          "macro_auc": {
+            "value": 0.9591106550823516,
+            "lo": 0.9444950229876191,
+            "hi": 0.9714274251888668,
+            "n_boot_ok": 1000
+          },
+          "balanced_acc": {
+            "value": 0.8748600820851767,
+            "lo": 0.8455187379319057,
+            "hi": 0.9006922374275983,
+            "n_boot_ok": 1000
+          },
+          "log_loss": {
+            "value": 0.5446938052717515,
+            "lo": 0.5225772438459225,
+            "hi": 0.5681243616887064,
+            "n_boot_ok": 1000
+          }
+        }
+      },
+      {
+        "n_det": 20,
+        "survey": "lsst",
+        "status": "too_few_rows",
+        "n_objects": 0,
+        "informational": true
+      }
+    ]
+  }
+}

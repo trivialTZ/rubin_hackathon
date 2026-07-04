@@ -1,0 +1,65 @@
+# fusion_v8 — pre-registered headline & guards
+
+```json
+{
+  "preregistered": {
+    "headline": "object-level spec-only macro OvR AUC @ n_det=5, locked test, fusion_v8 vs re-scored v6e2",
+    "guards": [
+      "LSST-spec slice non-regression",
+      "DP1 EclBin+RRLyrae EF non-regression",
+      "LightGBM bagging-seed spread on headline < 0.02 (5 seeds)"
+    ]
+  },
+  "headline": {
+    "n_objects": 765,
+    "fusion_v8_macro_auc": {
+      "value": 0.9225690990852164,
+      "lo": 0.9030066407566703,
+      "hi": 0.9398508925633241,
+      "n_boot_ok": 1000
+    },
+    "fusion_v8_auc_snia": {
+      "value": 0.9244708123782974,
+      "lo": 0.9049566468436294,
+      "hi": 0.9420202617708251,
+      "n_boot_ok": 1000
+    },
+    "vs_v6e2_snia_auc_delta": {
+      "delta": 0.1310045809226288,
+      "lo": 0.1037118732451912,
+      "hi": 0.15735672916485685
+    },
+    "vs_v6e2_significant_win": true,
+    "claim": "fusion_v8 beats re-scored v6e2 on snia OvR AUC @ n_det=5 (CI95 excludes 0)",
+    "note": "macro OvR AUC has no v6e2 counterpart (binary head); the snia OvR axis is the comparable one"
+  },
+  "guards": [
+    {
+      "guard": "lsst_spec_non_regression",
+      "n_objects": 0,
+      "status": "N/A (no LSST spec test slice locally, or v6e2 unavailable)"
+    },
+    {
+      "guard": "dp1_eclbin_rrlyrae_ef_non_regression",
+      "fusion_v8_ef": 7.9413228084619405,
+      "v6e2_ef": 17.88,
+      "v6e2_source": "documented v6e2 headline (17.88)",
+      "pass": true,
+      "rule": "pass iff fusion_v8 EF@top-1% <= v6e2 EF (lower = better suppression)"
+    },
+    {
+      "guard": "seed_spread_lt_0.02",
+      "per_seed_macro_auc": {
+        "main": 0.9225690990852164,
+        "seed43": 0.9212767745821835,
+        "seed44": 0.9225060588655561,
+        "seed45": 0.9232765504391802,
+        "seed46": 0.9201245394561731
+      },
+      "spread": 0.003152010983007103,
+      "pass": true,
+      "rule": "pass iff max-min macro AUC < 0.02"
+    }
+  ]
+}
+```

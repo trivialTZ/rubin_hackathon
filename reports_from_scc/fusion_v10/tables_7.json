@@ -1,0 +1,177 @@
+{
+  "table": 7,
+  "title": "Component-gate ledger (decided on cal) + pre-registered headline & guards",
+  "gates": [
+    {
+      "component": "seq_features",
+      "decision": "skipped",
+      "reason": "no seq_* columns in snapshot (v8 mode)"
+    },
+    {
+      "component": "ext_features",
+      "decision": "kept",
+      "cal_macro_auc_with": 0.9365121846053199,
+      "cal_macro_auc_without": 0.9288141011344544,
+      "delta_macro_auc": 0.0076980834708655355,
+      "delta_macro_auc_ci95": [
+        0.0010567471948367576,
+        0.01512347618690702
+      ],
+      "cal_purity50_with": 1.0,
+      "cal_purity50_without": 1.0,
+      "delta_purity50": 0.0,
+      "delta_purity50_ci95": [
+        0.0,
+        0.0
+      ],
+      "rule": "kept iff >=1 metric improves with CI95 lower bound > 0 AND no metric significantly regresses (CI95 upper bound < 0) \u2014 cal only. A saturated metric (delta exactly 0, e.g. purity@50 already 1.0) cannot block a CI-significant improvement on the other metric."
+    },
+    {
+      "component": "seq_v9_expert",
+      "decision": "dropped",
+      "cal_macro_auc_with": 0.9363337645152177,
+      "cal_macro_auc_without": 0.9365121846053199,
+      "delta_macro_auc": -0.00017842009010227144,
+      "delta_macro_auc_ci95": [
+        -0.003727687137228669,
+        0.00356179686118081
+      ],
+      "cal_purity50_with": 1.0,
+      "cal_purity50_without": 1.0,
+      "delta_purity50": 0.0,
+      "delta_purity50_ci95": [
+        0.0,
+        0.0
+      ],
+      "rule": "kept iff >=1 metric improves with CI95 lower bound > 0 AND no metric significantly regresses (CI95 upper bound < 0) \u2014 cal only. A saturated metric (delta exactly 0, e.g. purity@50 already 1.0) cannot block a CI-significant improvement on the other metric."
+    },
+    {
+      "component": "traj_features",
+      "decision": "dropped",
+      "cal_macro_auc_with": 0.9386086206640201,
+      "cal_macro_auc_without": 0.9365121846053199,
+      "delta_macro_auc": 0.002096436058700135,
+      "delta_macro_auc_ci95": [
+        -0.002187926225638256,
+        0.006301484455968398
+      ],
+      "cal_purity50_with": 1.0,
+      "cal_purity50_without": 1.0,
+      "delta_purity50": 0.0,
+      "delta_purity50_ci95": [
+        0.0,
+        0.0
+      ],
+      "rule": "kept iff >=1 metric improves with CI95 lower bound > 0 AND no metric significantly regresses (CI95 upper bound < 0) \u2014 cal only. A saturated metric (delta exactly 0, e.g. purity@50 already 1.0) cannot block a CI-significant improvement on the other metric."
+    },
+    {
+      "component": "pooled_trust_q",
+      "decision": "dropped",
+      "cal_macro_auc_with": 0.8900486194745527,
+      "cal_macro_auc_without": 0.9365121846053199,
+      "delta_macro_auc": -0.046463565130767215,
+      "delta_macro_auc_ci95": [
+        -0.06251064652820484,
+        -0.030898127655771622
+      ],
+      "cal_purity50_with": 1.0,
+      "cal_purity50_without": 1.0,
+      "delta_purity50": 0.0,
+      "delta_purity50_ci95": [
+        -0.020000000000000018,
+        0.0
+      ],
+      "rule": "kept iff >=1 metric improves with CI95 lower bound > 0 AND no metric significantly regresses (CI95 upper bound < 0) \u2014 cal only. A saturated metric (delta exactly 0, e.g. purity@50 already 1.0) cannot block a CI-significant improvement on the other metric."
+    },
+    {
+      "component": "expert_dropout_aug",
+      "decision": "dropped",
+      "cal_macro_auc_with": 0.9359211680568567,
+      "cal_macro_auc_without": 0.9365121846053199,
+      "delta_macro_auc": -0.0005910165484632746,
+      "delta_macro_auc_ci95": [
+        -0.003966379806390585,
+        0.0028598644205157196
+      ],
+      "cal_purity50_with": 1.0,
+      "cal_purity50_without": 1.0,
+      "delta_purity50": 0.0,
+      "delta_purity50_ci95": [
+        0.0,
+        0.0
+      ],
+      "rule": "kept iff >=1 metric improves with CI95 lower bound > 0 AND no metric significantly regresses (CI95 upper bound < 0) \u2014 cal only. A saturated metric (delta exactly 0, e.g. purity@50 already 1.0) cannot block a CI-significant improvement on the other metric."
+    },
+    {
+      "component": "dirichlet_calibration",
+      "decision": "kept",
+      "reason": "fallback ladder internal to MulticlassFollowupArtifact",
+      "cal_macro_auc_calibrated": 0.9372258649657286,
+      "cal_macro_auc_raw": 0.9372258649657286,
+      "cal_logloss_calibrated": 0.3254834351384326,
+      "cal_logloss_raw": 0.3254834351384326
+    }
+  ],
+  "aug_frac_final": 0.0,
+  "headline_guards": {
+    "preregistered": {
+      "headline": "object-level spec-only macro OvR AUC @ n_det=5, locked test, fusion_v8 vs re-scored v6e2",
+      "guards": [
+        "LSST-spec slice non-regression",
+        "DP1 EclBin+RRLyrae EF non-regression",
+        "LightGBM bagging-seed spread on headline < 0.02 (5 seeds)"
+      ]
+    },
+    "headline": {
+      "n_objects": 765,
+      "fusion_v8_macro_auc": {
+        "value": 0.9225690990852164,
+        "lo": 0.9030066407566703,
+        "hi": 0.9398508925633241,
+        "n_boot_ok": 1000
+      },
+      "fusion_v8_auc_snia": {
+        "value": 0.9244708123782974,
+        "lo": 0.9049566468436294,
+        "hi": 0.9420202617708251,
+        "n_boot_ok": 1000
+      },
+      "vs_v6e2_snia_auc_delta": {
+        "delta": 0.1310045809226288,
+        "lo": 0.1037118732451912,
+        "hi": 0.15735672916485685
+      },
+      "vs_v6e2_significant_win": true,
+      "claim": "fusion_v8 beats re-scored v6e2 on snia OvR AUC @ n_det=5 (CI95 excludes 0)",
+      "note": "macro OvR AUC has no v6e2 counterpart (binary head); the snia OvR axis is the comparable one"
+    },
+    "guards": [
+      {
+        "guard": "lsst_spec_non_regression",
+        "n_objects": 0,
+        "status": "N/A (no LSST spec test slice locally, or v6e2 unavailable)"
+      },
+      {
+        "guard": "dp1_eclbin_rrlyrae_ef_non_regression",
+        "fusion_v8_ef": 7.9413228084619405,
+        "v6e2_ef": 17.88,
+        "v6e2_source": "documented v6e2 headline (17.88)",
+        "pass": true,
+        "rule": "pass iff fusion_v8 EF@top-1% <= v6e2 EF (lower = better suppression)"
+      },
+      {
+        "guard": "seed_spread_lt_0.02",
+        "per_seed_macro_auc": {
+          "main": 0.9225690990852164,
+          "seed43": 0.9212767745821835,
+          "seed44": 0.9225060588655561,
+          "seed45": 0.9232765504391802,
+          "seed46": 0.9201245394561731
+        },
+        "spread": 0.003152010983007103,
+        "pass": true,
+        "rule": "pass iff max-min macro AUC < 0.02"
+      }
+    ]
+  }
+}
