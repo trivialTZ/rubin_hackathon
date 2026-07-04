@@ -3,7 +3,8 @@
 Replaces the binary ``target_follow_proxy`` head with a 3-class LightGBM
 softmax over ``CLASSES = ("snia", "nonIa_snlike", "other")`` plus a
 Dirichlet calibration layer (fallback ladder: Dirichlet -> vector
-temperature -> temperature -> none, guarded by cal-split grouped-CV
+temperature -> per-class OvR isotonic (only when the strict cal tier is
+missing a class) -> temperature -> none, guarded by cal-split grouped-CV
 log-loss).
 
 No-leakage argument
@@ -20,6 +21,11 @@ No-leakage argument
   catalog context (sherlock/babamul/host-context/Gaia/MPC/SIMBAD) get the
   ``lasair/sherlock`` and ``babamul`` blocks force-NaN'd.  This is a
   structural anti-circularity guard, not a downweighting.
+* The lower-tier (context/weak) cal rows offered to the missing-class OvR
+  isotonic rung get the SAME provenance masking before their probabilities
+  are predicted — the p_other calibration map is never fit on an expert
+  grading its own claim (e.g. alerce_self_label 'other' rows scored with
+  unmasked alerce stamp projections).
 * Feature discovery blocks every label-derived / truth-catalog column
   (see ``_BLOCKED_COLS`` / ``_BLOCKED_PREFIXES``) and asserts loudly.
 
@@ -97,6 +103,9 @@ _BLOCKED_COLS = {
     "priority_score",
     "rank",
     "selected",
+    "selected_fdr",
+    "fdr_threshold",
+    "fdr_gamma",
     "eligible",
     "demoted",
 }
@@ -567,11 +576,62 @@ class _TemperatureAdapter:
         return self._ts.transform(np.asarray(proba, dtype=float))
 
 
+class PerClassIsotonicCalibrator:
+    """Per-class one-vs-rest weighted isotonic calibration.
+
+    The missing-class ladder rung: when the strict (spec/tns) cal tier lacks
+    a class entirely, Dirichlet/vector scaling are never offered and plain
+    temperature scaling degenerates to a no-op for that class — its
+    probability is never calibrated.  This rung maps each class's probability
+    through its own weighted isotonic regression ``p_c -> P(y == c)`` and
+    renormalizes; classes without both positives and negatives in the fit
+    data keep their raw probability (graceful per-class identity).
+    """
+
+    name = "per_class_isotonic"
+
+    def __init__(self, min_rows: int = 10) -> None:
+        self.min_rows = int(min_rows)
+        self._maps: list[Any] = [None] * len(CLASSES)
+
+    def fit(self, proba, y, sample_weight=None) -> "PerClassIsotonicCalibrator":
+        from sklearn.isotonic import IsotonicRegression
+
+        proba = np.asarray(proba, dtype=float)
+        y = np.asarray(y, dtype=int)
+        w = (
+            np.ones(len(y), dtype=float)
+            if sample_weight is None
+            else np.asarray(sample_weight, dtype=float)
+        )
+        self._maps = [None] * len(CLASSES)
+        for c in range(len(CLASSES)):
+            p_c = proba[:, c]
+            ok = np.isfinite(p_c) & (w > 0)
+            y_bin = (y[ok] == c).astype(float)
+            if ok.sum() < self.min_rows or len(np.unique(y_bin)) < 2:
+                continue  # identity for this class — insufficient data
+            iso = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
+            iso.fit(p_c[ok], y_bin, sample_weight=w[ok])
+            self._maps[c] = iso
+        return self
+
+    def transform(self, proba: np.ndarray) -> np.ndarray:
+        out = np.asarray(proba, dtype=float).copy()
+        for c, iso in enumerate(self._maps):
+            if iso is not None:
+                out[:, c] = iso.predict(np.clip(out[:, c], 0.0, 1.0))
+        out = np.clip(out, 1e-6, 1.0)
+        return out / out.sum(axis=1, keepdims=True)
+
+
 def _make_calibrator(kind: str, *, C: float = 1.0, seed: int = 42):
     if kind == "dirichlet":
         return DirichletCalibrator(C=C, seed=seed)
     if kind == "vector_temperature":
         return VectorScaler()
+    if kind == "per_class_isotonic":
+        return PerClassIsotonicCalibrator()
     if kind == "temperature":
         return _TemperatureAdapter()
     return IdentityCalibrator()
@@ -624,13 +684,25 @@ def _fit_calibrator_ladder(
     *,
     seed: int = 42,
     c_grid: Sequence[float] = (0.1, 1.0, 10.0),
+    extra: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> tuple[Any, str, dict[str, Any]]:
-    """Fit the Dirichlet -> vector-temp -> temperature ladder on cal rows.
+    """Fit the calibrator ladder on cal rows.
 
-    Each candidate is scored by grouped 3-fold CV *within cal* (weighted
-    log-loss); the first candidate that does NOT worsen the raw (identity)
-    CV log-loss wins and is refit on all cal rows.  Returns
+    Ladder: Dirichlet -> vector temperature (both offered only when all 3
+    classes are present in the strict cal rows) -> per-class OvR isotonic
+    (offered only when a class is MISSING from the strict cal rows) ->
+    temperature.  Each candidate is scored by grouped 3-fold CV *within cal*
+    (weighted log-loss); the first candidate that does NOT worsen the raw
+    (identity) CV log-loss wins and is refit on all cal rows.  Returns
     ``(calibrator_or_None, kind, info)``.
+
+    ``extra`` (optional) carries lower-tier (context/weak) cal rows as
+    ``(proba, y, sample_weight, groups)`` with their down-weighted sample
+    weights.  When a class is missing from the strict rows, the extra rows
+    OF THE MISSING CLASSES ONLY are admitted into the per-class-isotonic
+    rung's fit/CV set, so the missing class's probability gets a real
+    calibration map instead of a silent no-op.  All other rungs never see
+    the extra rows.
     """
     info: dict[str, Any] = {"candidates": {}}
     y = np.asarray(y, dtype=int)
@@ -646,6 +718,45 @@ def _fit_calibrator_ladder(
     raw_loss = _grouped_cv_loss("identity", proba, y, sample_weight, groups,
                                 seed=seed)
     info["cal_cv_logloss_raw"] = raw_loss
+
+    missing = sorted(set(range(len(CLASSES))) - set(np.unique(y).tolist()))
+    if missing:
+        # --- per-class OvR isotonic rung (missing-class calibration) ---
+        info["missing_classes"] = [CLASSES[c] for c in missing]
+        proba_a, y_a = proba, y
+        w_a, g_a = np.asarray(sample_weight, float), np.asarray(groups)
+        n_extra = 0
+        if extra is not None and len(extra[1]) > 0:
+            x_proba = np.asarray(extra[0], dtype=float)
+            x_y = np.asarray(extra[1], dtype=int)
+            x_w = np.asarray(extra[2], dtype=float)
+            x_g = np.asarray(extra[3])
+            keep = np.isin(x_y, missing) & (x_w > 0)
+            n_extra = int(keep.sum())
+            if n_extra:
+                proba_a = np.vstack([proba_a, x_proba[keep]])
+                y_a = np.concatenate([y_a, x_y[keep]])
+                w_a = np.concatenate([w_a, x_w[keep]])
+                g_a = np.concatenate([
+                    g_a.astype(object), x_g[keep].astype(object)
+                ])
+        info["ovr_isotonic_n_extra_rows"] = n_extra
+        # Same ladder criterion, on the augmented set: grouped-CV weighted
+        # log-loss vs the identity baseline over the SAME rows.
+        ovr_raw = _grouped_cv_loss("identity", proba_a, y_a, w_a, g_a,
+                                   seed=seed)
+        ovr_loss = _grouped_cv_loss("per_class_isotonic", proba_a, y_a, w_a,
+                                    g_a, seed=seed)
+        info["candidates"]["per_class_isotonic"] = ovr_loss
+        info["ovr_isotonic_cv_logloss_raw"] = ovr_raw
+        if np.isfinite(ovr_loss) and ovr_loss <= ovr_raw + 1e-12:
+            calibrator = _make_calibrator("per_class_isotonic", seed=seed)
+            calibrator.fit(proba_a, y_a, sample_weight=w_a)
+            info["cal_cv_logloss_raw_strict"] = raw_loss
+            info["cal_cv_logloss_raw"] = ovr_raw   # comparable basis
+            info["cal_cv_logloss_chosen"] = float(ovr_loss)
+            return calibrator, "per_class_isotonic", info
+        # else: fall through to temperature exactly as before
 
     ladder: list[tuple[str, float]] = []
     if n_classes_cal == len(CLASSES):
@@ -966,9 +1077,11 @@ def train_multiclass_followup(
     if len(train_df) == 0:
         raise ValueError("No multiclass follow-up training rows available")
 
-    # --- Provenance masking: TRAIN rows only.  Cal calibration uses
-    # spec/tns_untyped labels (never context/self-derived) and test must see
-    # production features, so masking train is sufficient and honest. ---
+    # --- Provenance masking: TRAIN rows here.  The strict cal calibration
+    # tier uses spec/tns_untyped labels (never context/self-derived); the
+    # lower-tier cal rows offered to the missing-class OvR isotonic rung are
+    # provenance-masked separately below; test must see production
+    # features. ---
     train_df = apply_provenance_masking(train_df)
     masking_info = dict(train_df.attrs.get("provenance_masking", {}))
 
@@ -1108,10 +1221,42 @@ def train_multiclass_followup(
     ) if len(cal_fit_df) else np.zeros(0)
     groups_cal = cal_fit_df["object_id"].to_numpy() if len(cal_fit_df) else np.zeros(0)
 
+    # Lower-tier (context/weak) cal rows — offered to the ladder's
+    # per-class-isotonic rung for classes MISSING from the strict tier,
+    # carrying their down-weighted base weights (never up-weighted).
+    # Anti-circularity: these labels are context/self-derived (e.g. the LSST
+    # 'other' cohort labeled by the ALeRCE Rubin stamp itself), so their
+    # probabilities are predicted from provenance-MASKED features — mirroring
+    # the TRAIN-row masking — so the p_other isotonic map is never fit on an
+    # expert grading its own opinion.
+    cal_lower_df = cal_df[~cal_fit_mask]
+    extra_cal: tuple[np.ndarray, ...] | None = None
+    extra_cal_masking: dict[str, Any] = {}
+    if len(cal_lower_df) > 0:
+        cal_lower_masked = apply_provenance_masking(cal_lower_df)
+        extra_cal_masking = dict(
+            cal_lower_masked.attrs.get("provenance_masking", {})
+        )
+        proba_cal_lower = _predict_proba_full(
+            model_bundle, _prepare_frame(cal_lower_masked, feature_cols)
+        )
+        extra_cal = (
+            proba_cal_lower,
+            cal_lower_df["target_class"].map(CLASS_TO_IDX).to_numpy(dtype=int),
+            compute_base_weights(
+                cal_lower_df,
+                weak_weight=weak_weight,
+                context_weight=context_weight,
+                tns_untyped_weight=tns_untyped_weight,
+                bts_weight=1.0,
+            ),
+            cal_lower_df["object_id"].to_numpy(),
+        )
+
     calibrator, calibrator_kind, cal_info = (
         _fit_calibrator_ladder(
             proba_cal_raw[cal_fit_mask], y_cal_fit, w_cal_fit, groups_cal,
-            seed=seed,
+            seed=seed, extra=extra_cal,
         )
         if len(cal_fit_df) > 0
         else (None, "none", {"skip_reason": "no cal rows"})
@@ -1129,12 +1274,17 @@ def train_multiclass_followup(
                     "skip_reason": f"cal_objects<150 (have {int(n_objects)})",
                 }
                 continue
+            extra_s: tuple[np.ndarray, ...] | None = None
+            if extra_cal is not None and "survey" in cal_lower_df.columns:
+                mask_x = (cal_lower_df["survey"].astype(str) == survey).to_numpy()
+                if mask_x.any():
+                    extra_s = tuple(part[mask_x] for part in extra_cal)
             cal_s, kind_s, info_s = _fit_calibrator_ladder(
                 proba_cal_raw[cal_fit_mask][mask],
                 y_cal_fit[mask],
                 w_cal_fit[mask],
                 groups_cal[mask],
-                seed=seed,
+                seed=seed, extra=extra_s,
             )
             survey_cal_info[survey] = {"kind": kind_s, **{
                 k: v for k, v in info_s.items() if k != "candidates"
@@ -1206,6 +1356,10 @@ def train_multiclass_followup(
             "cal_cv_logloss_chosen": cal_info.get("cal_cv_logloss_chosen"),
             "candidates": cal_info.get("candidates", {}),
             "skip_reason": cal_info.get("skip_reason"),
+            "missing_classes": cal_info.get("missing_classes"),
+            "ovr_isotonic_n_extra_rows": cal_info.get("ovr_isotonic_n_extra_rows"),
+            "ovr_isotonic_cv_logloss_raw": cal_info.get("ovr_isotonic_cv_logloss_raw"),
+            "ovr_isotonic_extra_provenance_masking": extra_cal_masking,
             "per_survey": survey_cal_info,
         },
         "test_raw": _multiclass_metrics(y_test, proba_test_raw[test_mask]),

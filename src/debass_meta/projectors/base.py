@@ -52,6 +52,9 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     "salt3_chi2":                      ("any",  "local_salt3"),
     "lc_features_bv":                  ("any",  "local_lc_features"),
     "oracle_lsst":                     ("lsst", "local_oracle"),
+    # --- Local v9 sequence classifier (causal GRU over per-detection
+    #     photometry; mixed ZTF+LSST band vocabulary; SSL + fine-tune) ---
+    "seq_v9":                          ("any",  "local_seq_v9"),
 }
 
 # Backward-compatible flat list — Phase 1 experts (original 8)
@@ -204,6 +207,10 @@ def _dispatch_projector(expert_key: str, events: list[dict[str, Any]]) -> dict[s
         return project_events(expert_key, events)
     if expert_key == "oracle_lsst":
         from .local_oracle import project_events
+
+        return project_events(expert_key, events)
+    if expert_key == "seq_v9":
+        from .local_seq_v9 import project_events
 
         return project_events(expert_key, events)
     return {"prediction_type": "unknown", "reason": f"no projector for {expert_key}"}

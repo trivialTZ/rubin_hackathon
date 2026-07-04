@@ -18,12 +18,22 @@ Classifier family mapping:
   Stamp updates:
     alerce/stamp_classifier_2025_beta              → SN, AGN, VS, asteroid, bogus, satellite
     alerce/stamp_classifier_rubin_beta             → SN, AGN, VS, asteroid, bogus (LSST-specific)
+      (live LSST also publishes dated variants, e.g.
+       stamp_classifier_rubin_beta_20260421 — accepted via prefix match;
+       the newest dated variant wins when several are present for one alert)
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .base import summarize_ternary
+
+# Rubin stamp classifier name drift: prefix-match dated variants and prefer
+# the newest dated version.  The registry key stays
+# `alerce/stamp_classifier_rubin_beta` (see access/alerce.py).
+_RUBIN_STAMP_PREFIX = "stamp_classifier_rubin_beta"
+_RUBIN_STAMP_DATE_RE = re.compile(r"^_(\d+)$")
 
 # --- Class → ternary mapping tables ---
 
@@ -93,6 +103,37 @@ def _classify_top_level_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     return summarize_ternary(0.0, p_transient, p_other)
 
 
+def _rubin_stamp_variant_rank(classifier: str) -> tuple[int, int, str]:
+    """Sort key for Rubin stamp variants: dated beats undated, newer date
+    beats older; the name itself breaks ties deterministically."""
+    suffix = classifier[len(_RUBIN_STAMP_PREFIX):]
+    match = _RUBIN_STAMP_DATE_RE.match(suffix)
+    if match:
+        return (1, int(match.group(1)), classifier)
+    return (0, -1, classifier)
+
+
+def _select_rubin_stamp_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep only the newest Rubin stamp variant's events.
+
+    Live LSST ALeRCE can return probabilities from both
+    ``stamp_classifier_rubin_beta`` and dated variants
+    (``stamp_classifier_rubin_beta_YYYYMMDD``) for the same alert; summing
+    across variants would double-count probability mass.  Events without a
+    recognizable variant name are passed through unchanged.
+    """
+    variants: dict[str, list[dict[str, Any]]] = {}
+    for row in events:
+        classifier = str(row.get("classifier") or "")
+        if not classifier.startswith(_RUBIN_STAMP_PREFIX):
+            continue
+        variants.setdefault(classifier, []).append(row)
+    if not variants:
+        return events
+    newest = max(variants, key=_rubin_stamp_variant_rank)
+    return variants[newest]
+
+
 def _classify_stamp_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Stamp classifier: SN → nonIa_snlike (no Ia/nonIa distinction), rest → other."""
     p_nonia = 0.0
@@ -136,10 +177,12 @@ def project_events(expert_key: str, events: list[dict[str, Any]]) -> dict[str, A
                       "alerce/LC_classifier_ATAT_forced_phot"):
         return _classify_transient_events(events, _ATAT_NONIA, _ATAT_OTHER)
 
-    # --- All stamp classifiers (legacy, 2025 beta, Rubin beta) ---
+    # --- All stamp classifiers (legacy, 2025 beta, Rubin beta incl. dated
+    #     variants via prefix match) ---
+    if expert_key.startswith(f"alerce/{_RUBIN_STAMP_PREFIX}"):
+        return _classify_stamp_events(_select_rubin_stamp_events(events))
     if expert_key in ("alerce/stamp_classifier",
-                      "alerce/stamp_classifier_2025_beta",
-                      "alerce/stamp_classifier_rubin_beta"):
+                      "alerce/stamp_classifier_2025_beta"):
         return _classify_stamp_events(events)
 
     return {"prediction_type": "unknown", "reason": f"unsupported alerce expert {expert_key}"}

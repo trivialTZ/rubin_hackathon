@@ -91,12 +91,21 @@ def _normalise_bts(df: pd.DataFrame) -> pd.DataFrame:
         if not ty:
             return None
         s = str(ty).strip()
+        # BTS "-" = spectroscopically OBSERVED but never classified — a class
+        # here would be fabricated (the legacy "SN -" prefix fallback labeled
+        # ~3k such objects nonIa_snlike/spectroscopic).  Never fabricate.
+        if s == "-":
+            return None
         # BTS uses "SN Ia", "SN II", etc.; feed through the TNS mapper
         return map_tns_type_to_ternary("SN " + s) if not s.startswith("SN") else map_tns_type_to_ternary(s)
 
     df["ternary"] = df["bts_type"].map(_map)
     df["label_source"] = "ztf_bts"
-    df["label_quality"] = "spectroscopic"  # BTS is spec-confirmed by definition
+    # Spec-confirmed only where a class exists; unclassified rows carry the
+    # same demotion tier the gold builder applies to legacy parquets.
+    df["label_quality"] = df["ternary"].notna().map(
+        {True: "spectroscopic", False: "bts_unclassified"}
+    )
     return df.reset_index(drop=True)
 
 

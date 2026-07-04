@@ -19,6 +19,25 @@ from .identifiers import infer_identifier_kind
 
 _FIXTURE_DIR = Path("fixtures/raw/alerce")
 
+# Live LSST ALeRCE publishes dated Rubin-stamp variants (e.g.
+# stamp_classifier_rubin_beta_20260421) alongside the base name.  All of
+# them share the registered expert key — the raw classifier name is kept in
+# the event's `classifier` field, and the projector prefers the newest dated
+# variant when several are present for the same alert.
+_RUBIN_STAMP_PREFIX = "stamp_classifier_rubin_beta"
+
+
+def canonical_alerce_expert_key(classifier: str) -> str:
+    """Map a live ALeRCE classifier name to its registry expert key.
+
+    Dated Rubin-stamp variants (prefix match ``stamp_classifier_rubin_beta*``)
+    all map to the unchanged registry key ``alerce/stamp_classifier_rubin_beta``;
+    every other classifier keeps the exact ``alerce/<classifier>`` key.
+    """
+    if str(classifier).startswith(_RUBIN_STAMP_PREFIX):
+        return f"alerce/{_RUBIN_STAMP_PREFIX}"
+    return f"alerce/{classifier}"
+
 
 class AlerceAdapter(BrokerAdapter):
     name = "alerce"
@@ -160,7 +179,7 @@ class AlerceAdapter(BrokerAdapter):
                     "classifier": classifier,
                     "class_name": cls_name,
                     "classifier_version": classifier_version,
-                    "expert_key": f"alerce/{classifier}",
+                    "expert_key": canonical_alerce_expert_key(classifier),
                     "event_scope": "object_snapshot" if not is_stamp else "static_context",
                     "temporal_exactness": "static_safe" if is_stamp else "latest_object_unsafe",
                     "event_time_jd": None,

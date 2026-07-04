@@ -44,6 +44,7 @@ CLASS_KEYS = ("snia", "nonia", "other")          # short metric keys, CLASSES or
 SPEC_QUALITIES = ("spectroscopic",)
 INFO_QUALITIES = ("spectroscopic", "tns_untyped")
 NDET_SLICES = (3, 5, 10, 20)
+TRUST_NDET_BUCKETS = (3, 4, 5)                   # PI contract: trust at 3-5 detections
 SURVEY_SLICES = ("all", "ztf", "lsst")
 RANK_NDETS = (3, 5, 10)
 RANK_BUDGETS = (20, 50, 100)
@@ -718,10 +719,89 @@ def build_table_4(pred_dp1: Path, out_dir: Path) -> tuple[dict, str]:
 
 # ── Table 5 — trust quality per expert ───────────────────────────────────────
 
+def trust_ndet_rows(frame: pd.DataFrame, test_ids: set[str]) -> list[dict]:
+    """Per-expert calibrated trust AUC/ECE at the contract-relevant n_det
+    slice (buckets 3 / 4 / 5 and pooled 3-5), locked test rows, spec-only.
+
+    Rows where the expert fired (finite ``q__<san>``) are scored against the
+    helpfulness-table target contract: ``is_topclass_correct``
+    (``mapped_pred_class == target_class``, ``context_only`` rows excluded)
+    for regular experts, ``is_sn`` (``target_class != 'other'``) for
+    ``SN_FILTER_EXPERTS``.  Point estimates only (no bootstrap) — this is a
+    diagnostic slice of the Table 5 aggregate, not a headline.
+    """
+    try:
+        from debass_meta.models.expert_trust import SN_FILTER_EXPERTS
+        from debass_meta.projectors import ALL_EXPERT_KEYS, sanitize_expert_key
+    except Exception:
+        SN_FILTER_EXPERTS = set()
+        ALL_EXPERT_KEYS = []
+        sanitize_expert_key = lambda k: str(k).replace("/", "__")
+
+    base = frame[
+        frame["object_id"].astype(str).isin(test_ids)
+        & frame["label_quality"].astype(str).isin(SPEC_QUALITIES)
+        & frame["target_class"].notna()
+        & frame["n_det"].isin(TRUST_NDET_BUCKETS)
+    ]
+    if len(base) == 0:
+        return []
+    san_to_key = {sanitize_expert_key(k): k for k in ALL_EXPERT_KEYS}
+    q_sans = sorted(c[len("q__"):] for c in base.columns if c.startswith("q__"))
+    n_det = base["n_det"].astype(int).to_numpy()
+    target_class = base["target_class"].astype(str)
+    rows: list[dict] = []
+    for san in q_sans:
+        expert_key = san_to_key.get(san, san.replace("__", "/"))
+        q = pd.to_numeric(base[f"q__{san}"], errors="coerce").to_numpy(float)
+        is_sn_filter = expert_key in SN_FILTER_EXPERTS
+        if is_sn_filter:
+            target_kind = "is_sn"
+            y = (target_class != "other").astype(int).to_numpy()
+            valid = np.isfinite(q)
+        else:
+            target_kind = "is_topclass_correct"
+            mp_col = f"mapped_pred_class__{san}"
+            if mp_col not in base.columns:
+                rows.append({"expert": expert_key, "target": target_kind,
+                             "status": f"no {mp_col} column in frame"})
+                continue
+            mp = base[mp_col]
+            y = (mp.astype(str) == target_class).astype(int).to_numpy()
+            pt_col = f"prediction_type__{san}"
+            not_ctx = (
+                (base[pt_col].astype(str) != "context_only").to_numpy()
+                if pt_col in base.columns else np.ones(len(base), dtype=bool)
+            )
+            valid = np.isfinite(q) & mp.notna().to_numpy() & not_ctx
+        for bucket in [str(b) for b in TRUST_NDET_BUCKETS] + ["3-5"]:
+            m = valid if bucket == "3-5" else valid & (n_det == int(bucket))
+            yy, qq = y[m], q[m]
+            rows.append({
+                "expert": expert_key, "target": target_kind, "n_det": bucket,
+                "n_rows": int(m.sum()), "n_pos": int(yy.sum()),
+                "auc": _safe_auc(yy, qq), "ece15": _ece(yy, qq, 15),
+            })
+    return rows
+
+
 def build_table_5(train_report: dict, v6e2_metrics_path: Path,
-                  v6e2_trust_dir: Path) -> tuple[dict, str]:
+                  v6e2_trust_dir: Path, *,
+                  frame: pd.DataFrame | None = None,
+                  test_ids: set[str] | None = None) -> tuple[dict, str]:
     pooled = (train_report.get("stage_a") or {}).get("metrics") or {}
-    if not pooled:
+    ndet_rows: list[dict] = []
+    ndet_reason: str | None = None
+    if frame is not None and test_ids is not None:
+        try:
+            ndet_rows = trust_ndet_rows(frame, test_ids)
+            if not ndet_rows:
+                ndet_reason = "no spec-labeled locked-test rows at n_det 3-5"
+        except Exception as exc:
+            ndet_reason = f"n_det-sliced trust rows failed: {exc}"
+    else:
+        ndet_reason = "evaluation frame / test ids unavailable"
+    if not pooled and not ndet_rows:
         raise FileNotFoundError("no stage_a metrics in fusion_v8_train.json")
     v6e2: dict[str, dict] = {}
     if v6e2_metrics_path.exists():
@@ -756,7 +836,14 @@ def build_table_5(train_report: dict, v6e2_metrics_path: Path,
         })
     payload = {"table": 5, "title": "Trust quality per expert (pooled fusion_v8 vs v6e2 heads)",
                "note": "local v6e2 artifacts cover only 3 experts; SCC json covers 11",
-               "rows": rows}
+               "rows": rows,
+               "ndet_sliced": {
+                   "protocol": "locked test rows, spec-only labels, calibrated q "
+                               "per expert claim (finite q__<expert>), n_det "
+                               "buckets 3/4/5 + pooled 3-5; point estimates",
+                   "reason_unavailable": ndet_reason,
+                   "rows": ndet_rows,
+               }}
     md_rows = [[r["expert"], _fmt(r["pooled_raw_auc"]), _fmt(r["pooled_cal_auc"]),
                 _fmt(r["pooled_brier"], 4), _fmt(r["pooled_ece"], 4),
                 r["n_test"] if r["n_test"] is not None else "—",
@@ -769,6 +856,18 @@ def build_table_5(train_report: dict, v6e2_metrics_path: Path,
           + _md_table(["expert", "v8 raw AUC", "v8 cal AUC", "v8 Brier", "v8 ECE",
                        "n_test", "calibrator", "fallback", "v6e2 raw AUC",
                        "v6e2 cal AUC", "v6e2 n_test"], md_rows))
+    md += ("\n\n### Table 5b — Trust at 3-5 detections "
+           "(calibrated q, locked test, spec-only)\n\n")
+    if ndet_rows:
+        md += _md_table(
+            ["expert", "target", "n_det", "AUC", "ECE(15)", "pos/n"],
+            [[r["expert"], r.get("target", "—"),
+              r.get("n_det", "—") if not r.get("status") else f"({r['status']})",
+              _fmt(r.get("auc")), _fmt(r.get("ece15")),
+              f"{r.get('n_pos', '—')}/{r.get('n_rows', '—')}"]
+             for r in ndet_rows])
+    else:
+        md += f"**UNAVAILABLE** — {ndet_reason}"
     return payload, md
 
 
@@ -1105,7 +1204,8 @@ def main() -> None:
     # ── Table 5 ───────────────────────────────────────────────────────────
     try:
         payload5, md5 = build_table_5(train_report, Path(args.v6e2_trust_metrics),
-                                      Path(args.v6e2_trust_dir))
+                                      Path(args.v6e2_trust_dir),
+                                      frame=frame, test_ids=test_ids)
         _write_table(out_dir, 5, payload5, md5)
     except Exception as exc:
         _unavailable(out_dir, 5, "Table 5 — Trust quality", str(exc))

@@ -16,6 +16,14 @@ fusion_v8 artifact stack and emits:
   data/scores/priority_fusion_v8[ _dp1 ]_<goal>.parquet  (goal ∈ ia/nonia/other)
     latest-epoch-per-object ranking via selection.rank_and_select, with
     selected_at_{20,50,100} membership flags and abstention demotion.
+    With --fdr-gamma G: an additional selected_fdr column (plus fdr_threshold /
+    fdr_gamma / fdr_fit_n_det_*) marks the FDR-controlled selection — every
+    object with s >= τ_goal, where τ_goal is fit on labeled CAL objects so the
+    empirical cal FDR of the selection is <= G (selection.fdr_controlled_threshold;
+    the purity-guaranteed spectroscopic-TAC use-case).  --fdr-n-det-max caps the
+    cal fit epochs (pass 5 so the guarantee is fit in the same 3-5-detection
+    regime it gates in deployment); the fit n_det distribution is always
+    recorded.  The cal manifest defaults to data/gold/split_<tag>.json.
 
 DP1 contract (spec correction #2): the DP1 predictions parquet MUST carry
 simbad_main_type, is_gaia_known_star, is_known_variable, is_published_sn,
@@ -56,6 +64,11 @@ FALLBACK_UTILITY_PRESETS = {"ia": (1, 0, 0), "nonia": (0, 1, 0), "other": (0, 0,
 LOCAL_PSNIA_COLS = [
     "proj__supernnova__p_snia", "proj__alerce_lc__p_snia", "proj__lc_features_bv__p_snia",
 ]
+# Label tiers usable for fitting the FDR threshold on cal (the calibration
+# convention from multiclass_followup._SPEC_QUALITIES).
+FDR_LABEL_QUALITIES = ("spectroscopic", "tns_untyped")
+GOAL_SCORE_COLS = {"ia": "s_ia", "nonia": "s_nonia", "other": "s_other"}
+GOAL_CLASSES = dict(zip(GOALS, CLASSES))
 
 
 def ndet_bucket(n_det: np.ndarray) -> np.ndarray:
@@ -144,6 +157,94 @@ def attach_trust_columns(df: pd.DataFrame, trust_dir: Path) -> pd.DataFrame:
     return df
 
 
+# ── FDR-controlled per-goal thresholds (fit on labeled CAL objects) ──────────
+
+def compute_fdr_thresholds(
+    frame: pd.DataFrame, split_path: Path, gamma: float,
+    *, n_det_max: int | None = None,
+) -> dict[str, dict]:
+    """Per-goal score thresholds τ with empirical cal FDR(s >= τ) <= gamma.
+
+    Fit on one row per labeled CAL object (spectroscopic/tns_untyped — the
+    calibration-tier convention): by default each object's LATEST epoch;
+    with ``n_det_max`` its latest epoch at ``n_det <= n_det_max`` (pass 5 to
+    fit the guarantee in the 3-5-detection regime the spectroscopic-TAC
+    selection actually gates — late-epoch scores are far better separated,
+    so a τ fit at n_det~20 does NOT transfer to early epochs).  The fit
+    n_det distribution is recorded per goal so the guarantee's regime is
+    never silent.  Returns {} when cal labels are unavailable (e.g. DP1
+    snapshots) so the caller degrades gracefully to budget-only selection;
+    otherwise ``{goal: {"tau", "n_fit", "n_targets", "fit_n_det_median",
+    "fit_n_det_max", "fit_n_det_cap"}}``.
+    """
+    try:
+        from debass_meta.models.selection import fdr_controlled_threshold
+    except Exception as exc:
+        print(f"  [warn] selection module not importable ({exc}) — FDR thresholds skipped")
+        return {}
+    if not split_path.exists():
+        print(f"  [warn] split manifest {split_path} missing — FDR thresholds skipped")
+        return {}
+    with open(split_path) as fh:
+        raw = json.load(fh)
+    node = raw.get("split", raw) if isinstance(raw, dict) else raw
+    cal_ids = {str(x) for x in (node.get("cal_ids") or node.get("cal") or [])}
+    if not cal_ids or "target_class" not in frame.columns:
+        print("  [warn] no cal ids / no labels in frame — FDR thresholds skipped")
+        return {}
+    if "n_det" in frame.columns:
+        if n_det_max is not None:
+            frame = frame[
+                pd.to_numeric(frame["n_det"], errors="coerce") <= n_det_max
+            ]
+        latest = _latest_per_object(frame)
+    else:
+        latest = frame
+    cal = latest[
+        latest["object_id"].astype(str).isin(cal_ids)
+        & latest["target_class"].astype(str).isin(CLASSES)
+    ]
+    if "label_quality" in cal.columns:
+        cal = cal[cal["label_quality"].astype(str).str.lower().isin(FDR_LABEL_QUALITIES)]
+    if len(cal) < 30:
+        print(f"  [warn] only {len(cal)} labeled cal objects — FDR thresholds skipped")
+        return {}
+    n_det_cal = (
+        pd.to_numeric(cal["n_det"], errors="coerce").to_numpy(float)
+        if "n_det" in cal.columns else np.full(len(cal), np.nan)
+    )
+    thresholds: dict[str, dict] = {}
+    for goal in GOALS:
+        s_col = GOAL_SCORE_COLS[goal]
+        if s_col not in cal.columns:
+            continue
+        s = pd.to_numeric(cal[s_col], errors="coerce").to_numpy(float)
+        y = (cal["target_class"].astype(str) == GOAL_CLASSES[goal]).to_numpy()
+        ok = np.isfinite(s)
+        if ok.sum() < 30:
+            continue
+        tau = float(fdr_controlled_threshold(s[ok], y[ok], gamma=gamma))
+        nd = n_det_cal[ok]
+        thresholds[goal] = {
+            "tau": tau,
+            "n_fit": int(ok.sum()),
+            "n_targets": int(y[ok].sum()),
+            "fit_n_det_median": (
+                float(np.nanmedian(nd)) if np.isfinite(nd).any() else None
+            ),
+            "fit_n_det_max": (
+                float(np.nanmax(nd)) if np.isfinite(nd).any() else None
+            ),
+            "fit_n_det_cap": n_det_max,
+        }
+        print(f"  FDR(gamma={gamma:g}) goal={goal}: tau="
+              f"{'inf (select nothing)' if not np.isfinite(tau) else f'{tau:.4f}'} "
+              f"fit on {int(ok.sum())} cal objects ({int(y[ok].sum())} targets; "
+              f"fit n_det median={thresholds[goal]['fit_n_det_median']}, "
+              f"cap={n_det_max})")
+    return thresholds
+
+
 # ── NaN-aware trust-weighted linear pool (compat ensemble_p_snia) ────────────
 
 def trust_weighted_p_snia(df: pd.DataFrame) -> np.ndarray:
@@ -193,8 +294,23 @@ def main() -> None:
                         help="Predictions parquet (default: data/scores/predictions_fusion_v8[_dp1].parquet)")
     parser.add_argument("--scores-dir", default="data/scores")
     parser.add_argument("--budgets", default="20,50,100")
+    parser.add_argument("--fdr-gamma", type=float, default=None,
+                        help="When set, add a selected_fdr column per goal using the "
+                             "FDR-controlled threshold fit on labeled CAL objects "
+                             "(guaranteed cal FDR <= gamma; selection.fdr_controlled_threshold)")
+    parser.add_argument("--fdr-n-det-max", type=int, default=None,
+                        help="Fit the FDR thresholds on each cal object's latest epoch "
+                             "with n_det <= this cap (e.g. 5 for the 3-5-detection "
+                             "spectroscopic-TAC regime) instead of its final epoch")
+    parser.add_argument("--split", default=None,
+                        help="Split manifest providing cal_ids for --fdr-gamma "
+                             "(default: data/gold/split_<tag>.json derived from --tag, "
+                             "so a stale v8 manifest is never used silently for "
+                             "another tag's artifacts)")
     parser.add_argument("--no-priority", action="store_true", help="Skip priority lists")
     parser.add_argument("--smoke", action="store_true", help="Score only ~200 objects")
+    parser.add_argument("--tag", default="fusion_v8",
+                        help="Artifact tag used in default output filenames (e.g. fusion_v9)")
     args = parser.parse_args()
 
     suffix = "_dp1" if args.dp1 else ""
@@ -202,7 +318,7 @@ def main() -> None:
         "data/gold/dp1_snapshots_fusion_v8.parquet" if args.dp1
         else "data/gold/object_epoch_snapshots_fusion_v8_trust.parquet"
     )
-    out_path = Path(args.out) if args.out else Path(args.scores_dir) / f"predictions_fusion_v8{suffix}.parquet"
+    out_path = Path(args.out) if args.out else Path(args.scores_dir) / f"predictions_{args.tag}{suffix}.parquet"
     budgets = [int(b) for b in str(args.budgets).split(",") if b.strip()]
 
     df = pd.read_parquet(snap_path)
@@ -309,6 +425,17 @@ def main() -> None:
     latest = _latest_per_object(df)
     if "traj_x__mean_slope" not in latest.columns:
         latest["traj_x__mean_slope"] = np.nan  # tiebreak column contract
+    fdr_thresholds: dict[str, dict] = {}
+    if args.fdr_gamma is not None:
+        split_path = (
+            Path(args.split) if args.split
+            else Path(f"data/gold/split_{args.tag}.json")
+        )
+        print(f"  FDR thresholds: cal ids from {split_path}"
+              f"{' (derived from --tag)' if not args.split else ''}")
+        fdr_thresholds = compute_fdr_thresholds(
+            df, split_path, float(args.fdr_gamma),
+            n_det_max=args.fdr_n_det_max)
     pri_cols = [c for c in (
         "object_id", "diaObjectId", "n_det", "alert_jd", "survey", "target_class",
         "label_quality", "p_snia", "p_nonia", "p_other",
@@ -346,8 +473,42 @@ def main() -> None:
                 ranked[f"selected_at_{budget}"] = (
                     ranked["object_id"].map(flags).fillna(False).astype(bool)
                 )
+        # FDR-controlled selection (--fdr-gamma): budget-free threshold rule —
+        # select EVERY object with s >= τ_goal (τ fit on cal; see module doc).
+        if goal in fdr_thresholds:
+            fit = fdr_thresholds[goal]
+            tau = fit["tau"]
+            try:
+                res_fdr = rank_and_select(
+                    base.copy(), u, budget=len(base), score_threshold=tau)
+            except Exception as exc:
+                print(f"  [warn] FDR selection failed for goal={goal}: {exc}")
+            else:
+                flags = res_fdr.set_index("object_id")["selected"].astype(bool)
+                ranked["selected_fdr"] = (
+                    ranked["object_id"].map(flags).fillna(False).astype(bool)
+                )
+                ranked["fdr_threshold"] = tau
+                ranked["fdr_gamma"] = float(args.fdr_gamma)
+                # Record the n_det regime the guarantee was fit at — a τ fit
+                # at late epochs does not transfer to 3-5-det selections.
+                ranked["fdr_fit_n_det_median"] = fit["fit_n_det_median"]
+                ranked["fdr_fit_n_det_cap"] = (
+                    float(fit["fit_n_det_cap"])
+                    if fit["fit_n_det_cap"] is not None else np.nan
+                )
+                summary["fdr"] = {
+                    "gamma": float(args.fdr_gamma),
+                    "threshold": tau if np.isfinite(tau) else None,
+                    "n_selected": int(ranked["selected_fdr"].sum()),
+                    "fit_n_objects": fit["n_fit"],
+                    "fit_n_targets": fit["n_targets"],
+                    "fit_n_det_median": fit["fit_n_det_median"],
+                    "fit_n_det_max": fit["fit_n_det_max"],
+                    "fit_n_det_cap": fit["fit_n_det_cap"],
+                }
         ranked.attrs["budget_summary"] = summary
-        goal_path = scores_dir / f"priority_fusion_v8{suffix}_{goal}.parquet"
+        goal_path = scores_dir / f"priority_{args.tag}{suffix}_{goal}.parquet"
         ranked.to_parquet(goal_path, index=False)
         print(f"Wrote priority list (goal={goal}) → {goal_path} "
               f"[{json.dumps(summary, default=str)}]")

@@ -64,6 +64,7 @@ sys.path.insert(0, str(_REPO / "src"))
 import numpy as np
 import pandas as pd
 
+from debass_meta.access.associations import load_lsst_ztf_associations
 from debass_meta.access.identifiers import infer_identifier_kind
 from debass_meta.access.tns import map_tns_type_to_ternary
 from debass_meta.features.detection import normalize_lightcurve
@@ -80,7 +81,10 @@ from debass_meta.ingest.gold import (
     _resolve_lightcurve_path,
     _to_jd,
 )
-from debass_meta.models.splitters import group_train_cal_test_split
+from debass_meta.models.splitters import (
+    _association_clusters,
+    group_train_cal_test_split,
+)
 from debass_meta.projectors import ALL_EXPERT_KEYS, sanitize_expert_key
 
 # ------------------------------------------------------------------ #
@@ -136,9 +140,11 @@ def bts_type_to_ternary(bts_type: Any) -> str | None:
     BTS types are fed through :func:`map_tns_type_to_ternary` (the single
     source of truth also used by ``scripts/build_truth_multisource.py``),
     prefixed with ``"SN "`` when they do not already start with ``"SN"``.
+    ``'-'`` (spectroscopically observed, never classified) maps to None —
+    the v10 repair of the legacy ``"SN -"`` fabrication.
 
     NOTE (pre-existing pipeline behaviour, replicated for parity, NOT fixed
-    here): non-SN BTS types like ``CV``/``TDE``/``-`` fall through the
+    here): other non-SN BTS types like ``CV``/``TDE`` fall through the
     ``"SN "``-prefix fallback to ``nonIa_snlike``.  The runtime parity check
     (:func:`check_bts_mapping_parity`) guarantees this function agrees with
     the ``ternary`` column already persisted in ztf_bts.parquet.
@@ -146,7 +152,7 @@ def bts_type_to_ternary(bts_type: Any) -> str | None:
     if bts_type is None or (isinstance(bts_type, float) and math.isnan(bts_type)):
         return None
     cleaned = str(bts_type).strip()
-    if not cleaned:
+    if not cleaned or cleaned == "-":
         return None
     return map_tns_type_to_ternary(
         cleaned if cleaned.startswith("SN") else "SN " + cleaned
@@ -159,12 +165,18 @@ def check_bts_mapping_parity(bts_df: pd.DataFrame, *, max_examples: int = 5) -> 
     Raises AssertionError listing example mismatches — a mismatch means the
     BTS catalog was built with a different mapping than this script would
     apply, which would silently shift labels between builds.
+
+    ``'-'`` rows are exempt: legacy parquets store the fabricated
+    ``nonIa_snlike`` there (repaired parquets store None), and either way the
+    label-honesty demotion in :func:`build_truth_entries` clears them.
     """
     if "bts_type" not in bts_df.columns or "ternary" not in bts_df.columns:
         return
     recomputed = bts_df["bts_type"].map(bts_type_to_ternary)
     stored = bts_df["ternary"].where(bts_df["ternary"].notna(), None)
-    mismatch = recomputed.where(recomputed.notna(), None) != stored
+    mismatch = (recomputed.where(recomputed.notna(), None) != stored) & (
+        bts_df["bts_type"].astype(str).str.strip() != "-"
+    )
     if bool(mismatch.any()):
         examples = bts_df.loc[mismatch, ["object_id", "bts_type", "ternary"]].head(max_examples)
         raise AssertionError(
@@ -278,6 +290,40 @@ def resolve_object_list(
 BTS_UNCLASSIFIED_QUALITY = "bts_unclassified"
 
 
+def load_lsst_candidate_truth(path: Path) -> dict[str, dict[str, Any]]:
+    """Weak LSST truth from the ALeRCE Rubin-stamp discovery file.
+
+    data/lsst_candidates.csv carries alerce_stamp_class ∈ {SN, AGN, VS,
+    asteroid, bogus, ...} for the LSST cohort whose label column in labels.csv
+    is empty.  Mapping follows the documented convention (LSST stamp SN →
+    nonIa_snlike, NEVER snia — build_truth_multisource.py:235-274); everything
+    non-SN → other.  label_source='alerce_self_label' so the existing
+    anti-circularity machinery applies (Stage-A drops these rows for alerce
+    experts; Stage-B provenance masking NaNs alerce stamp features).
+    Objects only contribute when their lightcurves are cached (SCC); inert
+    locally where the LSST lightcurves are absent.
+    """
+    if not path.exists():
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    with open(path) as fh:
+        for row in csv.DictReader(fh):
+            oid = str(row.get("object_id") or "").strip()
+            stamp = str(row.get("alerce_stamp_class") or "").strip().upper()
+            if not oid or not stamp:
+                continue
+            ternary = "nonIa_snlike" if stamp == "SN" else "other"
+            out[oid] = {
+                "object_id": oid,
+                "final_class_ternary": ternary,
+                "follow_proxy": 0,
+                "label_source": "alerce_self_label",
+                "label_quality": "weak",
+                "stamp_class": stamp,
+            }
+    return out
+
+
 def _stratified_smoke_sample(
     object_ids: list[str],
     truth_lookup: dict[str, dict[str, Any]],
@@ -358,11 +404,11 @@ def build_truth_entries(
             oid = str(row.get("object_id") or "")
             if not oid or oid in truth_lookup:
                 continue
-            ternary = row.get("ternary")
-            if ternary is None or (isinstance(ternary, float) and math.isnan(ternary)):
-                continue
             if str(row.get("bts_type")).strip() == "-":
                 # Unclassified: keep provenance, never fabricate a class.
+                # (Checked BEFORE the ternary-None skip: repaired parquets
+                # store ternary=None for '-' rows and must still yield the
+                # provenance-preserving fallback entry.)
                 demoted_ids.add(oid)
                 bts_fallback[oid] = {
                     "object_id": oid,
@@ -373,6 +419,9 @@ def build_truth_entries(
                     "bts_type": row.get("bts_type"),
                     "tns_name": row.get("tns_name"),
                 }
+                continue
+            ternary = row.get("ternary")
+            if ternary is None or (isinstance(ternary, float) and math.isnan(ternary)):
                 continue
             bts_fallback[oid] = {
                 "object_id": oid,
@@ -390,6 +439,38 @@ def build_truth_entries(
 # Split manifest                                                      #
 # ------------------------------------------------------------------ #
 
+def load_seq_train_ids(path: Path) -> set[str]:
+    """Object IDs a (previously trained) seq model has seen in training.
+
+    Accepted formats:
+      * ``fold_map.json`` written by train_seq_classifier --oof-folds
+        (``{"assignments": {object_id: fold}}`` — keys cover every train
+        object incl. the weak LSST extras);
+      * a split manifest / trust metadata JSON (``{"train_ids": [...]}``);
+      * a bare JSON list of object IDs;
+      * a parquet with an ``object_id`` column.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise SystemExit(f"--seq-train-ids {path} does not exist")
+    if path.suffix == ".parquet":
+        df = pd.read_parquet(path)
+        col = "object_id" if "object_id" in df.columns else df.columns[0]
+        return {str(o) for o in df[col].tolist()}
+    payload = json.loads(path.read_text())
+    if isinstance(payload, dict):
+        if isinstance(payload.get("assignments"), dict):
+            return {str(o) for o in payload["assignments"]}
+        if payload.get("train_ids") is not None:
+            return {str(o) for o in payload["train_ids"]}
+        raise SystemExit(
+            f"--seq-train-ids {path}: unrecognized JSON dict "
+            f"(expected 'assignments' or 'train_ids')")
+    if isinstance(payload, list):
+        return {str(o) for o in payload}
+    raise SystemExit(f"--seq-train-ids {path}: unrecognized JSON payload")
+
+
 def build_split_manifest(
     snapshot_object_ids: list[str],
     truth_for: dict[str, dict[str, Any]],
@@ -398,6 +479,8 @@ def build_split_manifest(
     seed: int = 42,
     smoke: bool = False,
     snapshot_path: Path | None = None,
+    seq_train_ids: set[str] | None = None,
+    association_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build the fusion_v8 split manifest.
 
@@ -406,6 +489,22 @@ def build_split_manifest(
     via group_train_cal_test_split(seed=seed) and their would-be-test share is
     reassigned to train, so the realized test set is a subset (in full builds:
     byte-identical) of the locked v6e2 test set.
+
+    v10 additions:
+      * ``association_map`` — LSST↔ZTF counterparts share photometry, so
+        (a) NEW objects are unioned into clusters before splitting and each
+        cluster lands in ONE split; (b) a NEW object whose cluster touches a
+        LOCKED assignment is never split independently: locked-TEST
+        counterparts are QUARANTINED (excluded from train/cal/test — both
+        train and cal would leak locked-test photometry), locked-CAL
+        counterparts are forced into cal, locked-TRAIN counterparts into
+        train.  Locked original assignments stay verbatim.
+      * ``seq_train_ids`` — belt-and-braces guard against the chain-ordering
+        cal leak: any object a seq model already trained on (EXPANDED to its
+        association cluster — training on an object is training on its
+        counterpart's photometry) that enters this split as NEW is FORCED
+        into train (never cal), with a loud count; a seq-train id (or
+        counterpart) in the locked test set is a hard failure.
     """
     with open(trust_metadata_path) as fh:
         md = json.load(fh)
@@ -426,26 +525,118 @@ def build_split_manifest(
         )
 
     new_ids = sorted(objs - orig_all)
+
+    # --- association clusters over the FULL population (v10): counterparts
+    # share photometry, so cluster membership — not bare id equality — is
+    # the unit of split hygiene.  Locked ids and seq-train ids join the
+    # clustering so counterpart relations to them are visible. ---
+    seq_train = {str(o) for o in (seq_train_ids or set())}
+    if association_map:
+        rep_of, cluster_members = _association_clusters(
+            sorted(objs | seq_train | orig_all), association_map
+        )
+    else:
+        rep_of, cluster_members = {}, {}
+
+    def _cluster(oid: str) -> set[str]:
+        return set(cluster_members.get(rep_of.get(oid, oid), [oid]))
+
+    # NEW objects whose cluster touches a locked assignment must not be
+    # split independently of it (their cached lightcurve can be the locked
+    # counterpart's photometry verbatim):
+    #   * locked-TEST counterpart → QUARANTINE (train and cal both leak);
+    #   * locked-CAL counterpart  → force into cal (co-located, no straddle);
+    #   * locked-TRAIN counterpart → force into train.
+    quarantined: set[str] = set()
+    forced_cal: set[str] = set()
+    forced_train: set[str] = set()
+    for oid in new_ids:
+        cluster = _cluster(oid)
+        if len(cluster) <= 1:
+            continue
+        if cluster & orig_test:
+            quarantined.add(oid)
+        elif cluster & orig_cal:
+            forced_cal.add(oid)
+        elif cluster & orig_train:
+            forced_train.add(oid)
+    if quarantined or forced_cal or forced_train:
+        print(
+            f"  ASSOCIATION GUARD: new objects with LOCKED counterparts — "
+            f"{len(quarantined):,} quarantined (test counterpart), "
+            f"{len(forced_cal):,} forced→cal, {len(forced_train):,} forced→train",
+            flush=True,
+        )
+
+    locked_bound = quarantined | forced_cal | forced_train
     new_labels: dict[str, str | None] = {}
     for oid in new_ids:
+        if oid in locked_bound:
+            continue
         entry = truth_for.get(oid) or {}
         label = entry.get("final_class_ternary")
         if isinstance(label, float) and math.isnan(label):
             label = None
         new_labels[oid] = str(label) if label is not None else None
-    split = group_train_cal_test_split(new_labels, seed=seed)
+    split = group_train_cal_test_split(
+        new_labels, seed=seed, association_map=association_map
+    )
 
     # Would-be-test new objects are reassigned to train: new objects enter
     # train/cal only, keeping the headline test set identical to v6e2.
     n_reassigned = len(split.test_ids)
-    train_ids = (orig_train & objs) | split.train_ids | split.test_ids
-    cal_ids = (orig_cal & objs) | split.cal_ids
+
+    # --- seq-train guard (v10): a seq model's training objects must never
+    # land in cal (they would contaminate the gate / trust-head evaluation
+    # the way the v8→v9c chain ordering did) and NEVER in locked test.
+    # Expanded to association clusters: training on an object is training on
+    # its counterpart's photometry, and cal→train diversion moves WHOLE
+    # clusters so the association grouping is never re-split. ---
+    if association_map and seq_train:
+        seq_train = seq_train | {
+            m for sid in seq_train for m in _cluster(sid)
+        }
+    # split.cal_ids ∩ seq_train already covers whole clusters: the cluster
+    # expansion above put every counterpart of a seq-train id into seq_train.
+    diverted = split.cal_ids & seq_train
+    if diverted:
+        print(
+            f"  SEQ-TRAIN GUARD: {len(diverted):,} new objects the seq model "
+            f"trained on (incl. association counterparts) were diverted "
+            f"cal→train (chain-ordering leak defense)",
+            flush=True,
+        )
+    stale_locked_cal = seq_train & ((orig_cal & objs) | forced_cal)
+    if stale_locked_cal:
+        print(
+            f"  WARNING: {len(stale_locked_cal):,} seq-train objects sit in "
+            f"(or share photometry with) the LOCKED (v6e2) cal set and cannot "
+            f"be diverted (verbatim preservation) — retrain the seq model "
+            f"against THIS manifest",
+            flush=True,
+        )
+
+    train_ids = ((orig_train & objs) | split.train_ids | split.test_ids
+                 | forced_train | diverted)
+    cal_ids = ((orig_cal & objs) | split.cal_ids | forced_cal) - diverted
     test_ids = orig_test & objs
+
+    leaked_test = seq_train & (test_ids | quarantined)
+    assert not leaked_test, (
+        f"{len(leaked_test)} seq-train objects (incl. association "
+        f"counterparts) are in — or share photometry with — the LOCKED TEST "
+        f"set (e.g. {sorted(leaked_test)[:5]}) — the seq model has seen "
+        f"locked test photometry; the headline is void. Retrain the seq "
+        f"model against this manifest."
+    )
 
     # --- integrity asserts (loud failures) ---
     assert train_ids.isdisjoint(cal_ids) and train_ids.isdisjoint(test_ids) and \
         cal_ids.isdisjoint(test_ids), "fusion_v8 split has overlapping IDs"
-    assert train_ids | cal_ids | test_ids == objs, "fusion_v8 split does not cover snapshot"
+    assert quarantined.isdisjoint(train_ids | cal_ids | test_ids), \
+        "quarantined ids must be excluded from every split"
+    assert train_ids | cal_ids | test_ids | quarantined == objs, \
+        "fusion_v8 split does not cover snapshot"
     assert test_ids <= orig_test, "new objects leaked into the locked test set"
     for oid in objs & orig_all:  # verbatim preservation
         expected = "train" if oid in orig_train else ("cal" if oid in orig_cal else "test")
@@ -466,14 +657,24 @@ def build_split_manifest(
         "n_original": len(objs & orig_all),
         "n_new": len(new_ids),
         "n_new_test_reassigned_to_train": n_reassigned,
+        "seq_train_guard": bool(seq_train),
+        "n_seq_train_ids": len(seq_train),
+        "n_seq_train_diverted_cal_to_train": len(diverted),
+        "n_seq_train_in_locked_cal": len(stale_locked_cal),
+        "association_grouped_split": bool(association_map),
+        "n_new_quarantined_test_counterparts": len(quarantined),
+        "n_new_forced_cal_by_association": len(forced_cal),
+        "n_new_forced_train_by_association": len(forced_train),
         "counts": {
             "train": len(train_ids),
             "cal": len(cal_ids),
             "test": len(test_ids),
+            "quarantined": len(quarantined),
         },
         "train_ids": sorted(train_ids),
         "cal_ids": sorted(cal_ids),
         "test_ids": sorted(test_ids),
+        "quarantined_ids": sorted(quarantined),
         "new_object_ids": new_ids,
     }
 
@@ -492,6 +693,9 @@ def build_fusion_snapshots(
     trust_metadata_path: Path,
     output_path: Path,
     split_manifest_path: Path,
+    lsst_candidates_path: Path | None = None,
+    seq_train_ids_path: Path | None = None,
+    association_csv: Path | None = None,
     max_n_det: int = 20,
     n_jobs: int = 8,
     seed: int = 42,
@@ -501,7 +705,32 @@ def build_fusion_snapshots(
     skip_experts: bool = False,
 ) -> Path:
     t0 = time.time()
+    seq_train_ids: set[str] | None = None
+    if seq_train_ids_path is not None:
+        seq_train_ids = load_seq_train_ids(Path(seq_train_ids_path))
+        print(f"  seq-train guard armed: {len(seq_train_ids):,} object IDs "
+              f"from {seq_train_ids_path}", flush=True)
+    association_map: dict[str, str] | None = None
+    if association_csv is not None and Path(association_csv).exists():
+        assoc = load_lsst_ztf_associations(Path(association_csv))
+        association_map = {
+            str(k): str(v["ztf_object_id"]) for k, v in assoc.items()
+            if v.get("ztf_object_id")
+        }
+        print(f"  association-grouped split: {len(association_map):,} "
+              f"LSST↔ZTF pairs from {association_csv}", flush=True)
     truth_lookup, bts_fallback, demoted_ids = build_truth_entries(truth_path, bts_path)
+    if lsst_candidates_path is not None:
+        lsst_truth = load_lsst_candidate_truth(Path(lsst_candidates_path))
+        n_added = 0
+        for oid, entry in lsst_truth.items():
+            if oid not in truth_lookup:
+                truth_lookup[oid] = entry
+                n_added += 1
+        if n_added:
+            print(f"  LSST weak-label harvest: {n_added:,} candidate objects added "
+                  f"(alerce_self_label/weak; contribute only where lightcurves exist)",
+                  flush=True)
     truth_ids = set(truth_lookup.keys())
     # BTS IDs already merged into object_truth are covered by truth_ids;
     # the fallback dict holds the BTS-only remainder.
@@ -706,13 +935,16 @@ def build_fusion_snapshots(
         seed=seed,
         smoke=smoke or (limit is not None),
         snapshot_path=output_path,
+        seq_train_ids=seq_train_ids,
+        association_map=association_map,
     )
     split_manifest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(split_manifest_path, "w") as fh:
         json.dump(manifest, fh, indent=2)
     print(f"  split manifest → {split_manifest_path} "
           f"(train={manifest['counts']['train']:,} cal={manifest['counts']['cal']:,} "
-          f"test={manifest['counts']['test']:,}; "
+          f"test={manifest['counts']['test']:,} "
+          f"quarantined={manifest['counts']['quarantined']:,}; "
           f"{manifest['n_new_test_reassigned_to_train']:,} new test→train)", flush=True)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -822,6 +1054,20 @@ def main() -> None:
     parser.add_argument("--labels", default="data/labels.csv")
     parser.add_argument("--trust-metadata", default="models/trust/metadata.json",
                         help="Locked v6e2 split (original IDs preserved verbatim)")
+    parser.add_argument("--lsst-candidates", default="data/lsst_candidates.csv",
+                        help="ALeRCE Rubin-stamp discovery CSV → weak LSST truth "
+                             "(SN→nonIa_snlike, else→other; train/cal only)")
+    parser.add_argument("--no-lsst-weak", action="store_true",
+                        help="Disable the LSST weak-label harvest")
+    parser.add_argument("--seq-train-ids", default=None,
+                        help="JSON/parquet of object IDs a seq model trained on "
+                             "(fold_map.json / split manifest / list / parquet): "
+                             "such objects entering the split as NEW are forced "
+                             "into train, never cal; locked-test hits hard-fail")
+    parser.add_argument("--association-csv", default="data/crossmatch/lsst_to_ztf.csv",
+                        help="LSST↔ZTF association CSV: counterparts are grouped "
+                             "into one split cluster for NEW objects (missing "
+                             "file → per-object split, unchanged behaviour)")
     parser.add_argument("--output", default=None,
                         help=f"Snapshot parquet (default {_DEFAULT_OUTPUT})")
     parser.add_argument("--split-manifest", default=None,
@@ -865,6 +1111,9 @@ def main() -> None:
             trust_metadata_path=Path(args.trust_metadata),
             output_path=output,
             split_manifest_path=split_manifest,
+            lsst_candidates_path=None if args.no_lsst_weak else Path(args.lsst_candidates),
+            seq_train_ids_path=Path(args.seq_train_ids) if args.seq_train_ids else None,
+            association_csv=Path(args.association_csv) if args.association_csv else None,
             max_n_det=args.max_n_det,
             n_jobs=args.n_jobs,
             seed=args.seed,

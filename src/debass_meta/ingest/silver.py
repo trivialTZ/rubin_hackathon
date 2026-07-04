@@ -141,7 +141,10 @@ def bronze_to_silver(
                     "broker": row["broker"],
                     "classifier": event.get("classifier"),
                     "classifier_version": event.get("classifier_version"),
-                    "expert_key": event.get("expert_key") or _infer_expert_key(row["broker"], event),
+                    "expert_key": _canonical_expert_key(
+                        row["broker"],
+                        event.get("expert_key") or _infer_expert_key(row["broker"], event),
+                    ),
                     "field": event.get("field", "_raw"),
                     "class_name": event.get("class_name") or event.get("class"),
                     "semantic_type": event.get("semantic_type", row["semantic_type"]),
@@ -236,6 +239,24 @@ def bronze_to_silver(
     return out_path
 
 
+def _canonical_expert_key(broker: str, expert_key: str | None) -> str | None:
+    """Canonicalize drift-prone expert keys at normalization time.
+
+    Bronze payloads fetched under pre-canonicalization code carry dated
+    ALeRCE Rubin-stamp keys (``alerce/stamp_classifier_rubin_beta_YYYYMMDD``)
+    verbatim; the gold builder looks events up by the exact registry key, so
+    without this rewrite those events are silently dropped from every
+    rebuild.  Fetch-time canonicalization (access/alerce.py) only helps NEW
+    bronze — this seam fixes history on re-normalization."""
+    if not expert_key or broker != "alerce":
+        return expert_key
+    if not str(expert_key).startswith("alerce/"):
+        return expert_key
+    from debass_meta.access.alerce import canonical_alerce_expert_key
+
+    return canonical_alerce_expert_key(str(expert_key).split("/", 1)[1])
+
+
 def _infer_expert_key(broker: str, event: dict[str, Any]) -> str:
     classifier = event.get("classifier") or ""
     field = event.get("field") or ""
@@ -246,7 +267,11 @@ def _infer_expert_key(broker: str, event: dict[str, Any]) -> str:
             return "fink/rf_ia"
         return "fink/aux"
     if broker == "alerce":
-        return f"alerce/{classifier}" if classifier else "alerce/unknown"
+        if not classifier:
+            return "alerce/unknown"
+        from debass_meta.access.alerce import canonical_alerce_expert_key
+
+        return canonical_alerce_expert_key(str(classifier))
     if broker == "lasair":
         return "lasair/sherlock"
     return f"{broker}/{classifier}" if classifier else broker

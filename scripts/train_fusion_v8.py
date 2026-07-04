@@ -280,20 +280,52 @@ def run_component_gates(
                            "reason": "no EXT_FEATURE_NAMES columns in snapshot"})
     traj_cols = [c for c in snapshots.columns if c.startswith(("traj__", "traj_x__"))]
     q_cols = [c for c in snapshots.columns if c.startswith(("q__", "q_prior__"))]
+    seq_cols = [c for c in snapshots.columns if c.startswith(("seq_emb_", "seq_surprisal", "seq_nll_"))]
+
+    # Self-trained experts (fit on OUR train split, e.g. seq_v9) are gated as
+    # a component: their train-row projections are partially in-sample
+    # (memorized labels), so Stage B can overweight them — cal, which the
+    # expert never saw, decides whether they help out-of-sample.  Frozen
+    # pre-trained experts stay in the base block.
+    self_trained_cols = [
+        c for c in snapshots.columns
+        if "__seq_v9" in c and not c.startswith(("q__", "q_prior__", "trust_source__"))
+    ]
 
     components: list[tuple[str, list[str]]] = []
     if ext_cols:
         components.append(("ext_features", ext_cols))
+    if self_trained_cols:
+        components.append(("seq_v9_expert", self_trained_cols))
     if traj_cols:
         components.append(("traj_features", traj_cols))
     else:
         ledger.append({"component": "traj_features", "decision": "skipped",
                        "reason": "no traj__ columns in snapshot"})
+    if seq_cols:
+        # v9 sequence arm: frozen GRU embeddings + surprisal, gated like any
+        # other component (design §8.3 — the deep add-on must pay rent).
+        components.append(("seq_features", seq_cols))
+    else:
+        ledger.append({"component": "seq_features", "decision": "skipped",
+                       "reason": "no seq_* columns in snapshot (v8 mode)"})
     if q_cols:
         components.append(("pooled_trust_q", q_cols))
     else:
         ledger.append({"component": "pooled_trust_q", "decision": "skipped",
                        "reason": "no q__ columns in snapshot"})
+
+    # Components must be pairwise disjoint: a shared column would be dropped
+    # globally by the forward-additive candidate_drop logic even after its
+    # component was kept (codex-audit advisory).
+    _seen_cols: dict[str, str] = {}
+    for comp_name, comp_cols in components:
+        for col in comp_cols:
+            assert col not in _seen_cols, (
+                f"gate component overlap: column {col!r} in both "
+                f"{_seen_cols[col]!r} and {comp_name!r}"
+            )
+            _seen_cols[col] = comp_name
 
     auc_frame, purity_frame = _gate_eval_frames(snapshots, cal_ids)
     if len(auc_frame) < 30 or len(purity_frame) < 60:

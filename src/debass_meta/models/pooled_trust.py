@@ -549,7 +549,26 @@ def _select_pooled_params(
     Cal is never touched by model fitting — it is reserved for calibration
     (v6e2 Phase-0.2 discipline).  Returns (best params, n_estimators from
     early stopping).
+
+    Speedup escape hatch: DEBASS_POOLED_TRUST_PARAMS (JSON with keys
+    'params' and 'n_estimators') skips the grid entirely.  ONLY safe when the
+    value is the deterministic winner of a previous identical run (same data,
+    seed, grid) — e.g. re-running after a crash later in the pipeline.
     """
+    import os
+
+    override = os.environ.get("DEBASS_POOLED_TRUST_PARAMS")
+    if override:
+        payload = json.loads(override)
+        params = dict(payload["params"])
+        n_estimators = int(payload["n_estimators"])
+        print(
+            f"  pooled_trust: GRID SKIPPED — params pinned via "
+            f"DEBASS_POOLED_TRUST_PARAMS: {params}, n_estimators={n_estimators}",
+            flush=True,
+        )
+        return params, n_estimators
+
     configs = _pooled_param_grid(grid_small)
     default = (dict(configs[0]), 300)
     unique_groups = np.unique(groups)
@@ -802,8 +821,19 @@ def _train_dedicated_head(
     if splits < 2:
         oof[:] = _predict_binary_classifier(bundle, train_X)
 
-    q_cal = _predict_binary_classifier(bundle, X_all[cal_mask])
-    q_test = _predict_binary_classifier(bundle, X_all[test_mask])
+    # Experts whose rows all come from train/cal-only objects (e.g. the LSST
+    # weak-label cohort: fink_lsst/pittgoogle experts have ZERO rows in the
+    # locked ZTF test set) yield empty masks here — LightGBM refuses empty
+    # input, and an absent slice simply means "no comparison possible"
+    # (_should_fallback(None, ...) already returns False).
+    q_cal = (
+        _predict_binary_classifier(bundle, X_all[cal_mask])
+        if int(cal_mask.sum()) > 0 else np.zeros(0, dtype=float)
+    )
+    q_test = (
+        _predict_binary_classifier(bundle, X_all[test_mask])
+        if int(test_mask.sum()) > 0 else np.zeros(0, dtype=float)
+    )
     test_metrics = _binary_metrics(y_all[test_mask], q_test)
 
     oof_lookup: dict[tuple[str, int, float], float] = {}
