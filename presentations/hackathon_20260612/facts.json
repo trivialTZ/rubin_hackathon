@@ -1,0 +1,258 @@
+{
+ "provenance": {
+  "headline": "reports_from_scc/fusion_{v8,v9c}/headline_guards.json (SCC jobs 6060088, 6064722)",
+  "auc_vs_ndet_snia": "reports_from_scc/fusion_v9c/tables_1.json (spec-only, locked test, object-level)",
+  "dp1_enrichment": "fusion: reports_from_scc/fusion_v9c/tables_4.json; v6e2: reports/v6e2_dp1_50k/enrichment_headline.md (SCC)",
+  "trust_heads": "reports_from_scc/fusion_v9c/tables_5.json (calibrated test AUC of per-expert trust)",
+  "component_gates": "reports_from_scc/fusion_v9c/fusion_v9c_train.json (cal-decided, 2,555 objects)"
+ },
+ "headline": {
+  "n_test_objects": 765,
+  "v9c_macro_auc": {
+   "value": 0.921031618172394,
+   "lo": 0.9013927977781355,
+   "hi": 0.9387488846870862,
+   "n_boot_ok": 1000
+  },
+  "v9c_snia_auc": 0.9228807979490916,
+  "v9c_delta_vs_v6e2": {
+   "delta": 0.12941456649342298,
+   "lo": 0.1022641140646323,
+   "hi": 0.15599293093350622
+  },
+  "v8_macro_auc": {
+   "value": 0.9221698443607022,
+   "lo": 0.9028795275061355,
+   "hi": 0.9392772701367725,
+   "n_boot_ok": 1000
+  },
+  "v8_delta_vs_v6e2": {
+   "delta": 0.13146687586680306,
+   "lo": 0.10539843704105413,
+   "hi": 0.1574048493649389
+  },
+  "protocol": "object-level, spectroscopic-only, locked test split, n_det=5, 1000-resample paired object bootstrap"
+ },
+ "auc_vs_ndet_snia": {
+  "fusion_v8": {
+   "n_det": [
+    3,
+    5,
+    10,
+    20
+   ],
+   "auc_snia": [
+    0.9351457338254451,
+    0.9228807979490916,
+    0.9520120716228102,
+    0.9863813229571985
+   ],
+   "lo": [
+    0.9168118771891767,
+    0.903660059693393,
+    0.9359641406531176,
+    0.9792622431288875
+   ],
+   "hi": [
+    0.9503075718680386,
+    0.9420255359994506,
+    0.9652236880972207,
+    0.9925420832238534
+   ]
+  },
+  "v6e2_rescored": {
+   "n_det": [
+    3,
+    5,
+    10,
+    20
+   ],
+   "auc_snia": [
+    0.8465520516717324,
+    0.7934662314556686,
+    0.8482816496808604,
+    0.9225854165556205
+   ],
+   "lo": [
+    0.8196130409571019,
+    0.7616846672232186,
+    0.8182927448360563,
+    0.8999996313376412
+   ],
+   "hi": [
+    0.8724795656988334,
+    0.8257805801390635,
+    0.874488080071818,
+    0.9421670421642676
+   ]
+  }
+ },
+ "dp1_enrichment_top1pct": {
+  "v6e2": {
+   "EclBin+RRLyrae": 17.88,
+   "Gaia variables": 5.46,
+   "Gaia stars": 0.85,
+   "SIMBAD Galaxy": 0.0,
+   "Published SNe": 0.0
+  },
+  "fusion_v9c": {
+   "EclBin+RRLyrae": {
+    "ef": 9.615384615384615,
+    "lo": 2.495639534883721,
+    "hi": 18.6046511627907
+   },
+   "Gaia variables": {
+    "ef": 3.982300884955752,
+    "lo": 1.5144014401440145,
+    "hi": 6.3832216069173215
+   },
+   "Gaia stars": {
+    "ef": 0.8050719533058267,
+    "lo": 0.6831631763165246,
+    "hi": 0.923249853950512
+   },
+   "SIMBAD Galaxy": {
+    "ef": 0.24875621890547261,
+    "lo": 0.0,
+    "hi": 1.0025692371632597
+   },
+   "Published SNe": {
+    "ef": 7.142857142857142,
+    "lo": 0.0,
+    "hi": 23.088235294117638
+   }
+  },
+  "note": "EF=1 is random; contaminant classes want LOW, Published SNe wants HIGH. N=15,868 DP1 objects."
+ },
+ "trust_heads": [
+  {
+   "expert": "seq_v9",
+   "cal_auc": 0.8241724840538709,
+   "n_test": 27323
+  },
+  {
+   "expert": "alerce_lc",
+   "cal_auc": 0.8402735116914436,
+   "n_test": 17654
+  },
+  {
+   "expert": "lc_features_bv",
+   "cal_auc": 0.8458241278121268,
+   "n_test": 27086
+  },
+  {
+   "expert": "supernnova",
+   "cal_auc": 0.8468300112043946,
+   "n_test": 22164
+  },
+  {
+   "expert": "fink/rf_ia",
+   "cal_auc": 0.8618056484417855,
+   "n_test": 23495
+  },
+  {
+   "expert": "salt3_chi2",
+   "cal_auc": 0.872426509028833,
+   "n_test": 27170
+  },
+  {
+   "expert": "fink/slsn",
+   "cal_auc": 0.932307386449662,
+   "n_test": 3665
+  },
+  {
+   "expert": "ampel/snguess",
+   "cal_auc": 0.9370164858476271,
+   "n_test": 22613
+  },
+  {
+   "expert": "fink/snn",
+   "cal_auc": 0.9393043019517276,
+   "n_test": 23495
+  }
+ ],
+ "component_gates": [
+  {
+   "component": "seq_features",
+   "decision": "skipped",
+   "delta_macro_auc": null,
+   "ci95": null
+  },
+  {
+   "component": "ext_features",
+   "decision": "kept",
+   "delta_macro_auc": 0.008709130648111074,
+   "ci95": [
+    0.0020889149558641104,
+    0.016007933030020113
+   ]
+  },
+  {
+   "component": "seq_v9_expert",
+   "decision": "dropped",
+   "delta_macro_auc": -0.000914402961773586,
+   "ci95": [
+    -0.004863039521163931,
+    0.0031049636838959443
+   ]
+  },
+  {
+   "component": "traj_features",
+   "decision": "dropped",
+   "delta_macro_auc": 0.0005203919294645143,
+   "ci95": [
+    -0.0035836951682612556,
+    0.0048817656109822185
+   ]
+  },
+  {
+   "component": "pooled_trust_q",
+   "decision": "dropped",
+   "delta_macro_auc": -0.05691972582779492,
+   "ci95": [
+    -0.07343524979475768,
+    -0.0390852259185958
+   ]
+  },
+  {
+   "component": "expert_dropout_aug",
+   "decision": "dropped",
+   "delta_macro_auc": -0.002497881261430246,
+   "ci95": [
+    -0.0057154216494041035,
+    0.0010569073809609806
+   ]
+  },
+  {
+   "component": "dirichlet_calibration",
+   "decision": "kept",
+   "delta_macro_auc": null,
+   "ci95": null
+  }
+ ],
+ "scale": {
+  "gold_rows": 211392,
+  "objects": 12772,
+  "ztf_objects": 8774,
+  "lsst_objects": 3998,
+  "experts_registered": 29,
+  "experts_trust_headed": 13,
+  "stage_a_rows": 1755697,
+  "seq_v9_params": 45578,
+  "seq_v9_standalone_cal_auc": {
+   "snia_ndet5": 0.856,
+   "other_ndet5": 0.865,
+   "note": "SCC fine-tune cal diagnostics (logs/fusion_v9_pretrain.qsub.out)"
+  },
+  "label_bug_fixed": "3,149 BTS-unclassified objects carried fabricated nonIa/spectroscopic labels (15 in locked test) \u2014 demoted",
+  "wallclock": {
+   "v8_scc_hours": 6.0,
+   "v9c_rerun_min": 54
+  }
+ },
+ "narrative": {
+  "problem": "LSST will deliver ~10M alerts/night scored by many broker classifiers that often disagree. Follow-up observers need to know WHICH classifier to trust on WHICH object, and WHAT to observe tonight \u2014 after only 3-5 detections.",
+  "solution": "metaDEBASS: a meta-layer over 29 registered experts. Calibrated per-expert trust (P(this expert is right on this object, now)) + goal-conditioned priority (u\u00b7p with conformal abstention) for SN Ia, non-Ia, AND 'other' science users.",
+  "honesty": "Pre-registered headline + guards; locked test split byte-identical across versions; component gates decided on cal with bootstrap CIs; label-provenance anti-circularity; independent audits (Claude adversarial re-computation + OpenAI codex code audit)."
+ }
+}
