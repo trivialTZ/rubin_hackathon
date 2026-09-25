@@ -211,3 +211,29 @@ near-tied χ² pairs) and scanning the v12w gold:
 
 For a v13c: rebuild the gold with the fix; a stable sigmoid; scale Δχ² by the better fit's reduced χ² (or a cap on
 |Δχ²| per point); then check whether the no-broker n = 10 dip moves, since local experts carry that regime.
+
+## v13c (2026-09-25): bug fixes, all golds rebuilt, full retrain
+
+Fixes (code, with tests):
+- **Local-expert timing** (`ingest/gold.py`, `tests/test_asof_join.py`): rows with a NaN `alert_jd` are timed from
+  `alert_mjd`. `scripts/local_infer.py` now writes `alert_jd` and `survey` on every row, so mixed silvers cannot
+  produce NaN event times again.
+- **SALT3 mapping** (`experts/local/salt3_fit.py`, `tests/test_salt3_fit.py`): p(Ia) = sigmoid(ΔlnL / (s · n)), with
+  ΔlnL = (AIC_II − AIC_Ia) / 2, n the number of fitted points and s = max(1, χ²/ndof of the AIC-preferred fit). This is
+  the mean per-point likelihood ratio with the errors rescaled so the better fit has reduced χ² ≤ 1. It does not
+  saturate with n, charges SALT3 for its two extra parameters, and pulls fits that both templates fail (template light,
+  reduced χ² 20 to 100) towards 0.5. The sigmoid is overflow-safe, a negative fitted amplitude counts as zero flux,
+  and a failed fit is marked unavailable. The fit's χ² values are kept in the silver (`raw_summary`), so the mapping can
+  be re-derived without refitting. On the benchmark refits, degenerate rows 60% → 13% (SNe at n = 3 / 5 / 10 / latest:
+  31 / 58 / 84 / 82% → 22 / 24 / 11 / 35%), SNe called Ia 86% → 66%; Ia|SN stays at chance (AUC 0.52).
+- `scripts/collect_epoch_history.py` counts and prints runner exceptions instead of dropping them silently.
+
+Recomputed on SCC (three chained jobs):
+1. `jobs/run_v13c_salt3_array.sh` (48 tasks): SALT3 re-fitted for every set that carries it (training silver, 12,823
+   objects; frozen benchmark + hold-out; explorer cohort LSST + ZTF; DP2) through `local_infer.py`, the serving path
+   (the ZTF training rows came from `collect_epoch_history.py` before).
+2. `jobs/run_fusion_v13c_gold.sh`: new silvers (real copies with the SALT3 rows swapped), then every gold rebuilt with
+   the timing fix: training gold, DP1 and helpfulness `*_fusion_v13c` (the v12w recipe), `bench_v13c`, explorer
+   `snapshots_{lsst,ztf}_v13c`, DP2 `snapshots_v13cloc`.
+3. `jobs/run_fusion_v13.sh` with `FUSION_V13_ARM=v13c`: the v13b flags, Stage A retrained. Only v13c is scored on the
+   v13c golds; v12 / v13b benchmark predictions stay as they were.

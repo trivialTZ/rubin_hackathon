@@ -24,6 +24,11 @@
 #   (--head1-cal-weights object) and local SuperNNova masked on LSST (--head1-survey-mask lsst:supernnova: its LSST
 #   training rows are uniform stubs marked available, real outputs only on re-run SNe and at serving). Stage A is
 #   v13's (unchanged), copied in unless FUSION_V13_STAGE_A_FROM is set to another arm.
+# FUSION_V13_ARM=v13c: *_v13c — the v13b recipe (Stage A retrained) on the rebuilt fusion_v13c golds
+#   (jobs/run_v13c_salt3_array.sh, jobs/run_fusion_v13c_gold.sh): LSST salt3_chi2 / alerce_lc training rows timed
+#   (no more averaging over every epoch), SALT3 re-fitted with the per-point Birge-rescaled mapping everywhere. The
+#   benchmark, DP2 and explorer-cohort golds are the v13c ones; only v13c is scored on them (older stacks were trained
+#   on the old SALT3 outputs; their benchmark predictions stay as they are).
 # FUSION_V13_SMOKE=1: --smoke, outputs *_v13_smoke.
 # FUSION_V13_REUSE_STAGE_A=1: reuse this arm's Stage-A snapshot + trust dir from an earlier run (--skip-stage-a).
 # FUSION_V13_STAGE_A_FROM=<sfx>: copy that arm's Stage-A trust dir (+ link its snapshot) and reuse it.
@@ -42,9 +47,14 @@ SMOKE="${FUSION_V13_SMOKE:-0}"
 SFX=v13; SMOKE_ARGS=(); ACK_ARGS=(); G8_ARGS=()
 if [[ "${G8_ACK:-0}" == "1" ]]; then G8_ARGS=(--acknowledge-g8); fi   # record a G8 violation and continue
 DROP_ARGS=(--head1-dropout); ARM_ARGS=(); STAGE_A_FROM="${FUSION_V13_STAGE_A_FROM:-}"
+BASE=v12w; GOLD_TAG=v12; DP2_TAG=v12loc; ABL_MODELS=(v12 v12w)
 if [[ "${ARM}" == "nodrop" ]]; then SFX=v13nd; DROP_ARGS=(); fi
 if [[ "${ARM}" == "v13b" ]]; then
     SFX=v13b; STAGE_A_FROM="${STAGE_A_FROM:-v13}"
+    ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova)
+fi
+if [[ "${ARM}" == "v13c" ]]; then
+    SFX=v13c; BASE=v13c; GOLD_TAG=v13c; DP2_TAG=v13cloc; ABL_MODELS=()
     ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova)
 fi
 if [[ "${SMOKE}" == "1" ]]; then
@@ -53,7 +63,6 @@ if [[ "${SMOKE}" == "1" ]]; then
 fi
 mkdir -p logs data/scores "reports/fusion_${SFX}" reports/metrics
 
-BASE=v12w
 SNAP="data/gold/object_epoch_snapshots_fusion_${BASE}.parquet"
 HELP="data/gold/expert_helpfulness_fusion_${BASE}.parquet"
 SPLIT="data/gold/split_fusion_${BASE}.json"
@@ -64,7 +73,8 @@ SNAP_TRUST="data/gold/object_epoch_snapshots_fusion_${SFX}_trust.parquet"
 TRUST="models/trust_fusion_${SFX}"; FOLLOW="models/followup_fusion_${SFX}"
 BLEND="models/anchor_blend_${SFX}"; CONF="models/conformal_fusion_${SFX}"
 BENCH="data/label_refresh_20260924/bench"
-DP2_GOLD="data/edp2_train/gold/snapshots_v12loc.parquet"
+BENCH_GOLD="${BENCH}/gold/bench_${GOLD_TAG}.parquet"
+DP2_GOLD="data/edp2_train/gold/snapshots_${DP2_TAG}.parquet"
 export DEBASS_SEQ_V11_MODEL="models/seq_classifier_v11"
 
 REUSE_ARGS=()
@@ -77,7 +87,7 @@ if [[ -n "${STAGE_A_FROM}" && "${SMOKE}" != "1" ]]; then
 fi
 if [[ "${FUSION_V13_REUSE_STAGE_A:-0}" == "1" && -f "${SNAP_TRUST}" && -d "${TRUST}" ]]; then REUSE_ARGS=(--skip-stage-a); fi
 echo "$(ts) fusion ${SFX} — START (NSLOTS=${NSLOTS}; reuse Stage A: ${#REUSE_ARGS[@]})"
-for f in "${SNAP}" "${HELP}" "${SPLIT}" "${DP1_SNAP}" "${TRUTH_V11}" "${LOCKED}" "${BENCH}/gold/bench_v12.parquet" \
+for f in "${SNAP}" "${HELP}" "${SPLIT}" "${DP1_SNAP}" "${TRUTH_V11}" "${LOCKED}" "${BENCH_GOLD}" \
          "${BENCH}/truth.parquet" "${DP2_GOLD}"; do
     test -f "$f" || { echo "missing input $f"; exit 2; }
 done
@@ -112,9 +122,12 @@ python3 -u scripts/eval_fusion_v8.py \
     --train-metrics "reports/metrics/fusion_${SFX}_train.json" \
     --out-dir "reports/fusion_${SFX}"
 
-# 3. frozen LSST benchmark: full inputs + availability ablation (v12 and v12w re-scored alongside for a paired table)
-python3 -u scripts/eval_input_ablation.py --gold "${BENCH}/gold/bench_v12.parquet" --truth "${BENCH}/truth.parquet" \
-    --model "${SFX}" --model v12 --model v12w --out-dir "${BENCH}/ablate_${SFX}"
+# 3. frozen LSST benchmark: full inputs + availability ablation (v12 and v12w re-scored alongside for a paired table,
+#    except on the v13c gold)
+ABL_ARGS=(--model "${SFX}")
+for m in ${ABL_MODELS[@]+"${ABL_MODELS[@]}"}; do ABL_ARGS+=(--model "${m}"); done
+python3 -u scripts/eval_input_ablation.py --gold "${BENCH_GOLD}" --truth "${BENCH}/truth.parquet" \
+    "${ABL_ARGS[@]}" --out-dir "${BENCH}/ablate_${SFX}"
 cp "${BENCH}/ablate_${SFX}/predictions_abl_full_${SFX}.parquet" "${BENCH}/scores/predictions_bench_${SFX}.parquet"
 
 # 4. DP2 typed objects: lightcurve + local experts, no brokers
@@ -125,8 +138,8 @@ python3 -u scripts/score_fusion_v11.py --tag "dp2_${SFX}" --snapshots "${DP2_GOL
 # 5. the TNS×EDP2 explorer cohort (golds built by jobs/run_tnsx_v12_score.sh; lightcurve + brokers + local experts)
 TNSX="data/tnsx_eval_20260924"
 for sv in lsst ztf; do
-    if [[ -f "${TNSX}/gold/snapshots_${sv}_v12.parquet" ]]; then
-        python3 -u scripts/score_fusion_v11.py --tag "tnsx_${sv}_${SFX}" --snapshots "${TNSX}/gold/snapshots_${sv}_v12.parquet" \
+    if [[ -f "${TNSX}/gold/snapshots_${sv}_${GOLD_TAG}.parquet" ]]; then
+        python3 -u scripts/score_fusion_v11.py --tag "tnsx_${sv}_${SFX}" --snapshots "${TNSX}/gold/snapshots_${sv}_${GOLD_TAG}.parquet" \
             --trust-dir "${TRUST}" --followup-dir "${FOLLOW}" --blend-dir "${BLEND}" --conformal "${CONF}/mondrian_aps.pkl" \
             --scores-dir "${TNSX}/scores" --no-priority
     fi

@@ -6,7 +6,7 @@ Events are emitted one per class by ``_local_record_to_events`` in
   • ``canonical_projection`` = probability for that class
 
 The Salt3Chi2Expert writes ``class_probabilities = {"Ia": p, "II": 1-p}``
-where p = sigmoid(Δχ²/2). We map:
+(p from ``salt3_fit.ia_probability``; sigmoid(Δχ²/2) up to fusion v13b). We map:
   • Ia → p_snia
   • II → p_nonIa_snlike (Nugent-II-P is non-Ia SN-like)
   • everything else → p_other (0 by default)

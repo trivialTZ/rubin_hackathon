@@ -73,6 +73,26 @@ def _load_lightcurve(lc_dir: Path, oid: str) -> list[dict]:
         return []
 
 
+def _timing_fields(oid: str, dets: list[dict], alert_mjd: float) -> dict:
+    """alert_jd + survey written on every record. Silvers mixing rows with and without an
+    alert_jd column used to leave NaN event times (an untimed event is joined at every epoch)."""
+    survey = None
+    if dets:
+        survey = dets[-1].get("survey") or dets[-1].get("survey_id")
+    if not survey:
+        survey = "LSST" if str(oid).isdigit() else "ZTF"
+    mjd = float(alert_mjd)
+    return {
+        "alert_jd": mjd + 2400000.5 if mjd < 2400000.5 else mjd,
+        "survey": str(survey).upper(),
+    }
+
+
+def _raw_summary(out) -> str | None:
+    summary = (getattr(out, "raw_output", None) or {}).get("summary")
+    return json.dumps(summary, sort_keys=True) if summary else None
+
+
 def _record_key(record: dict) -> tuple[str | None, str | None, int | None]:
     n_det = record.get("n_det")
     return (
@@ -276,12 +296,13 @@ def main() -> None:
 
             try:
                 outputs = expert.predict_epoch_batch(chunk)
-                for out, alert_mjd in zip(outputs, chunk_mjds):
+                for out, alert_mjd, item in zip(outputs, chunk_mjds, chunk):
                     results.append({
                         "expert": out.expert,
                         "object_id": out.object_id,
                         "n_det": out.raw_output.get("truncated_n_det", 0),
                         "alert_mjd": alert_mjd,
+                        **_timing_fields(item[0], item[1], alert_mjd),
                         "class_probabilities": out.class_probabilities,
                         "model_version": out.model_version,
                         "available": out.available,
@@ -305,15 +326,20 @@ def main() -> None:
             for expert in serial_experts:
                 try:
                     out = expert.predict_epoch(oid, truncated, alert_jd)
-                    results.append({
+                    record = {
                         "expert": out.expert,
                         "object_id": oid,
                         "n_det": n_det,
                         "alert_mjd": alert_mjd,
+                        **_timing_fields(oid, truncated, alert_mjd),
                         "class_probabilities": out.class_probabilities,
                         "model_version": out.model_version,
                         "available": out.available,
-                    })
+                    }
+                    raw_summary = _raw_summary(out)
+                    if raw_summary is not None:
+                        record["raw_summary"] = raw_summary
+                    results.append(record)
                 except Exception as exc:
                     print(f"  {oid} n_det={n_det} [{expert.name}]: ERROR — {exc}")
             if idx % 5000 == 0:

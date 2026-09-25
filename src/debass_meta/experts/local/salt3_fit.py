@@ -2,12 +2,19 @@
 
 Fits the SALT3 (T. Kenworthy et al. 2021) SN Ia SED model to the truncated
 lightcurve via `sncosmo` and records χ²/ndof.  For comparison, also fits a
-Nugent-II-P template as a non-Ia control.  The difference
+Nugent-II-P template as a non-Ia control (amplitudes constrained to >= 0).  The
+comparison is turned into p(Ia) by `ia_probability` (fusion v13c):
 
-    Δχ² = χ²_nonIa - χ²_Ia
+    ΔlnL = (AIC_II - AIC_Ia) / 2      AIC = χ² + 2 k (k = free parameters)
+    s    = max(1, χ²/ndof of the AIC-preferred fit)
+    p_Ia = sigmoid(ΔlnL / (s · n_points))
 
-is a Bayes-factor-like score: positive favours Ia.  The projector maps
-Δχ² → p_snia = sigmoid(-Δχ²/2).
+i.e. the mean per-point log-likelihood ratio, with the errors rescaled so the
+better fit has reduced χ² ≤ 1. Up to v13b the mapping was sigmoid(Δχ²/2): it
+saturated to 0/1 as points and S/N grew (half of all rows), favoured SALT3's
+two extra parameters, and overflowed (so the epoch was dropped) for
+Δχ² < -1420. The rescaling also pulls poor fits of both templates (e.g. SN
+light in a difference-imaging template) towards 0.5.
 
 No training weights needed — sncosmo ships SALT3 and Nugent templates.
 Works on ZTF (ztfg/ztfr) and LSST (lsst*) bandpasses.
@@ -37,6 +44,33 @@ _ZTF_BANDS = frozenset("gri")
 
 _IA_MODEL = "salt3"
 _NONIA_MODEL = "nugent-sn2p"
+_MAPPING = "aic-per-point-birge"
+# Amplitude parameter of each source: a negative amplitude fits an inverted lightcurve.
+_AMPLITUDE_PARAM = {_IA_MODEL: "x0", _NONIA_MODEL: "amplitude"}
+
+
+def _stable_sigmoid(x: float) -> float:
+    if x >= 0:
+        return 1.0 / (1.0 + math.exp(-x))
+    e = math.exp(x)
+    return e / (1.0 + e)
+
+
+def ia_probability(
+    chi2_ia: float, ndof_ia: int, chi2_nonia: float, ndof_nonia: int, n_points: int
+) -> float:
+    """p(Ia) from the two fits: per-point AIC log-likelihood ratio, Birge-rescaled."""
+    n = max(int(n_points), 1)
+    k_ia = n - int(ndof_ia)          # free parameters actually fitted
+    k_nonia = n - int(ndof_nonia)
+    aic_ia = float(chi2_ia) + 2.0 * k_ia
+    aic_nonia = float(chi2_nonia) + 2.0 * k_nonia
+    if aic_ia <= aic_nonia:
+        chi2_best, ndof_best = float(chi2_ia), int(ndof_ia)
+    else:
+        chi2_best, ndof_best = float(chi2_nonia), int(ndof_nonia)
+    scale = max(1.0, chi2_best / max(ndof_best, 1))
+    return _stable_sigmoid((aic_nonia - aic_ia) / 2.0 / (scale * n))
 
 
 def _mag_to_flux(mag: float, magerr: float, zp: float = 25.0) -> tuple[float, float]:
@@ -126,7 +160,7 @@ class Salt3Chi2Expert(LocalExpert):
             class_probabilities={},
             raw_output={},
             semantic_type=self.semantic_type,
-            model_version=f"{_IA_MODEL}+{_NONIA_MODEL}",
+            model_version=f"{_IA_MODEL}+{_NONIA_MODEL}/{_MAPPING}",
             available=self._available,
         )
         if not self._available:
@@ -152,6 +186,7 @@ class Salt3Chi2Expert(LocalExpert):
                 continue
             truncated.append(det)
         if len(truncated) < 3:
+            out.available = False
             out.raw_output["reason"] = f"only {len(truncated)} detections at epoch"
             return out
 
@@ -186,6 +221,7 @@ class Salt3Chi2Expert(LocalExpert):
             rows.append((mjd, band, flux, fluxerr, 25.0))
 
         if len(rows) < 3:
+            out.available = False
             out.raw_output["reason"] = f"only {len(rows)} usable detections"
             return out
 
@@ -212,8 +248,15 @@ class Salt3Chi2Expert(LocalExpert):
                     tbl, model, free_params, bounds=bounds, modelcov=False
                 )
                 chisq = float(result.chisq)
-                ndof = int(result.ndof) if result.ndof else max(len(rows) - len(free_params), 1)
+                ndof = int(result.ndof) if result.ndof is not None else len(rows) - len(free_params)
                 params = {n: float(model.get(n)) for n in model.param_names if n in ("t0", "x1", "c", "x0")}
+                # A negative amplitude fits an inverted lightcurve (SN light in the template). The
+                # χ² is convex in the amplitude, so the fit constrained to amplitude >= 0 sits at
+                # zero flux (minuit takes no one-sided bounds).
+                amp = _AMPLITUDE_PARAM.get(model_name)
+                if amp in model.param_names and float(model.get(amp)) < 0:
+                    chisq = float(np.sum((np.asarray(tbl["flux"]) / np.asarray(tbl["fluxerr"])) ** 2))
+                    params["amplitude_clipped"] = True
                 return {"chi2": chisq, "ndof": ndof, **params}
             except Exception as exc:
                 return {"error": str(exc), "chi2": None, "ndof": None}
@@ -226,12 +269,20 @@ class Salt3Chi2Expert(LocalExpert):
         if ia_fit.get("chi2") is not None and nonia_fit.get("chi2") is not None:
             delta = nonia_fit["chi2"] - ia_fit["chi2"]  # positive favours Ia
             out.raw_output["delta_chi2"] = delta
-            # sigmoid-based Bayes-factor mapping with a gentle temperature
-            prob_ia = 1.0 / (1.0 + math.exp(-delta / 2.0))
+            prob_ia = ia_probability(
+                ia_fit["chi2"], ia_fit["ndof"], nonia_fit["chi2"], nonia_fit["ndof"], len(rows)
+            )
             out.class_probabilities = {
                 "Ia": prob_ia,
                 "II": 1.0 - prob_ia,
             }
+            # Small enough to keep in the silver, so the mapping can be re-derived without refitting.
+            out.raw_output["summary"] = {
+                "chi2_ia": ia_fit["chi2"], "ndof_ia": ia_fit["ndof"],
+                "chi2_nonia": nonia_fit["chi2"], "ndof_nonia": nonia_fit["ndof"],
+                "n_points": len(rows),
+            }
         else:
+            out.available = False
             out.raw_output["reason"] = "fit failed"
         return out

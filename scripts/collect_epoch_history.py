@@ -103,6 +103,7 @@ def _run_supernnova_expert(
 # The epoch_jd is derived from the last truncated detection's MJD in this loop.
 
 _PHYSICS_EXPERT_INSTANCES: dict[str, object] = {}  # cache so __init__ cost paid once
+_RUNNER_ERRORS: dict[str, int] = {}  # exceptions per expert (reported at the end, not silently dropped)
 
 
 def _physics_runner_factory(expert_key: str, expert_cls_path: str):
@@ -138,7 +139,11 @@ def _physics_runner_factory(expert_key: str, expert_cls_path: str):
                 "class_probabilities": dict(getattr(out, "class_probabilities", {}) or {}),
                 "available": True,
             }
-        except Exception:
+        except Exception as exc:
+            n = _RUNNER_ERRORS.get(expert_key, 0)
+            if n < 5:
+                print(f"  [{expert_key}] n_det={n_det}: {type(exc).__name__}: {exc}", flush=True)
+            _RUNNER_ERRORS[expert_key] = n + 1
             return None
 
     return _runner
@@ -325,6 +330,8 @@ def main() -> None:
     print(f"\n=== Done ===")
     for expert_name, count in stats.items():
         print(f"  {expert_name}: {count} epoch rows")
+    for expert_name, count in sorted(_RUNNER_ERRORS.items()):
+        print(f"  {expert_name}: {count} epochs raised and were skipped")
     total = sum(stats.values())
     print(f"  Total: {total} epoch rows across {len(available)} experts")
 
