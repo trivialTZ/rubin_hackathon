@@ -50,7 +50,12 @@ tmp/
 *~
 
 # Claude Code local state (worktrees, local settings)
-.claude/
+.claude/*
+# ...but share project skills with the team (no credentials in these).
+!.claude/skills/
+
+# Node dependencies (the deck tooling links them from a local runtime)
+node_modules/
 
 # pytest / coverage
 .pytest_cache/
@@ -63,6 +68,7 @@ fixtures/raw/fink/
 fixtures/raw/alerce/
 fixtures/raw/pittgoogle/
 fixtures/raw/lasair/
+fixtures/raw/babamul/
 
 # Local scratch, backups, large binaries, and generated outputs
 _backup_local_*/

@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DEBaSS x LSST DP2 — epoch viewer</title>
+<style>
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface:#fcfcfb;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+  --decam:#eb6834;      /* series 2 — orange */
+  --lsst:#2a78d6;       /* series 1 — blue   */
+  --warn:#fab219; --crit:#d03b3b; --good:#0ca30c;
+  --pair:rgba(11,11,11,0.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19;
+    --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+    --decam:#d95926; --lsst:#3987e5;
+    --pair:rgba(255,255,255,0.08);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#1a1a19;
+  --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+  --decam:#d95926; --lsst:#3987e5;
+  --pair:rgba(255,255,255,0.08);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--page); color:var(--ink);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+.wrap{max-width:1400px; margin:0 auto; padding:20px 16px 60px}
+h1{font-size:20px; margin:0 0 4px; font-weight:650; letter-spacing:-0.01em}
+.sub{color:var(--ink2); font-size:13px; margin:0 0 16px}
+.card{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:14px 16px; margin-bottom:14px;
+}
+.stats{display:flex; flex-wrap:wrap; gap:22px; margin-bottom:14px}
+.stat .v{font-size:22px; font-weight:650; line-height:1.15}
+.stat .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+.controls{display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end}
+.ctl{display:flex; flex-direction:column; gap:5px}
+.ctl label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+select{
+  background:var(--surface); color:var(--ink); border:1px solid var(--axis);
+  border-radius:7px; padding:7px 10px; font:inherit; font-size:13px; min-width:230px;
+}
+.chips{display:flex; gap:5px; flex-wrap:wrap}
+.chip{
+  background:transparent; color:var(--ink2); border:1px solid var(--axis);
+  border-radius:7px; padding:6px 11px; font:inherit; font-size:13px;
+  cursor:pointer; min-width:38px; font-variant-numeric:tabular-nums;
+}
+.chip[aria-pressed="true"]{background:var(--ink); color:var(--page); border-color:var(--ink)}
+.chip:disabled{opacity:.35; cursor:not-allowed}
+.chip.sm{padding:5px 9px; font-size:12px}
+.legend{display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin:2px 0 10px}
+.lg{display:flex; gap:7px; align-items:center; font-size:13px; color:var(--ink2)}
+.sw{width:12px; height:12px; border-radius:3px; flex:none}
+.sw.line{height:3px; border-radius:2px; width:18px}
+.grid2{display:grid; grid-template-columns:minmax(0,340px) minmax(0,1fr); gap:14px; align-items:start}
+@media (max-width:900px){ .grid2{grid-template-columns:1fr} }
+.imgs{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.imgbox{display:flex; flex-direction:column; gap:6px}
+.imgbox .cap{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+.thumb{
+  width:100%; aspect-ratio:1; border-radius:8px; border:1px solid var(--border);
+  background:var(--page); display:block; image-rendering:pixelated;
+}
+.ph{
+  width:100%; aspect-ratio:1; border-radius:8px; border:1px dashed var(--axis);
+  display:flex; align-items:center; justify-content:center; text-align:center;
+  padding:12px; font-size:11.5px; color:var(--muted); line-height:1.45;
+}
+.chartwrap{overflow-x:auto; max-width:100%}
+svg{display:block}
+/* let the chart keep its intrinsic width and scroll inside .chartwrap rather
+   than being scaled down (which also letterboxed it, since height is fixed) */
+.chartwrap svg{max-width:none}
+.readout{
+  display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;
+  font-variant-numeric:tabular-nums;
+}
+.ro{border:1px solid var(--border); border-radius:8px; padding:9px 11px}
+.ro .h{font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; display:flex; gap:7px; align-items:center}
+.ro .row{display:flex; justify-content:space-between; gap:10px; font-size:12.5px; color:var(--ink2)}
+.ro .row b{color:var(--ink); font-weight:600}
+.note{
+  font-size:12.5px; color:var(--ink2); border-left:3px solid var(--warn);
+  padding:8px 12px; margin:10px 0 0; background:var(--surface); border-radius:0 6px 6px 0;
+}
+.note b{color:var(--ink)}
+table{border-collapse:collapse; width:100%; font-size:12.5px; font-variant-numeric:tabular-nums}
+th,td{text-align:right; padding:5px 8px; border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em}
+tbody tr:hover{background:var(--pair)}
+.tblwrap{max-height:340px; overflow:auto}
+.hidden{display:none}
+.tip{
+  position:fixed; pointer-events:none; z-index:50; background:var(--surface);
+  border:1px solid var(--border); border-radius:8px; padding:8px 10px;
+  font-size:12px; box-shadow:0 4px 16px rgba(0,0,0,.14); max-width:260px;
+  font-variant-numeric:tabular-nums;
+}
+.tip .t{font-weight:650; margin-bottom:3px}
+.tip .r{display:flex; justify-content:space-between; gap:12px; color:var(--ink2)}
+.foot{color:var(--muted); font-size:12px; margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DEBaSS × LSST DP2 — epoch viewer</h1>
+  <p class="sub">DECam forced photometry vs LSST DP2 difference-image detections, on a common flux scale.</p>
+
+  <div class="card">
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <div class="ctl">
+        <label for="objsel">Object</label>
+        <select id="objsel"></select>
+      </div>
+      <div class="ctl">
+        <label>Band</label>
+        <div class="chips" id="bands"></div>
+      </div>
+      <div class="ctl">
+        <label>LSST quality</label>
+        <div class="chips">
+          <button class="chip sm" id="btnRel" aria-pressed="false">reliability ≥ 0.5 only</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <label>View</label>
+        <div class="chips">
+          <button class="chip sm" id="btnTable" aria-pressed="false">Table</button>
+          <button class="chip sm" id="btnTheme" aria-pressed="false">Theme</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="imgs">
+        <div class="imgbox">
+          <span class="cap">LSST deep coadd</span>
+          <img class="thumb" id="lsstimg" alt="LSST DP2 deep-coadd cutout">
+          <div class="ph hidden" id="lsstph"></div>
+          <span class="foot" id="lsstcap"></span>
+        </div>
+        <div class="imgbox">
+          <span class="cap">DECam</span>
+          <div class="ph" id="decamimg"></div>
+          <span class="foot" id="decamcap"></span>
+        </div>
+      </div>
+      <div class="readout">
+        <div class="ro">
+          <div class="h"><span class="sw" style="background:var(--decam)"></span>DECam</div>
+          <div id="roDecam"></div>
+        </div>
+        <div class="ro">
+          <div class="h"><span class="sw" style="background:var(--lsst)"></span>LSST</div>
+          <div id="roLsst"></div>
+        </div>
+      </div>
+      <p class="note" id="objnote"></p>
+    </div>
+
+    <div class="card">
+      <div class="legend">
+        <span class="lg"><span class="sw" style="background:var(--decam)"></span>DECam (DEBaSS forced phot.)</span>
+        <span class="lg"><span class="sw" style="background:var(--lsst)"></span>LSST (DP2 DiaSource)</span>
+        <span class="lg"><span class="sw" style="background:var(--surface);border:2px solid var(--lsst)"></span>LSST, reliability &lt; 0.5</span>
+        <span class="lg"><span class="sw line" style="background:var(--axis)"></span>discovery</span>
+        <span class="lg" style="color:var(--muted)">shaded = same-band epochs within 2 d</span>
+      </div>
+      <div class="chartwrap"><svg id="lc" role="img" aria-label="Light curve"></svg></div>
+      <div class="tblwrap hidden" id="tablewrap"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="legend"><strong style="font-size:13px">Paired epochs — DECam vs LSST flux</strong></div>
+    <div class="chartwrap"><svg id="sc" role="img" aria-label="Flux comparison"></svg></div>
+    <p class="foot" id="scnote"></p>
+  </div>
+
+  <div class="card">
+    <strong style="font-size:13px">How to read this — and what it does not show</strong>
+    <ul style="color:var(--ink2); font-size:12.5px; line-height:1.65; margin:8px 0 0; padding-left:18px">
+      <li><b>The two flux scales were reconciled, not read off.</b> LSST <code>psfFlux</code>
+        is nanojansky (AB ZP 31.4). The DEBaSS V4 files carry no <code>ZP_FLUXCAL</code>
+        header, so SNANA's default ZP 27.5 was assumed and checked against LSST on
+        bright epochs; conversion is flux<sub>nJy</sub> = FLUXCAL × 36.31. If DEBaSS
+        recalibrates, this factor must be re-derived.</li>
+      <li><b>The LSST image is a static deep coadd, not the epoch you selected.</b>
+        DP2 ships no per-epoch visit or difference images — those arrive with full DP2
+        (Oct–Dec 2026). The image does not change as you move along the timeline.</li>
+      <li><b>DECam pixels are absent, not missing.</b> The exposures exist at NOIRLab
+        but are proprietary until 2026-12-29.</li>
+      <li><b>Pairing is same-band and nearest-neighbour within
+        ±<span id="pw"></span> d.</b> One LSST epoch can be claimed by more than one
+        DECam epoch, so pairs are not a strict matching. Where that happens, the
+        partner shown is the temporally nearest.</li>
+      <li><b>DECam epochs failing SNANA's photometry flags are excluded.</b> Rows with
+        <code>PHOTFLAG &amp; 1016</code> (flux-fit failure, off-CCD, masked, PSF failure,
+        no stamp) are dropped — 62 of 336 across the sample. They are failed
+        measurements, not faint ones.</li>
+      <li><b>Sign convention: Δm = m<sub>LSST</sub> − m<sub>DECam</sub>, so positive
+        means LSST measured the source fainter.</b></li>
+      <li><b>Reliability dominates the comparison.</b> Over the 59 same-band pairs, the
+        median LSST/DECam flux ratio is 0.164 — but that is almost entirely low-quality
+        detections. Split by DP2 <code>reliability</code>: ratio 0.034 (Δm +2.58 mag)
+        below 0.1, versus ratio 0.704 (<b>Δm +0.38 ± 0.33 mag</b>) above 0.9. All 19
+        high-reliability pairs have positive flux in both surveys, so that figure is not
+        distorted by the positive-flux cut. Treat low-reliability points as spurious
+        rather than as disagreement between the surveys.</li>
+      <li><b>The residual +0.38 mag at high reliability is unexplained.</b> It may be
+        aperture/PSF differences or DECam template contamination. Do not treat it as a
+        validated cross-calibration.</li>
+    </ul>
+  </div>
+</div>
+<div class="tip hidden" id="tip"></div>
+
+<script>
+const DATA = /*__PAYLOAD__*/;
+const BANDS = ["u","g","r","i","z","y"];
+const $ = s => document.querySelector(s);
+const REL_CUT = 0.5;
+let cur = 0, band = "all", pinned = null, relOnly = false;
+
+/* ---------- helpers ---------- */
+const mjdToDate = m => {
+  const d = new Date((m - 40587) * 86400000);
+  return d.toISOString().slice(0,10);
+};
+const fmt = (v,n=1) => v==null||!isFinite(v) ? "—" : Number(v).toFixed(n);
+const fmtFlux = v => {
+  if (v==null||!isFinite(v)) return "—";
+  const a = Math.abs(v);
+  if (a >= 1e6) return (v/1e6).toFixed(2)+"M";
+  if (a >= 1e3) return (v/1e3).toFixed(1)+"k";
+  return v.toFixed(0);
+};
+const magOf = f => (f>0 ? (31.4 - 2.5*Math.log10(f)) : null);
+// The SVG and tooltips are built by string concatenation, so every interpolated
+// value from the payload gets escaped.
+const esc = v => String(v==null?"":v).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ---------- init ---------- */
+function initStats(){
+  const m = DATA.meta;
+  $("#stats").innerHTML = [
+    ["Objects", m.n_obj],
+    ["DECam epochs", m.n_decam],
+    ["LSST epochs", m.n_lsst],
+    ["Paired ≤2 d", m.n_pairs],
+    ["LSST cutouts", m.n_cutouts],
+  ].map(([k,v]) => `<div class="stat"><div class="v">${v}</div><div class="k">${k}</div></div>`).join("");
+}
+
+function initSelect(){
+  const s = $("#objsel");
+  s.innerHTML = DATA.objects.map((o,i) => {
+    const z = o.z!=null ? ` z=${o.z.toFixed(3)}` : "";
+    return `<option value="${i}">${esc(o.snid)} — ${esc(o.type||"untyped")}${z} · ${o.decam.length}D/${o.lsst.length}L</option>`;
+  }).join("");
+  s.addEventListener("change", e => { cur = +e.target.value; pinned=null; render(); });
+}
+
+function initBands(){
+  const c = $("#bands");
+  c.innerHTML = [`<button class="chip" data-b="all">all</button>`]
+    .concat(BANDS.map(b => `<button class="chip" data-b="${b}">${b}</button>`)).join("");
+  c.addEventListener("click", e => {
+    const btn = e.target.closest("button"); if(!btn || btn.disabled) return;
+    band = btn.dataset.b; pinned = null; render();
+  });
+}
+
+/* ---------- filtering ---------- */
+const inBand = e => band==="all" || e.band===band;
+// A DP2 detection with low `reliability` is frequently spurious; agreement with
+// DECam degrades from ~0.4 mag (rel>0.9) to ~2.4 mag (rel<0.1).
+const relOK = e => !relOnly || (e.rel != null && e.rel >= REL_CUT);
+function curObj(){ return DATA.objects[cur]; }
+function pts(){
+  const o = curObj();
+  return {
+    d: o.decam.map((e,i)=>({...e,i})).filter(inBand),
+    l: o.lsst.map((e,i)=>({...e,i})).filter(e=>inBand(e) && relOK(e)),
+    pairs: o.pairs.filter(p => (band==="all" || p.band===band) && relOK(o.lsst[p.l])),
+  };
+}
+
+/* ---------- light curve ---------- */
+function drawLC(){
+  const o = curObj(), P = pts();
+  const svg = $("#lc");
+  const W = Math.max(560, Math.min(880, (svg.parentElement.clientWidth||760)));
+  const H = 380, m = {t:14, r:16, b:44, l:64};
+  const iw = W-m.l-m.r, ih = H-m.t-m.b;
+  const all = P.d.concat(P.l);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  if(!all.length){ svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="13">no epochs in this band</text>`; return; }
+
+  const xs = all.map(e=>e.mjd);
+  let x0 = Math.min(...xs), x1 = Math.max(...xs);
+  if (o.disc_mjd!=null){ x0 = Math.min(x0,o.disc_mjd); x1 = Math.max(x1,o.disc_mjd); }
+  const xpad = Math.max(2,(x1-x0)*0.05); x0-=xpad; x1+=xpad;
+  const fl = all.map(e=>e.flux), fe = all.map(e=>e.ferr||0);
+  let y0 = Math.min(0, ...all.map((e,i)=>fl[i]-fe[i]));
+  let y1 = Math.max(...all.map((e,i)=>fl[i]+fe[i]));
+  const ypad = Math.max(1,(y1-y0)*0.08); y0-=ypad; y1+=ypad;
+  const X = v => m.l + (v-x0)/(x1-x0)*iw;
+  const Y = v => m.t + ih - (v-y0)/(y1-y0)*ih;
+
+  let g = "";
+  // gridlines + y ticks
+  const nY=5;
+  for(let i=0;i<=nY;i++){
+    const v = y0+(y1-y0)*i/nY, y=Y(v);
+    g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`;
+    g += `<text x="${m.l-9}" y="${y+4}" text-anchor="end" fill="var(--muted)" font-size="11">${fmtFlux(v)}</text>`;
+  }
+  // x ticks
+  const nX=5;
+  for(let i=0;i<=nX;i++){
+    const v = x0+(x1-x0)*i/nX, x=X(v);
+    g += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t+ih}" stroke="var(--grid)" stroke-width="1"/>`;
+    g += `<text x="${x}" y="${H-24}" text-anchor="middle" fill="var(--muted)" font-size="11">${v.toFixed(0)}</text>`;
+    g += `<text x="${x}" y="${H-11}" text-anchor="middle" fill="var(--muted)" font-size="10">${mjdToDate(v)}</text>`;
+  }
+  g += `<text x="${m.l+iw/2}" y="${H-1}" text-anchor="middle" fill="var(--muted)" font-size="10.5">MJD</text>`;
+  g += `<text transform="translate(13,${m.t+ih/2}) rotate(-90)" text-anchor="middle" fill="var(--muted)" font-size="10.5">flux (nJy, AB ZP 31.4)</text>`;
+  g += `<line x1="${m.l}" x2="${W-m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--axis)" stroke-width="1.5"/>`;
+
+  // discovery marker
+  if (o.disc_mjd!=null){
+    const x=X(o.disc_mjd);
+    g += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t+ih}" stroke="var(--axis)" stroke-width="2" stroke-dasharray="4 4"/>`;
+  }
+  // paired-epoch shading: vertical band joining the two matched epochs
+  const o_ = o;
+  for(const p of P.pairs){
+    const dp=o_.decam[p.d], lp=o_.lsst[p.l];
+    const xa=X(Math.min(dp.mjd,lp.mjd)), xb=X(Math.max(dp.mjd,lp.mjd));
+    g += `<rect x="${xa-1.5}" y="${m.t}" width="${Math.max(3,xb-xa+3)}" height="${ih}" fill="var(--pair)"/>`;
+  }
+
+  // Error bars + markers. Low-reliability LSST points are drawn hollow so the
+  // shape (not just the colour) carries the quality flag.
+  const marks = (arr,color,shape) => arr.map(e=>{
+    const x=X(e.mjd), y=Y(e.flux), er=(e.ferr||0);
+    const weak = shape==="ci" && e.rel!=null && e.rel < REL_CUT;
+    let s = `<line x1="${x}" x2="${x}" y1="${Y(e.flux-er)}" y2="${Y(e.flux+er)}" stroke="${color}" stroke-width="1.5" opacity=".55"/>`;
+    if (shape==="sq")
+      s += `<rect x="${x-4.5}" y="${y-4.5}" width="9" height="9" rx="2" fill="${color}" stroke="var(--surface)" stroke-width="2"/>`;
+    else if (weak)
+      s += `<circle cx="${x}" cy="${y}" r="4.5" fill="var(--surface)" stroke="${color}" stroke-width="2"/>`;
+    else
+      s += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="var(--surface)" stroke-width="2"/>`;
+    return s;
+  }).join("");
+  g += marks(P.l,"var(--lsst)","ci");
+  g += marks(P.d,"var(--decam)","sq");
+
+  // pinned highlight
+  if(pinned){
+    const e = pinned.src==="d" ? o.decam[pinned.i] : o.lsst[pinned.i];
+    if(e){ const x=X(e.mjd);
+      g += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t+ih}" stroke="var(--ink)" stroke-width="1.5" opacity=".5"/>`;
+      g += `<circle cx="${x}" cy="${Y(e.flux)}" r="9" fill="none" stroke="var(--ink)" stroke-width="2"/>`;
+    }
+    if(pinned.mate!=null){
+      const me = pinned.src==="d" ? o.lsst[pinned.mate] : o.decam[pinned.mate];
+      if(me){ const x=X(me.mjd);
+        g += `<circle cx="${x}" cy="${Y(me.flux)}" r="9" fill="none" stroke="var(--ink)" stroke-width="2" stroke-dasharray="3 3"/>`;
+      }
+    }
+  }
+  g += `<rect id="hit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent" style="cursor:crosshair"/>`;
+  svg.innerHTML = g;
+
+  const hit = svg.querySelector("#hit");
+  // Rank candidates by 2-D distance in PIXEL space. Ranking by |Δ MJD| alone
+  // makes any marker that shares an MJD with another permanently unreachable,
+  // and picks the wrong series whenever two epochs are simultaneous.
+  const nearest = ev => {
+    const r = svg.getBoundingClientRect();
+    const sx = W / r.width, sy = H / r.height;
+    const px = (ev.clientX - r.left) * sx, py = (ev.clientY - r.top) * sy;
+    let best=null;
+    const scan = (arr,src) => { for(const e of arr){
+      const dx=X(e.mjd)-px, dy=Y(e.flux)-py, dd=dx*dx+dy*dy;
+      if(!best||dd<best.dd) best={dd,src,i:e.i,e};
+    }};
+    scan(P.d,"d"); scan(P.l,"l");
+    if(best){
+      // mate/mate_dt are resolved in the builder as the temporally NEAREST
+      // partner; pairs are many-DECam-to-one-LSST so scanning for the first
+      // matching pair here would report an arbitrary mate.
+      best.mate = best.e.mate;
+      best.dt = best.e.mate_dt;
+    }
+    return best;
+  };
+  hit.addEventListener("mousemove", ev => { const b=nearest(ev); if(b){ showTip(ev,b); setReadout(b);} });
+  hit.addEventListener("mouseleave", () => { $("#tip").classList.add("hidden"); setReadout(pinned); });
+  hit.addEventListener("click", ev => { pinned = nearest(ev); render(); });
+}
+
+function showTip(ev,b){
+  const t=$("#tip"), o=curObj();
+  const lab = b.src==="d" ? "DECam" : "LSST";
+  const col = b.src==="d" ? "var(--decam)" : "var(--lsst)";
+  const mg = magOf(b.e.flux);
+  let h = `<div class="t" style="color:${col}">${lab} · ${esc(b.e.band)}</div>`;
+  h += `<div class="r"><span>MJD</span><b>${b.e.mjd.toFixed(3)}</b></div>`;
+  h += `<div class="r"><span>date</span><b>${mjdToDate(b.e.mjd)}</b></div>`;
+  h += `<div class="r"><span>flux</span><b>${fmtFlux(b.e.flux)} ± ${fmtFlux(b.e.ferr)} nJy</b></div>`;
+  if(mg) h += `<div class="r"><span>mag</span><b>${mg.toFixed(2)}</b></div>`;
+  if(o.disc_mjd!=null) h += `<div class="r"><span>d since disc. (obs)</span><b>${(b.e.mjd-o.disc_mjd).toFixed(1)}</b></div>`;
+  if(b.mate!=null) h += `<div class="r"><span>paired Δt</span><b>${b.dt} d</b></div>`;
+  t.innerHTML=h; t.classList.remove("hidden");
+  const pad=14, w=t.offsetWidth, hh=t.offsetHeight;
+  t.style.left = Math.min(ev.clientX+pad, innerWidth-w-8)+"px";
+  t.style.top  = Math.min(ev.clientY+pad, innerHeight-hh-8)+"px";
+}
+
+function setReadout(b){
+  const o = curObj();
+  const blank = `<div class="row"><span>—</span><b>—</b></div>`;
+  const box = (e, other) => {
+    if(!e) return blank;
+    const mg=magOf(e.flux);
+    let s = `<div class="row"><span>band</span><b>${esc(e.band)}</b></div>`;
+    s += `<div class="row"><span>MJD</span><b>${e.mjd.toFixed(3)}</b></div>`;
+    s += `<div class="row"><span>date</span><b>${mjdToDate(e.mjd)}</b></div>`;
+    s += `<div class="row"><span>flux nJy</span><b>${fmtFlux(e.flux)} ± ${fmtFlux(e.ferr)}</b></div>`;
+    if(mg) s += `<div class="row"><span>AB mag</span><b>${mg.toFixed(2)}</b></div>`;
+    if(e.expnum) s += `<div class="row"><span>EXPNUM</span><b>${esc(e.expnum)}</b></div>`;
+    if(e.snr!=null) s += `<div class="row"><span>SNR</span><b>${fmt(e.snr,1)}</b></div>`;
+    if(e.rel!=null) s += `<div class="row"><span>reliability</span><b>${fmt(e.rel,3)}</b></div>`;
+    if(other!=null) s += `<div class="row"><span>Δt to pair</span><b>${other} d</b></div>`;
+    return s;
+  };
+  let de=null, le=null, dt=null;
+  if(b){
+    dt = b.dt;
+    if(b.src==="d"){ de=o.decam[b.i]; le = b.mate!=null ? o.lsst[b.mate] : null; }
+    else           { le=o.lsst[b.i];  de = b.mate!=null ? o.decam[b.mate] : null; }
+  }
+  $("#roDecam").innerHTML = box(de, de&&le?dt:null);
+  $("#roLsst").innerHTML  = box(le, de&&le?dt:null);
+}
+
+/* ---------- scatter: DECam vs LSST on paired epochs ---------- */
+function drawSC(){
+  const o = curObj(), P = pts(), svg=$("#sc");
+  const W = Math.max(520, Math.min(760, (svg.parentElement.clientWidth||700)));
+  const H = 330, m={t:14,r:16,b:46,l:66};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b;
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("width",W); svg.setAttribute("height",H);
+  const rows = P.pairs.map(p => ({d:o.decam[p.d], l:o.lsst[p.l], dt:p.dt, band:p.band}))
+                      .filter(r=>r.d&&r.l);
+  if(!rows.length){
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="13">no paired epochs in this band</text>`;
+    $("#scnote").textContent = ""; return;
+  }
+  const v = rows.flatMap(r=>[r.d.flux,r.l.flux]);
+  let lo=Math.min(0,...v), hi=Math.max(...v); const pad=(hi-lo)*0.08||1; lo-=pad; hi+=pad;
+  const X=x=>m.l+(x-lo)/(hi-lo)*iw, Y=y=>m.t+ih-(y-lo)/(hi-lo)*ih;
+  let g="";
+  for(let i=0;i<=4;i++){
+    const val=lo+(hi-lo)*i/4;
+    g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(val)}" y2="${Y(val)}" stroke="var(--grid)"/>`;
+    g+=`<line x1="${X(val)}" x2="${X(val)}" y1="${m.t}" y2="${m.t+ih}" stroke="var(--grid)"/>`;
+    g+=`<text x="${m.l-9}" y="${Y(val)+4}" text-anchor="end" fill="var(--muted)" font-size="11">${fmtFlux(val)}</text>`;
+    g+=`<text x="${X(val)}" y="${H-26}" text-anchor="middle" fill="var(--muted)" font-size="11">${fmtFlux(val)}</text>`;
+  }
+  // 1:1 line — the reference the comparison is actually about
+  g+=`<line x1="${X(lo)}" y1="${Y(lo)}" x2="${X(hi)}" y2="${Y(hi)}" stroke="var(--axis)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  g+=`<text x="${m.l+iw/2}" y="${H-8}" text-anchor="middle" fill="var(--muted)" font-size="10.5">DECam flux (nJy)</text>`;
+  g+=`<text transform="translate(14,${m.t+ih/2}) rotate(-90)" text-anchor="middle" fill="var(--muted)" font-size="10.5">LSST flux (nJy)</text>`;
+  for(const r of rows){
+    const weak = r.l.rel!=null && r.l.rel < REL_CUT;
+    const t = `${r.band} MJD ${r.d.mjd.toFixed(2)} Δt=${r.dt}d · rel ${r.l.rel==null?"—":r.l.rel.toFixed(3)} · DECam ${fmtFlux(r.d.flux)} → LSST ${fmtFlux(r.l.flux)}`;
+    g += weak
+      ? `<circle cx="${X(r.d.flux)}" cy="${Y(r.l.flux)}" r="5" fill="var(--surface)" stroke="var(--lsst)" stroke-width="2"><title>${esc(t)}</title></circle>`
+      : `<circle cx="${X(r.d.flux)}" cy="${Y(r.l.flux)}" r="5.5" fill="var(--lsst)" stroke="var(--surface)" stroke-width="2"><title>${esc(t)}</title></circle>`;
+  }
+  svg.innerHTML=g;
+  // True median: for an even-length sample average the two central values.
+  // These samples are n=2..9, where taking the upper value is a large error.
+  const median = v => {
+    if(!v.length) return null;
+    const a=[...v].sort((x,y)=>x-y), h=a.length>>1;
+    return a.length%2 ? a[h] : (a[h-1]+a[h])/2;
+  };
+  // Sign convention: magnitude runs backwards, so
+  //   Δm = m_LSST − m_DECam = −2.5·log10(F_LSST / F_DECam).
+  // A POSITIVE Δm means LSST measured the source FAINTER than DECam.
+  const dmagOf = r => -2.5*Math.log10(r.l.flux/r.d.flux);
+  // The ratio is defined whenever DECam flux is positive, so it keeps the
+  // negative-LSST-flux pairs. The magnitude offset cannot: dropping those is a
+  // ONE-SIDED cut that removes exactly the epochs where LSST saw least flux, so
+  // its n is reported separately rather than implied by the pair count.
+  const ratioSet = rows.filter(r=>r.d.flux>0);
+  const magSet   = rows.filter(r=>r.d.flux>0 && r.l.flux>0);
+  const good     = magSet.filter(r=>r.l.rel!=null && r.l.rel>=REL_CUT);
+  const rMed = median(ratioSet.map(r=>r.l.flux/r.d.flux));
+  const mAll = median(magSet.map(dmagOf)), mGood = median(good.map(dmagOf));
+  const sgn = v => (v>=0?"+":"") + v.toFixed(2);
+  let s = `${rows.length} same-band pairs within ${DATA.meta.pair_window_d} d. Dashed line is 1:1. `;
+  if(rMed!=null) s += `Median LSST/DECam flux ratio ${rMed.toFixed(3)} over all ${ratioSet.length} pairs with positive DECam flux. `;
+  if(mAll!=null){
+    s += `Median Δm (LSST − DECam) ${sgn(mAll)} mag over the ${magSet.length} pairs positive in both`;
+    if(magSet.length !== ratioSet.length) s += ` (${ratioSet.length-magSet.length} dropped for negative LSST flux, which biases this toward agreement)`;
+    if(mGood!=null && good.length!==magSet.length) s += `; at reliability ≥ ${REL_CUT} (n=${good.length}) it is ${sgn(mGood)} mag`;
+    s += `. Positive Δm means LSST measured the source fainter. `;
+  }
+  s += "Hollow points are low-reliability DP2 detections, which are often spurious.";
+  $("#scnote").textContent = s;
+}
+
+/* ---------- images ---------- */
+function drawImgs(){
+  const o=curObj(), cuts=DATA.cutouts[o.snid]||{};
+  const b = band==="all" ? (cuts.r ? "r" : Object.keys(cuts)[0]) : band;
+  const img=$("#lsstimg");
+  const holder = $("#lsstph");
+  if(b && cuts[b]){
+    img.src = "data:image/png;base64,"+cuts[b];
+    img.classList.remove("hidden"); holder.classList.add("hidden");
+    $("#lsstcap").textContent = `deep_coadd · ${b} band · 20″ · zscale`;
+  } else {
+    // Clearing src alone leaves the browser's broken-image glyph on screen.
+    img.removeAttribute("src"); img.classList.add("hidden");
+    holder.classList.remove("hidden");
+    holder.innerHTML = `<div>No DP2 deep coadd${b?` in <b style="color:var(--ink)">${esc(b)}</b>`:""} at this position.</div>`;
+    $("#lsstcap").textContent = "";
+  }
+  $("#decamimg").innerHTML =
+    `<div><b style="color:var(--ink)">Embargoed</b><br>DECam pixels at NOIRLab are proprietary until <b style="color:var(--ink)">2026-12-29</b>.<br><br>Photometry is shown; images need NOIRLab credentials.</div>`;
+  const nd = o.decam.length;
+  $("#decamcap").textContent = `${nd} forced-photometry epochs available`;
+}
+
+/* ---------- table ---------- */
+function drawTable(){
+  const o=curObj(), P=pts();
+  const rows = P.d.map(e=>({s:"DECam",...e})).concat(P.l.map(e=>({s:"LSST",...e})))
+                  .sort((a,b)=>a.mjd-b.mjd);
+  $("#tablewrap").innerHTML =
+    `<table><thead><tr><th>Survey</th><th>Band</th><th>MJD</th><th>Date</th>
+     <th>Flux nJy</th><th>±</th><th>AB mag</th><th>d since disc.</th></tr></thead><tbody>`
+    + rows.map(r=>{
+        const mg=magOf(r.flux);
+        const ph=o.disc_mjd!=null?(r.mjd-o.disc_mjd).toFixed(1):"—";
+        return `<tr><td>${r.s}</td><td>${esc(r.band)}</td><td>${r.mjd.toFixed(3)}</td>
+        <td>${mjdToDate(r.mjd)}</td><td>${fmtFlux(r.flux)}</td><td>${fmtFlux(r.ferr)}</td>
+        <td>${mg?mg.toFixed(2):"—"}</td><td>${ph}</td></tr>`;
+      }).join("")
+    + `</tbody></table>`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  const o=curObj();
+  // disable bands with no data at all for this object
+  const have=new Set(o.decam.map(e=>e.band).concat(o.lsst.map(e=>e.band)));
+  const avail=b => b==="all" || have.has(b) || !!(DATA.cutouts[o.snid]||{})[b];
+  // Switching object can strand the selection on a band the new object lacks,
+  // leaving every panel empty under a chip that still looks selected.
+  if(!avail(band)) band="all";
+  document.querySelectorAll("#bands .chip").forEach(c=>{
+    const b=c.dataset.b;
+    c.disabled = !avail(b);
+    c.setAttribute("aria-pressed", String(b===band));
+  });
+  $("#objsel").value = cur;
+  const z = o.z!=null?`z = ${o.z.toFixed(4)}`:"no redshift";
+  $("#objnote").innerHTML =
+    `<b>${esc(o.snid)}</b> · ${esc(o.type||"untyped")} · ${z} · DEBaSS ${esc(o.debass_snid)} · diaObject ${esc(o.dia_id)} · ` +
+    `RA ${o.ra.toFixed(5)}, Dec ${o.dec.toFixed(5)} · status ${esc(o.status)}`;
+  drawImgs(); drawLC(); drawSC(); drawTable(); setReadout(pinned);
+}
+
+$("#pw").textContent = DATA.meta.pair_window_d;
+initStats(); initSelect(); initBands();
+$("#btnRel").addEventListener("click", e=>{
+  relOnly = !relOnly; pinned = null;
+  e.target.setAttribute("aria-pressed", String(relOnly));
+  render();
+});
+$("#btnTable").addEventListener("click", e=>{
+  const w=$("#tablewrap"), on=w.classList.toggle("hidden");
+  e.target.setAttribute("aria-pressed", String(!on));
+});
+$("#btnTheme").addEventListener("click", e=>{
+  const cur = document.documentElement.getAttribute("data-theme");
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = cur ? (cur==="dark"?"light":"dark") : (dark?"light":"dark");
+  document.documentElement.setAttribute("data-theme", next);
+  e.target.setAttribute("aria-pressed", String(next==="dark"));
+  render();
+});
+addEventListener("resize", ()=>{ drawLC(); drawSC(); });
+render();
+</script>
+</body>
+</html>
