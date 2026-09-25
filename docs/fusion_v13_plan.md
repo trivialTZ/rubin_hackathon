@@ -150,7 +150,7 @@ is uninformative (about 0.5 / 0.5, see its module docstring), and the wrapper ma
 missing, conversion failure, batch failure) as available. In the v12w gold every LSST training row is a stub except about
 1% of SN rows (objects re-run by v12's job); every object scored at serving gets a real output. ZTF has no stubs
 (Ia|SN AUC 0.59). The gold scan of all experts shows SALT3 degenerate (margin 1) on about half the benchmark rows vs ≤ 7%
-in training; its head-1 effect is small, left for later.
+in LSST training; its head-1 effect is small. The training side of that comparison was a bug (see "SALT3 on Rubin" below).
 
 ## v13b (SCC 7734744, 9.5 min; Stage A reused from v13)
 
@@ -177,5 +177,37 @@ TNS × EDP2 explorer cohort (public alert data): typed ZTF objects AUC 0.934 (v1
 12 typed Rubin SNe median P(SN) 0.89 (v12 0.93).
 
 **Deployed:** the explorer site uses v13b (tns-edp2-explorer 1251cb2); trust stays hidden (Fink trust on SN calls in the
-cohort reads a median 0.33). Open: the no-broker n = 10 dip, SALT3's serving skew, Fink trust level, and more LSST SNe
+cohort reads a median 0.33). Open: the no-broker n = 10 dip, SALT3 (below), Fink trust level, and more LSST SNe
 in train and cal (TNS label refresh).
+
+## SALT3 on Rubin (follow-up, 2026-09-25)
+
+Re-fitting the benchmark slices locally (sncosmo 2.12; 506 of 616 rows reproduce the gold p(Ia) to 1e-3, the rest are
+near-tied χ² pairs) and scanning the v12w gold:
+
+- **Saturation is not Rubin-specific.** p(Ia) = sigmoid(Δχ²/2) with no model covariance saturates as points and S/N
+  grow. In the v12w gold, ZTF rows are degenerate 51% (SNe) and 61% (others), rising from 10% at ≤ 3 detections to 80%
+  at 11–20. Benchmark SNe: 29% / 58% / 84% / 84% at n = 3 / 5 / 10 / latest. That is faster than ZTF because Rubin
+  S/N is higher (median 47 on SN rows with all-positive fluxes) and there are more bands. Those clean SN rows fit well
+  (best reduced χ² median 1.8) and are still 57% degenerate. SALT3's Ia call on benchmark SNe is at chance either way
+  (AUC 0.53; it calls Ia on 86% of rows, 61% are Ia).
+- **LSST training rows had no event times.** The LSST rows in the `salt3_chi2` and `alerce_lc` silvers were appended
+  with `alert_mjd` but a NaN `alert_jd`. `_local_record_to_events` fell back to `alert_mjd` only when `alert_jd` was
+  None, so every LSST event was untimed and `select_events_asof` returned all of the object's rerun_exact events. The
+  gold value was the mean over every epoch, later ones included: 36 events per SALT3 row and 160 per `alerce_lc` row,
+  vs 2 and 16 on ZTF. Averaging pulls saturated values to the middle, hence 9–21% degenerate in LSST training vs 50–80%
+  at serving. It is also a look-ahead inside LSST training rows for these two experts. `supernnova` and
+  `lc_features_bv` silvers have no `alert_jd` column and were timed correctly. Serving golds (benchmark, explorer
+  cohort) are timed and unaffected. Fixed in `ingest/gold.py` (`tests/test_asof_join.py`); takes effect at the next
+  gold build, so v13b still carries it.
+- **SN light in the templates: real, a minority.** Of 107 spectroscopic SNe in the benchmark, 16 (15%) have only
+  negative alert detections and 9 (8%) mixed signs; one has negative g, r, i and y with positive z on the same nights.
+  That is what a difference-imaging template containing the SN produces. The 7 SNe with any negative point in the
+  refit slices are 93% degenerate (best reduced χ² median 12.6). In training, none of the 19 spectroscopic LSST SNe
+  are negative-only, but 22% of the 1,749 weak-label (stamp) SNe are. The gold already carries `n_det_neg`, `frac_neg`
+  and `lc_fallback_all_negative`. DP2 photometry shows the same effect against alerts (review doc, section 4).
+- **SALT3 drops strong II preferences.** `math.exp(-Δχ²/2)` overflows for Δχ² < −1420; the collector catches the
+  exception and writes no row, so the most II-favouring epochs are silently unavailable.
+
+For a v13c: rebuild the gold with the fix; a stable sigmoid; scale Δχ² by the better fit's reduced χ² (or a cap on
+|Δχ²| per point); then check whether the no-broker n = 10 dip moves, since local experts carry that regime.

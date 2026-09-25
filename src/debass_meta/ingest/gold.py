@@ -363,8 +363,13 @@ def _local_record_to_events(record: dict[str, Any]) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             class_probabilities = {}
 
+    # A NaN alert_jd (rows appended to a silver that has the column) must fall back to
+    # alert_mjd too: an untimed event is selected as "all rerun_exact events", which
+    # averages every epoch of the object, later ones included.
     alert_jd = record.get("alert_jd")
-    if alert_jd is None and record.get("alert_mjd") is not None:
+    if alert_jd is not None and _is_nan(alert_jd):
+        alert_jd = None
+    if alert_jd is None and record.get("alert_mjd") is not None and not _is_nan(record["alert_mjd"]):
         alert_jd = _to_jd(float(record["alert_mjd"]))
 
     out: list[dict[str, Any]] = []
