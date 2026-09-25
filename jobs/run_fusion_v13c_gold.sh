@@ -71,6 +71,38 @@ new_silver bench "${B}/silver" "${B}/silver_v13c"
 new_silver tnsx_lsst "${T}/silver_lsst" "${T}/silver_lsst_v13c"
 new_silver tnsx_ztf "${T}/silver_ztf" "${T}/silver_ztf_v13c"
 new_silver dp2 "${E}/silver_v12loc" "${E}/silver_v13cloc"
+# DP2 lightcurves carry psfFlux/psfFluxErr, which lc_features_bv (like SALT3 before v13c) did not read: it gave no
+# output on any DP2 row. Re-run it for DP2 here (its head lives on SCC), NSLOTS shards in parallel.
+if [[ ! -f "${E}/silver_v13cloc/.v13c_lcf_ready" ]]; then
+    LD="${S3}/dp2_lcf"; pids=()
+    for ((k = 0; k < NSLOTS; k++)); do
+        d="${LD}/s_${k}"; [[ -f "${d}/.done" ]] && continue
+        rm -rf "${d}" && mkdir -p "${d}"
+        OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONWARNINGS=ignore \
+            python3 -u scripts/local_infer.py --expert lc_features_bv --from-labels "${S3}/dp2/s_0/ids.csv" \
+            --lc-dir "${E}/lightcurves" --silver-dir "${d}" --max-n-det 20 --shard-id "${k}" --n-shards "${NSLOTS}" \
+            > "${d}/local_infer.log" 2>&1 && touch "${d}/.done" &
+        pids+=($!)
+    done
+    for p in ${pids[@]+"${pids[@]}"}; do wait "${p}" || true; done
+    for ((k = 0; k < NSLOTS; k++)); do
+        [[ -f "${LD}/s_${k}/.done" ]] || { echo "DP2 lc_features shard ${k} failed:"; tail -20 "${LD}/s_${k}/local_infer.log"; exit 3; }
+    done
+    mv "${E}/silver_v13cloc/local_expert_outputs/lc_features_bv" "${E}/silver_v13cloc/_lc_features_bv_v12"
+    mkdir -p "${E}/silver_v13cloc/local_expert_outputs/lc_features_bv"
+    for ((k = 0; k < NSLOTS; k++)); do
+        cp "${LD}/s_${k}/local_expert_outputs/lc_features_bv/part-latest.parquet" \
+            "${E}/silver_v13cloc/local_expert_outputs/lc_features_bv/part-shard${k}.parquet"
+    done
+    touch "${E}/silver_v13cloc/.v13c_lcf_ready"
+fi
+python3 - "${E}/silver_v13cloc/local_expert_outputs/lc_features_bv" <<'EOF'
+import glob, json, sys
+import pandas as pd
+df = pd.concat([pd.read_parquet(p) for p in glob.glob(f"{sys.argv[1]}/*.parquet")], ignore_index=True)
+ok = df["class_probabilities"].map(lambda s: bool(json.loads(s)) if isinstance(s, str) else bool(s)) & df["available"].astype(bool)
+print(f"DP2 lc_features_bv: {len(df):,} rows, output on {ok.mean():.1%}")
+EOF
 echo "$(ts) silvers ready"
 
 # 2. serving golds, with the same builder flags as jobs/run_fusion_v12_bench.sh, run_tnsx_v12_score.sh and

@@ -67,6 +67,9 @@ def _band(det: dict[str, Any]) -> str | None:
 def _flux(det: dict[str, Any]) -> tuple[float, float] | None:
     flux = det.get("flux")
     fluxerr = det.get("fluxerr")
+    if flux is None or fluxerr is None:   # DP2 catalogue lightcurves (nJy, like the alerts)
+        flux = det.get("psfFlux")
+        fluxerr = det.get("psfFluxErr")
     if flux is not None and fluxerr is not None:
         try:
             flux = float(flux)

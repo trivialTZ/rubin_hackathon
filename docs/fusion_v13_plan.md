@@ -227,9 +227,12 @@ Fixes (code, with tests):
   be re-derived without refitting. On the benchmark refits, degenerate rows 60% → 13% (SNe at n = 3 / 5 / 10 / latest:
   31 / 58 / 84 / 82% → 22 / 24 / 11 / 35%), SNe called Ia 86% → 66%; Ia|SN stays at chance (AUC 0.52).
 - `scripts/collect_epoch_history.py` counts and prints runner exceptions instead of dropping them silently.
+- **DP2 flux keys**: DP2 catalogue lightcurves carry `psfFlux` / `psfFluxErr`; SALT3 and `lc_features_bv` read only
+  `flux` / `fluxerr` / `magpsf`, so both gave no output on any DP2 row (rows marked available with empty
+  probabilities). Both now fall back to the PSF-flux keys (nJy, as in the alerts); DP2 is re-run for both.
 
 Recomputed on SCC (three chained jobs):
-1. `jobs/run_v13c_salt3_array.sh` (48 tasks): SALT3 re-fitted for every set that carries it (training silver, 12,823
+1. `jobs/run_v13c_salt3_array.sh` (48 shards; SCC ran 0–23, the Mac 24–47 and all of DP2 with identical inputs): SALT3 re-fitted for every set that carries it (training silver, 12,823
    objects; frozen benchmark + hold-out; explorer cohort LSST + ZTF; DP2) through `local_infer.py`, the serving path
    (the ZTF training rows came from `collect_epoch_history.py` before).
 2. `jobs/run_fusion_v13c_gold.sh`: new silvers (real copies with the SALT3 rows swapped), then every gold rebuilt with

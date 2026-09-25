@@ -95,3 +95,16 @@ def test_too_few_points_is_unavailable():
     out = Salt3Chi2Expert().predict_epoch("x", [{"mjd": 61000.0, "band": "g", "survey": "LSST",
                                                  "flux": 10.0, "fluxerr": 1.0}], 2461001.0)
     assert not out.available
+
+
+def test_catalogue_psf_flux_keys_are_read():
+    # DP2 lightcurves carry psfFlux / psfFluxErr instead of flux / fluxerr
+    dets = _synthetic_ia_lightcurve()
+    for d in dets:
+        d["psfFlux"], d["psfFluxErr"] = d.pop("flux"), d.pop("fluxerr")
+    expert = Salt3Chi2Expert()
+    if not expert._available:
+        pytest.skip("sncosmo unavailable")
+    out = expert.predict_epoch("x", dets, dets[-1]["mjd"] + 2400000.5 + 0.1)
+    assert out.available
+    assert out.raw_output["summary"]["n_points"] == len(dets)

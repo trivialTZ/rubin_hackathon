@@ -198,6 +198,9 @@ class Salt3Chi2Expert(LocalExpert):
                 continue
             flux = det.get("flux")
             fluxerr = det.get("fluxerr")
+            if flux is None or fluxerr is None:   # DP2 catalogue lightcurves (nJy, like the alerts)
+                flux = det.get("psfFlux")
+                fluxerr = det.get("psfFluxErr")
             if flux is None or fluxerr is None:
                 mag = det.get("magpsf")
                 magerr = det.get("sigmapsf")
