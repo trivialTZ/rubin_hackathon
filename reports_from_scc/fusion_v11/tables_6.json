@@ -1,0 +1,67 @@
+{
+  "table": 6,
+  "title": "Conformal coverage vs nominal 0.9 (Mondrian APS)",
+  "protocol": {
+    "qualities": [
+      "spectroscopic",
+      "tns_untyped"
+    ],
+    "rows": "latest row per (object, n_det bucket), locked test"
+  },
+  "overall": {
+    "n": 2263,
+    "coverage": 0.9080866106937693,
+    "mean_set_size": 1.5492708793636765,
+    "nominal": 0.9
+  },
+  "rows": [
+    {
+      "class": "nonIa_snlike",
+      "survey": "ztf",
+      "n_det_bucket": "1-4",
+      "n": 330,
+      "coverage": 0.9090909090909091,
+      "mean_set_size": 1.7030303030303031
+    },
+    {
+      "class": "nonIa_snlike",
+      "survey": "ztf",
+      "n_det_bucket": "10-20",
+      "n": 303,
+      "coverage": 0.9240924092409241,
+      "mean_set_size": 1.481848184818482
+    },
+    {
+      "class": "nonIa_snlike",
+      "survey": "ztf",
+      "n_det_bucket": "5-9",
+      "n": 323,
+      "coverage": 0.9102167182662538,
+      "mean_set_size": 1.6408668730650156
+    },
+    {
+      "class": "snia",
+      "survey": "ztf",
+      "n_det_bucket": "1-4",
+      "n": 456,
+      "coverage": 0.9429824561403509,
+      "mean_set_size": 1.706140350877193
+    },
+    {
+      "class": "snia",
+      "survey": "ztf",
+      "n_det_bucket": "10-20",
+      "n": 409,
+      "coverage": 0.8924205378973105,
+      "mean_set_size": 1.3643031784841075
+    },
+    {
+      "class": "snia",
+      "survey": "ztf",
+      "n_det_bucket": "5-9",
+      "n": 442,
+      "coverage": 0.8733031674208145,
+      "mean_set_size": 1.4230769230769231
+    }
+  ]
+}

@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from debass_meta.access.associations import load_lsst_ztf_associations  # noqa: E402
 from debass_meta.features.sequence_dataset import (  # noqa: E402
     NormStats,
+    _cont_dim_for_schema,
     load_object_sequence,
     sequence_arrays,
     sequence_survey,
@@ -92,6 +93,7 @@ def _load_dp1_sequence(
     path: Path,
     *,
     max_len: int,
+    schema: str = "v9",
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """One DP1 parquet lightcurve → sequence arrays (LSST normalization),
     replicating scripts/build_seq_features.py --dp1."""
@@ -106,7 +108,7 @@ def _load_dp1_sequence(
     if not records:
         return None
     detections = normalize_lightcurve(records, survey="LSST")
-    cont, bands = sequence_arrays(detections, max_len=max_len)
+    cont, bands = sequence_arrays(detections, max_len=max_len, schema=schema)
     if len(cont) == 0:
         return None
     return cont, bands
@@ -120,6 +122,7 @@ def build_corpus(
     limit: int | None = None,
     surveys: str = "both",
     dp1_dir: Path | None = None,
+    schema: str = "v9",
 ) -> tuple[list[str], list[tuple[np.ndarray, np.ndarray]]]:
     stems = sorted(p.stem for p in lc_dir.glob("*.json"))
     kept_ids: list[str] = []
@@ -132,7 +135,7 @@ def build_corpus(
         if stem in exclude:
             n_excluded += 1
             continue
-        loaded = load_object_sequence(lc_dir, stem, max_len=max_len)
+        loaded = load_object_sequence(lc_dir, stem, max_len=max_len, schema=schema)
         if loaded is None or len(loaded[0]) < 2:  # need >=2 dets for a forecast target
             continue
         if surveys != "both" and sequence_survey(loaded[0]) != surveys:
@@ -154,7 +157,7 @@ def build_corpus(
                 continue
             if stem in known:
                 continue
-            loaded = _load_dp1_sequence(p, max_len=max_len)
+            loaded = _load_dp1_sequence(p, max_len=max_len, schema=schema)
             if loaded is None or len(loaded[0]) < 2:
                 continue
             kept_ids.append(stem)
@@ -211,6 +214,11 @@ def main() -> None:
                          "ALSO excluded (duplicate photometry). Missing file → no-op.")
     ap.add_argument("--surveys", choices=("ztf", "lsst", "both"), default="both",
                     help="Restrict the SSL corpus to one survey (staged ZTF→LSST recipes)")
+    ap.add_argument("--seq-schema", choices=("v9", "v11"), default="v9",
+                    help="Sequence tokenization schema.  v9 = positives-only 9-dim "
+                         "(deployed v9/v10 artifacts); v11 = full-window 11-dim with "
+                         "is_negative + signed_flux negative-detection tokens.  Sizes "
+                         "the encoder cont_dim and is stamped into the artifact meta.")
     ap.add_argument("--per-survey-norm", action="store_true",
                     help="Fit survey-keyed NormStats (pooled fallback below "
                          "200 sequences per survey)")
@@ -245,6 +253,7 @@ def main() -> None:
         Path(args.lc_dir), exclude, max_len=args.max_len, limit=args.limit,
         surveys=args.surveys,
         dp1_dir=Path(args.dp1_lc_dir) if args.dp1_lc_dir else None,
+        schema=args.seq_schema,
     )
     if len(ids) < 50:
         raise SystemExit(f"Corpus too small ({len(ids)}) — wrong --lc-dir?")
@@ -258,7 +267,8 @@ def main() -> None:
           f"norm mean={['%.3f' % m for m in stats.mean[:5]]}; "
           f"per-survey stats: {sorted(stats.per_survey) or 'pooled only'}", flush=True)
 
-    encoder = SeqEncoder(SeqEncoderConfig()).to(device)
+    cont_dim = _cont_dim_for_schema(args.seq_schema)
+    encoder = SeqEncoder(SeqEncoderConfig(cont_dim=cont_dim)).to(device)
     n_params = sum(p.numel() for p in encoder.parameters())
     print(f"  encoder params: {n_params:,}", flush=True)
     opt = torch.optim.AdamW(encoder.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -306,6 +316,8 @@ def main() -> None:
         "split_manifest": str(args.split),
         "association_csv": str(args.association_csv) if args.association_csv else None,
         "surveys": args.surveys,
+        "seq_schema": args.seq_schema,
+        "cont_dim": cont_dim,
         "per_survey_norm": bool(args.per_survey_norm),
         "per_survey_stats_fitted": sorted(stats.per_survey),
         "dp1_lc_dir": str(args.dp1_lc_dir) if args.dp1_lc_dir else None,

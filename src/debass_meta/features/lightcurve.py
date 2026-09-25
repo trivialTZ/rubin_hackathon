@@ -83,6 +83,30 @@ FEATURE_NAMES = [
 # Legacy alias kept so existing code that imports ``mean_rb`` keeps working.
 _LEGACY_QUALITY_ALIAS = "mean_rb"
 
+# ------------------------------------------------------------------ #
+# fusion_v11 negative-flux features (B3/B10).                          #
+# ------------------------------------------------------------------ #
+# These are computed by the gold BUILDER (build_snapshots_fusion.py
+# _extract_object_rows) from the negatives-INCLUDED window returned by
+# ``truncated_detection_windows`` — NOT by ``extract_features`` (which never
+# sees negatives, so the locked base-51 columns stay value-identical: G5b).
+# Kept as a SEPARATE list; FEATURE_NAMES stays 51.  ``DEFAULT_FEATURES`` in
+# ``models/early_meta.py`` is extended in sync (CLAUDE.md contract).
+NEG_FEATURE_NAMES = [
+    "n_det_neg",          # # negative detections in the window (t <= t(Nth pos))
+    "frac_neg",           # n_det_neg / window_size   (0.0 when window empty)
+    "n_pos_det",          # # POSITIVE detections in the window (0 on ZTF fallback)
+    "t_since_last_pos",   # days between the last two positive detections (0 if <2)
+    "neg_run_frac",       # longest consecutive negative run / window_size
+]
+
+# fusion_v11 gold flag column (SEPARATE from FEATURE_NAMES and NEG_FEATURE_NAMES;
+# NOT a model feature — a per-row bookkeeping flag added by the gold BUILDER).
+# 1.0 only on ZTF all-negative fallback rows (0 real positives, epochs kept alive
+# by B3); scopes the `n_det == n_pos_det` tripwire and the `n_pos_det >= 1`
+# metrics/G2 denominator gate (spec §2.3, deviation #30).
+LC_FALLBACK_ALL_NEGATIVE = "lc_fallback_all_negative"
+
 
 def _ensure_normalized(det: dict[str, Any]) -> dict[str, Any]:
     """If the detection is already normalized (has ``band`` + ``mag`` keys) return
@@ -242,32 +266,153 @@ def extract_features(detections: list[dict[str, Any]]) -> dict[str, float]:
     return feats
 
 
+def _resolve_window_survey(
+    normalized_dets: list[dict[str, Any]], survey: str | None
+) -> str:
+    """Resolve the survey used for the all-negative fallback gate.
+
+    ``survey`` may be ``"LSST"``/``"ZTF"`` (explicit) or ``"auto"``/None
+    (inferred from the normalized detections' ``survey`` stamps).
+    """
+    if survey is not None and str(survey).lower() != "auto":
+        return "LSST" if str(survey).upper() == "LSST" else "ZTF"
+    return "LSST" if any(d.get("survey") == "LSST" for d in normalized_dets) else "ZTF"
+
+
+def truncated_detection_windows(
+    detections: list[dict[str, Any]],
+    *,
+    survey: str = "auto",
+    max_n_det: int = 20,
+) -> list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
+    """Canonical fusion_v11 truncation helper (B10 — single implementation).
+
+    For each epoch ``N`` in ``1..min(#positives, max_n_det)`` returns a tuple
+    ``(pos_prefix, full_window)``:
+
+      * ``pos_prefix`` — the first ``N`` POSITIVE detections (MJD-sorted).  This
+        is the EXACT list the base-51 extractor and the EXT features consume, so
+        those columns stay value-identical to v10 on ZTF (G5b).  For non-LSST
+        surveys the all-negative fallback is KEPT (an all-negative ZTF LC uses
+        every detection as its "positive" prefix — 11% of ZTF LCs depend on it).
+      * ``full_window`` — every detection (positive OR negative) with
+        ``mjd <= mjd(Nth positive)`` (MJD-sorted).  Feeds the 5 NEG features and
+        the v11 sequence tokens.  ``full_window`` contains EXACTLY the ``N``
+        positives of ``pos_prefix`` plus the negatives up to that time, so the
+        builder tripwire ``n_det == n_pos_det`` always holds (tie-safe).
+
+    Survey gating (B3): the all-negative fallback is REMOVED for LSST — an LSST
+    object with 0 positive detections yields ``[]`` (0 epoch rows).
+
+    The base extractor, the gold builder and P5's ``sequence_dataset`` all route
+    through this one helper (no lockstep copies).
+    """
+    ndets = [_ensure_normalized(d) for d in detections]
+    ndets.sort(key=lambda d: d.get("mjd") or 0)
+    resolved = _resolve_window_survey(ndets, survey)
+
+    pos_dets = [d for d in ndets if d.get("is_positive", True)]
+    if not pos_dets:
+        if resolved == "LSST":
+            return []
+        pos_dets = ndets  # ZTF all-negative fallback (kept)
+
+    pos_id_set = {id(d) for d in pos_dets}
+    neg_dets = [d for d in ndets if id(d) not in pos_id_set]
+
+    windows: list[tuple[list[dict[str, Any]], list[dict[str, Any]]]] = []
+    for i in range(min(len(pos_dets), max_n_det)):
+        pos_prefix = pos_dets[: i + 1]
+        t_nth = pos_prefix[-1].get("mjd") or 0
+        neg_in_window = [d for d in neg_dets if (d.get("mjd") or 0) <= t_nth]
+        full_window = sorted(
+            pos_prefix + neg_in_window, key=lambda d: d.get("mjd") or 0
+        )
+        windows.append((pos_prefix, full_window))
+    return windows
+
+
+def compute_neg_features(
+    pos_prefix: list[dict[str, Any]],
+    full_window: list[dict[str, Any]],
+) -> dict[str, float]:
+    """Compute the 5 :data:`NEG_FEATURE_NAMES` from one epoch window.
+
+    ``pos_prefix`` and ``full_window`` come from the SAME
+    :func:`truncated_detection_windows` call.  Positivity is read from each
+    detection's ``is_positive`` flag (NOT prefix membership) so the values are
+    honest on the ZTF all-negative FALLBACK window too: there ``full_window`` is
+    entirely negative, so ``n_pos_det == 0`` and ``n_det_neg == len(window)``
+    (spec §2.3, deviation #30).  ``full_window`` MUST be MJD-sorted (the helper
+    sorts it) because ``neg_run_frac`` is order-sensitive.  Every feature is a
+    pure function of the window (all dets with ``t <= t(Nth pos)``), so appending
+    FUTURE negative detections cannot change any value at a fixed ``n_pos_det``
+    (G5).
+
+    On a normal (non-fallback) window ``n_pos_det`` equals the number of positive
+    detections, which equals ``len(pos_prefix)`` and the extractor's ``n_det`` —
+    so the builder tripwire ``n_det == n_pos_det`` holds on every NON-fallback
+    row.  On a fallback row ``n_pos_det == 0 != n_det``; that row is flagged
+    ``lc_fallback_all_negative == 1`` and excluded from the tripwire and from the
+    ``n_pos_det >= 1`` metrics/G2 denominator.  ``pos_prefix`` is accepted for
+    call-site symmetry; classification uses ``full_window``.
+    """
+    n_win = len(full_window)
+    # Classify each window detection by its is_positive flag (window is MJD-sorted).
+    is_neg = [not bool(d.get("is_positive")) for d in full_window]
+    n_neg = sum(is_neg)
+    n_pos = n_win - n_neg          # actual POSITIVE detections in the window
+    frac_neg = (n_neg / n_win) if n_win > 0 else 0.0
+
+    longest = cur = 0
+    for neg in is_neg:
+        if neg:
+            cur += 1
+            if cur > longest:
+                longest = cur
+        else:
+            cur = 0
+    neg_run_frac = (longest / n_win) if n_win > 0 else 0.0
+
+    pos_mjds = sorted(
+        float(d.get("mjd") or 0.0) for d in full_window if bool(d.get("is_positive"))
+    )
+    if len(pos_mjds) >= 2:
+        t_since_last_pos = float(pos_mjds[-1] - pos_mjds[-2])
+    else:
+        t_since_last_pos = 0.0
+
+    return {
+        "n_det_neg": float(n_neg),
+        "frac_neg": float(frac_neg),
+        "n_pos_det": float(n_pos),
+        "t_since_last_pos": float(t_since_last_pos),
+        "neg_run_frac": float(neg_run_frac),
+    }
+
+
 def extract_features_at_each_epoch(
     detections: list[dict[str, Any]],
     max_n_det: int = 20,
+    *,
+    survey: str = "auto",
 ) -> list[dict[str, Any]]:
     """Return a list of feature dicts, one per detection epoch 1..min(len, max_n_det).
 
     Each dict has ``n_det`` and ``alert_mjd`` plus all FEATURE_NAMES.
-    The lightcurve is truncated to exactly n_det detections before computing features.
+    The lightcurve is truncated to exactly n_det POSITIVE detections before
+    computing features (via :func:`truncated_detection_windows`).  ``survey``
+    controls the all-negative fallback gate (kept for ZTF, removed for LSST).
     """
-    # Normalize first
-    ndets = [_ensure_normalized(d) for d in detections]
-
-    # Filter to positive detections
-    pos_dets = [d for d in ndets if d.get("is_positive", True)]
-    if not pos_dets:
-        pos_dets = ndets
-
-    pos_dets.sort(key=lambda d: d.get("mjd") or 0)
-
+    windows = truncated_detection_windows(
+        detections, survey=survey, max_n_det=max_n_det
+    )
     results = []
-    for i in range(min(len(pos_dets), max_n_det)):
-        n_det = i + 1
-        truncated = pos_dets[:n_det]
-        feats = extract_features(truncated)
+    for pos_prefix, _full_window in windows:
+        n_det = len(pos_prefix)
+        feats = extract_features(pos_prefix)
         feats["n_det"] = float(n_det)
-        feats["alert_mjd"] = float(truncated[-1].get("mjd") or 0)
+        feats["alert_mjd"] = float(pos_prefix[-1].get("mjd") or 0)
         results.append(feats)
 
     return results

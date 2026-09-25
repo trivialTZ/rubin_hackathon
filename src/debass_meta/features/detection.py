@@ -160,9 +160,14 @@ def _normalize_lsst(det: dict[str, Any], out: dict[str, Any]) -> None:
     out["mag"] = mag
     out["magerr"] = magerr
 
-    # Detection flag (LSST uses isNegative — inverted)
-    is_negative = det.get("isNegative", False)
-    out["is_positive"] = not bool(is_negative)
+    # Detection flag (fusion_v11 B2): a POSITIVE (source-brightening) LSST
+    # difference-image detection has psfFlux > 0 AND is not flagged negative.
+    # The prior isNegative-only rule mis-flagged 630/1060 negative-flux dets as
+    # positive (78% of them >3σ), inflating n_det with fading/dipping sources.
+    # ``flux`` is out["flux"] = _safe_float(psfFlux) computed just above
+    # (nan when psfFlux is missing → not positive).
+    is_negative = bool(det.get("isNegative", False))
+    out["is_positive"] = bool(math.isfinite(flux) and flux > 0.0 and not is_negative)
 
     # Quality
     reliability = _safe_float(det.get("reliability"))

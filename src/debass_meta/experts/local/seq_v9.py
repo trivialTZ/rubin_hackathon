@@ -53,12 +53,37 @@ class SeqV9Expert(LocalExpert):
     semantic_type = "probability"
     requires_gpu = False
 
+    # Subclasses (SeqV11Expert) retarget these two knobs; everything else —
+    # fold-map OOF routing, ternary folding, p4_* extras, availability — is
+    # shared verbatim.  ``env_var`` overrides the default artifact dir;
+    # ``model_dir_candidates`` are probed in order when it is unset.
+    env_var: str = "DEBASS_SEQ_V9_MODEL"
+    model_dir_candidates: tuple[str, ...] = _MODEL_DIR_CANDIDATES
+
+    def _resolve_default_model_dir(self) -> Path:
+        env = os.environ.get(self.env_var)
+        if env:
+            return Path(env)
+        for candidate in self.model_dir_candidates:
+            if (Path(candidate) / "classifier.pt").exists():
+                return Path(candidate)
+        return Path(self.model_dir_candidates[0])
+
     def __init__(self, model_dir: Path | str | None = None) -> None:
-        self._model_dir = Path(model_dir) if model_dir else _default_model_dir()
+        self._model_dir = Path(model_dir) if model_dir else self._resolve_default_model_dir()
         self._artifact = None
         self._fold_map: dict[str, int] = {}
         self._fold_artifacts: dict[int, Any] = {}
         self._load_failed: str | None = None
+
+    def _seq_schema(self) -> str:
+        """Sequence tokenization schema for THIS artifact — read from the
+        artifact's ``config.json`` meta (``seq_schema``); defaults to ``"v9"``
+        so deployed v9/v10 artifacts (which never wrote the key, cont_dim=9)
+        keep their byte-identical 9-dim tensorization."""
+        if self._artifact is not None:
+            return str(self._artifact.meta.get("seq_schema", "v9"))
+        return "v9"
 
     # -- lazy loading ------------------------------------------------------
     def _ensure_loaded(self) -> bool:
@@ -141,10 +166,12 @@ class SeqV9Expert(LocalExpert):
         from debass_meta.models.seq_classifier import TERNARY_CLASSES, fold_probs_to_ternary
 
         detections = list(lightcurve or [])
-        # The caller hands the truncated epoch prefix; sequence_arrays
-        # re-normalizes/sorts/positive-filters idempotently (same recipe as
-        # the gold builder) so raw or normalized input both work.
-        cont, bands = sequence_arrays(detections)
+        # The caller hands the truncated epoch prefix (v9) or full epoch window
+        # (v11); sequence_arrays re-normalizes/sorts/windows idempotently (same
+        # recipe as the gold builder) so raw or preprocessed input both work.
+        # The schema is read from THIS artifact's meta so a v9/v10 artifact
+        # stays 9-dim and a v11 artifact tokenizes negatives (11-dim).
+        cont, bands = sequence_arrays(detections, schema=self._seq_schema())
         if len(cont) == 0:
             return ExpertOutput(
                 expert=self.name, object_id=str(object_id), epoch_jd=float(epoch_jd),
@@ -192,6 +219,7 @@ class SeqV9Expert(LocalExpert):
             "surveys": ["ZTF", "LSST"],
             "available": loaded,
             "model_dir": str(self._model_dir),
+            "seq_schema": self._seq_schema() if loaded else None,
             "oof_fold_routing": bool(self._fold_map),
             "n_fold_mapped_objects": len(self._fold_map),
             **({} if loaded else {"reason": self._load_failed}),
@@ -200,4 +228,30 @@ class SeqV9Expert(LocalExpert):
     def _version(self) -> str:
         if self._artifact is not None:
             return str(self._artifact.meta.get("model_version", "seq_v10"))
+        return "unavailable"
+
+
+class SeqV11Expert(SeqV9Expert):
+    """v11 sequence classifier — the negative-token schema (``seq_schema``
+    ``"v11"``: is_negative + signed_flux channels, cont_dim=11).
+
+    A thin retarget of :class:`SeqV9Expert`: it inherits ALL of the v9 expert's
+    semantics — K-fold OOF ``fold_map.json`` routing (corrupt map ⇒
+    ``RuntimeError``, missing fold dir ⇒ ``fold_route="missing_fold_{k}_fallback_full"``),
+    canonical ternary output + ``p4_*`` extras for a 4-way head, and
+    ``available=False`` when the artifact is missing — and only swaps the
+    artifact dir (``DEBASS_SEQ_V11_MODEL`` / ``models/seq_classifier_v11``).
+    The per-artifact ``_seq_schema()`` read means a v11 artifact automatically
+    tensorizes with the 11-dim negative-token schema; ``DEBASS_SEQ_V9_MODEL``
+    semantics are untouched.  seq_v11 is deliberately NOT registered in
+    ``models/expert_trust.py:SN_FILTER_EXPERTS`` (its trust head targets
+    ``is_topclass_correct``, not ``is_sn``)."""
+
+    name = "seq_v11"
+    env_var = "DEBASS_SEQ_V11_MODEL"
+    model_dir_candidates = ("models/seq_classifier_v11",)
+
+    def _version(self) -> str:
+        if self._artifact is not None:
+            return str(self._artifact.meta.get("model_version", "seq_v11"))
         return "unavailable"

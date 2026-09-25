@@ -69,6 +69,13 @@ _BLOCKED_COLS = {
     "target_label",
     "label_source",
     "label_quality",
+    # subtype provenance carried to gold for guard G7 (B0) — truth-derived,
+    # NEVER a classification feature (non-numeric today; blocked defensively)
+    "tns_type",
+    "bts_type",
+    # v11 gold contract (spec §2.3): a per-row bookkeeping flag marking the
+    # ZTF all-negative fallback rows — NOT a model feature
+    "lc_fallback_all_negative",
     # absolute timestamps — won't generalize to future observations
     "alert_jd",
     # association metadata — not a classification signal
@@ -173,6 +180,20 @@ def _prepare_frame(df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
 # Experts whose feature blocks are circular with ALeRCE-derived labels.
 # Precedent: expert_trust.py honesty filter treats `alerce/*` AND the local
 # `alerce_lc` rerun as the same broker family.
+#
+# fusion v13 review of `alerce_lc` membership (kept IN the family): the local
+# expert is the ALeRCE lightcurve classifier itself, re-run on our own
+# photometry — not a label source, but the same model lineage that produces
+# an `alerce_self_label` when the label came from ALeRCE's LC classifier, so
+# on such rows it can reproduce the label and stays masked.  What made the
+# masking harmful in v12 was not the membership but WHERE it was applied: the
+# head-1 "LSST equalization" masked the family on every LSST weak+context row
+# (all catalogue "other" in v12) and never on the spectroscopic SN rows, so
+# `avail__alerce_lc` became a class-pure label proxy (train report
+# availability_audit max_abs_corr = 1.0).  v13 excludes the weak (ALeRCE
+# self-label) rows from the heads and switches that equalization off, after
+# which no head-1 row carries an ALeRCE-derived label and the family is not
+# masked on either survey; guard G8 (hierarchical_followup) verifies it.
 _ALERCE_FAMILY = tuple(
     key for key in ALL_EXPERT_KEYS
     if key.startswith("alerce/") or key == "alerce_lc"
@@ -348,6 +369,134 @@ def _class_weight_vector(y: np.ndarray, base_weights: np.ndarray) -> np.ndarray:
 # Expert-dropout row augmentation (spec correction #4a)
 # ---------------------------------------------------------------------------
 
+# Every per-expert column family the gold builder emits (mirrors
+# ``features.availability.EXPERT_COL_PREFIXES``; duplicated here as a literal
+# so this module keeps importing only from ``projectors``).  ``q_prior__`` is
+# deliberately NOT here: it is a lightcurve-only readout of the pooled trust
+# model (own-prediction slots NaN'd) and stays when the expert is dropped.
+_FULL_BLOCK_PREFIXES = (
+    "proj", "traj", "avail", "exact", "temporal_exactness",
+    "source_event_time_jd", "reason", "event_count", "prediction_type",
+    "mapped_pred_class", "context_tag", "q", "trust_source",
+)
+_ZERO_ON_BLANK_PREFIXES = ("avail", "exact")
+
+
+def expert_block_columns(columns: Sequence[str], san: str) -> list[str]:
+    """All gold columns of one expert (sanitized key ``san``) across every
+    per-expert column family: ``<prefix>__<san>`` or ``<prefix>__<san>__*``.
+    The ``__`` boundary makes ``alerce__stamp_classifier`` and
+    ``alerce__stamp_classifier_rubin_beta`` unambiguous."""
+    out: list[str] = []
+    for c in columns:
+        for p in _FULL_BLOCK_PREFIXES:
+            if c == f"{p}__{san}" or c.startswith(f"{p}__{san}__"):
+                out.append(c)
+                break
+    return out
+
+
+def blank_expert_blocks(
+    df: pd.DataFrame,
+    row_mask: np.ndarray | pd.Series,
+    sans: Sequence[str],
+    *,
+    recompute_cross_traj: bool = True,
+    include_q_prior: bool = False,
+) -> dict[str, Any]:
+    """Blank the FULL gold block of each expert in ``sans`` on ``row_mask`` rows
+    (in place) so the rows look exactly like rows where the expert never fired:
+    ``avail__``/``exact__`` -> 0.0, every other numeric column -> NaN, text
+    columns -> None (the gold builder's absent-expert encoding, checked against
+    ``object_epoch_snapshots_fusion_v12w``).
+
+    Cross-expert trajectory aggregates (``traj_x__*``) are RECOMPUTED from the
+    surviving experts via ``features.trajectory._add_cross_expert_aggregates``
+    when a trajectory expert was dropped and the frame carries the full
+    per-expert ``traj__*`` block plus ``object_id``/``alert_jd``/``n_det``;
+    otherwise they are blanked on the affected rows.  The recompute runs over
+    the whole frame (its prefix statistics are per object), so callers pass the
+    copy frame, never a frame that mixes originals and copies.
+
+    ``include_q_prior=True`` also blanks ``q_prior__<san>`` (a GLOBAL expert
+    drop, where nothing of the expert may remain — fusion v13 ``drop_experts``).
+
+    Returns ``{"n_cols_blanked", "traj_x": "recomputed"|"blanked"|"untouched"}``.
+    """
+    row_mask = np.asarray(row_mask, dtype=bool)
+    info: dict[str, Any] = {"n_cols_blanked": 0, "traj_x": "untouched"}
+    if not row_mask.any() or not sans:
+        return info
+    cols: list[str] = []
+    for san in sans:
+        cols.extend(expert_block_columns(df.columns, san))
+        if include_q_prior and f"q_prior__{san}" in df.columns:
+            cols.append(f"q_prior__{san}")
+    cols = list(dict.fromkeys(cols))
+    idx = df.index[row_mask]
+    for c in cols:
+        zero = any(c == f"{p}__{s}" for p in _ZERO_ON_BLANK_PREFIXES for s in sans)
+        if zero:
+            if not is_numeric_dtype(df[c]) or pd.api.types.is_bool_dtype(df[c]):
+                df[c] = pd.to_numeric(df[c], errors="coerce").astype(float)
+            df.loc[idx, c] = 0.0
+        elif is_numeric_dtype(df[c]) and not pd.api.types.is_bool_dtype(df[c]):
+            if not pd.api.types.is_float_dtype(df[c]):
+                df[c] = df[c].astype(float)
+            df.loc[idx, c] = np.nan
+        else:
+            if df[c].dtype != object:
+                df[c] = df[c].astype(object)
+            df.loc[idx, c] = None
+    info["n_cols_blanked"] = len(cols)
+    info["traj_x"] = refresh_cross_traj(
+        df, row_mask, sans, recompute=recompute_cross_traj)
+    return info
+
+
+def refresh_cross_traj(
+    df: pd.DataFrame,
+    row_mask: np.ndarray | pd.Series,
+    dropped_sans: Sequence[str],
+    *,
+    recompute: bool = True,
+) -> str:
+    """Bring ``traj_x__*`` in line with the per-expert ``traj__*`` block after
+    the experts ``dropped_sans`` were blanked on ``row_mask`` rows (in place).
+
+    Returns ``"untouched"`` (no trajectory expert dropped / no traj_x columns),
+    ``"recomputed"`` (rebuilt over the whole frame from the surviving experts)
+    or ``"blanked"`` (per-expert block incomplete -> NaN on the affected rows).
+    """
+    row_mask = np.asarray(row_mask, dtype=bool)
+    traj_x_cols = [c for c in df.columns if c.startswith("traj_x__")]
+    if not traj_x_cols or not row_mask.any() or not dropped_sans:
+        return "untouched"
+    try:
+        from debass_meta.features.trajectory import (
+            TRAJ_EXPERTS, _add_cross_expert_aggregates,
+        )
+        traj_sans = {sanitize_expert_key(k) for k in TRAJ_EXPERTS}
+        dropped_traj = bool(traj_sans & set(dropped_sans))
+        needed = [f"traj__{s}__{st}" for s in sorted(traj_sans)
+                  for st in ("last", "slope")]
+        complete = all(c in df.columns for c in needed) and all(
+            c in df.columns for c in ("object_id", "alert_jd", "n_det"))
+    except Exception:  # pragma: no cover — trajectory module unavailable
+        dropped_traj, complete = True, False
+    if not dropped_traj:
+        return "untouched"
+    if recompute and complete:
+        _add_cross_expert_aggregates(df)
+        return "recomputed"
+    idx = df.index[row_mask]
+    for c in traj_x_cols:
+        if not pd.api.types.is_float_dtype(df[c]):
+            df[c] = pd.to_numeric(df[c], errors="coerce").astype(float)
+        df.loc[idx, c] = np.nan
+    return "blanked"
+
+
 def expert_dropout_augment(
     df: pd.DataFrame,
     base_weights: np.ndarray,
@@ -356,6 +505,7 @@ def expert_dropout_augment(
     aug_weight: float = 0.3,
     keep_one_frac: float = 0.5,
     seed: int = 42,
+    full_block: bool = False,
 ) -> tuple[pd.DataFrame, np.ndarray, dict[str, Any]]:
     """Duplicate ``aug_frac`` of rows with random expert blocks NaN'd out.
 
@@ -367,6 +517,12 @@ def expert_dropout_augment(
     ``exact__<san>`` -> 0.0 (the §1.6 absent-expert encoding).  Labels and
     every non-expert column are copied verbatim; augmented copies carry
     weight ``aug_weight × base_weight`` and ``is_aug = 1.0``.
+
+    ``full_block=True`` (fusion v13) blanks the expert's WHOLE gold block
+    (traj__/mapped_pred_class__/... as well, see :func:`blank_expert_blocks`)
+    and recomputes ``traj_x__*`` from the surviving experts; the default keeps
+    the v8 proj/q/avail/exact-only behaviour byte-for-byte.  ``info["traj_x"]``
+    reports what happened to the cross-expert aggregates.
 
     Only rows with >= 1 available expert are eligible (a row with no expert
     cannot be perturbed).  Returns ``(aug_df, aug_weights, info)``;
@@ -423,20 +579,32 @@ def expert_dropout_augment(
             drop[i, subset] = True
 
     aug = df.iloc[pick].copy().reset_index(drop=True)
-    for j, san in enumerate(sans):
-        mask = drop[:, j]
-        if not mask.any():
-            continue
-        nan_cols = [c for c in aug.columns if c.startswith(f"proj__{san}__")]
-        if f"q__{san}" in aug.columns:
-            nan_cols.append(f"q__{san}")
-        if nan_cols:
-            aug.loc[mask, nan_cols] = np.nan
-        zero_cols = [
-            c for c in (f"avail__{san}", f"exact__{san}") if c in aug.columns
-        ]
-        if zero_cols:
-            aug.loc[mask, zero_cols] = 0.0
+    traj_x_note = "untouched"
+    if full_block:
+        # v13: blank every column family of the dropped expert, then rebuild
+        # the cross-expert trajectory aggregates once from what survived.
+        for j, san in enumerate(sans):
+            mask = drop[:, j]
+            if mask.any():
+                blank_expert_blocks(aug, mask, [san], recompute_cross_traj=False)
+        traj_x_note = refresh_cross_traj(
+            aug, drop.any(axis=1),
+            [s for j, s in enumerate(sans) if drop[:, j].any()], recompute=True)
+    else:
+        for j, san in enumerate(sans):
+            mask = drop[:, j]
+            if not mask.any():
+                continue
+            nan_cols = [c for c in aug.columns if c.startswith(f"proj__{san}__")]
+            if f"q__{san}" in aug.columns:
+                nan_cols.append(f"q__{san}")
+            if nan_cols:
+                aug.loc[mask, nan_cols] = np.nan
+            zero_cols = [
+                c for c in (f"avail__{san}", f"exact__{san}") if c in aug.columns
+            ]
+            if zero_cols:
+                aug.loc[mask, zero_cols] = 0.0
 
     aug["is_aug"] = 1.0
     aug_weights = base_weights[pick] * float(aug_weight)
@@ -447,6 +615,9 @@ def expert_dropout_augment(
         "n_keep_one": int(keep_one.sum()),
         "source_positions": pick,
     }
+    if full_block:  # v13 keys only on the new path (v8 callers int() every value)
+        info["full_block"] = True
+        info["traj_x"] = traj_x_note
     return aug, aug_weights, info
 
 

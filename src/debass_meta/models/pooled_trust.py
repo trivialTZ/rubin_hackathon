@@ -38,6 +38,26 @@ dedicated head falls back to that dedicated head inside ``PooledTrustView``.
 q_prior readout (spec correction #4c): the pooled model scored with all
 ``own_*`` slots NaN'd answers "expected helpfulness if we fetched this
 broker" and is emitted for ALL registered experts.
+
+fusion v13 (docs/fusion_v13_plan.md) Stage-A corrections
+--------------------------------------------------------
+1. The SN-filter set used at training (``is_sn_filter`` is a Stage-A
+   feature AND selects the trust target) is persisted in the pooled metadata
+   (``sn_filter_experts``); inference reproduces it, falling back to
+   ``expert_trust.LEGACY_SN_FILTER_EXPERTS`` for v8-v12 artifacts so their
+   scores stay bit-identical.
+2. ``q_prior__`` on train rows is OUT-OF-FOLD (``q_prior_oof=True``): the
+   GroupKFold fold models fitted for ``q__`` also score the prior-mode
+   matrix of every train object they held out.  Cal/test rows keep the
+   refit-on-train readout, exactly as before.
+3. ``q__``/``trust_source__`` are emitted only for experts with a trained
+   head (``emit_headless_q=False``) — the scorer's ``attach_trust_columns``
+   iterates trust dirs, so headless experts (context-only Babamul / Lasair
+   Sherlock) never had a ``q__`` column at score time.
+4. ``weak_policy`` gates ``label_quality == "weak"`` rows per expert:
+   ``"all"`` (legacy default), ``"is_sn_only"`` (kept only for is_sn-target
+   experts outside the ALeRCE family), ``"none"``.  Per-expert weak-row
+   counts are recorded in the metrics/metadata.
 """
 from __future__ import annotations
 
@@ -55,11 +75,13 @@ from debass_meta.projectors import ALL_EXPERT_KEYS, EXPERT_REGISTRY, sanitize_ex
 
 from .calibrate import IsotonicCalibrator
 from .expert_trust import (
+    LEGACY_SN_FILTER_EXPERTS,
     SN_FILTER_EXPERTS,
     _binary_metrics,
     _expert_feature_cols,
     _predict_binary_classifier,
     _prepare_numeric_frame,
+    is_alerce_family,
     trust_target_col,
 )
 
@@ -114,6 +136,73 @@ FALLBACK_AUC_TOL = 0.02
 
 POOLED_SUBDIR = "pooled"
 GLOBAL_CALIBRATOR_FILENAME = "global_calibrator.pkl"
+
+# fusion v13: weak-label admission policies for Stage A (see module doc §4).
+WEAK_LABEL_QUALITY = "weak"
+WEAK_POLICIES = ("all", "is_sn_only", "lsst_is_sn_only", "none")
+# Which experts get a q_prior__ column: every registered expert (legacy,
+# pinned by the v8 interface) or only those with a trained head (what the
+# scorer's attach_trust_columns can reproduce).
+Q_PRIOR_EXPERT_MODES = ("all", "trained")
+# q_prior feature protocol persisted in the pooled metadata.  Version 2
+# (fusion v13): the scorer builds prior-mode features exactly as training
+# does (own pred + own traj slots NaN'd, modal exactness code) and emits
+# q_prior__ for the persisted ``q_prior_experts`` set.  Artifacts without the
+# key (v8-v12) are scored by the legacy path (proj__ columns masked only,
+# trust dirs only) so their outputs stay bit-identical.
+PRIOR_MODE_VERSION = 2
+
+
+def _resolve_sn_filter_experts(sn_filter_experts) -> frozenset[str]:
+    """Training-time SN-filter set: explicit override or the module default."""
+    if sn_filter_experts is None:
+        return frozenset(SN_FILTER_EXPERTS)
+    return frozenset(str(key) for key in sn_filter_experts)
+
+
+def weak_rows_allowed(
+    weak_policy: str, expert_key: str, target_col: str, *, is_lsst: bool = True
+) -> bool:
+    """Whether ``label_quality == "weak"`` rows may train this expert's head.
+
+    ``"all"``: legacy — always.  ``"none"``: never.  ``"is_sn_only"``: only
+    when the head is trained against ``is_sn`` (a weak "SN" label is exactly
+    right for an SN-vs-other target but grades every correct Ia call wrong
+    under ``is_topclass_correct``) AND the expert is outside the ALeRCE family
+    (the weak LSST labels are ALeRCE-stamp-derived — circular).
+    ``"lsst_is_sn_only"``: the ``is_sn_only`` rule for LSST rows
+    (``is_lsst=True``); ZTF rows (``is_lsst=False``) behave as under ``"all"``
+    so the ZTF Stage-A rows match v12 (ZTF weak rows come from the ALeRCE LC
+    classifier / labels.csv and DO carry Ia labels).
+    """
+    if weak_policy not in WEAK_POLICIES:
+        raise ValueError(f"weak_policy must be one of {WEAK_POLICIES}, got {weak_policy!r}")
+    if weak_policy == "all":
+        return True
+    if weak_policy == "none":
+        return False
+    if weak_policy == "lsst_is_sn_only" and not is_lsst:
+        return True
+    return target_col == "is_sn" and not is_alerce_family(expert_key)
+
+
+def _row_is_lsst(frame: pd.DataFrame) -> np.ndarray:
+    """Per-row LSST flag: ``survey_is_lsst`` (gold LC feature) where present,
+    else a ``survey`` column, else the id shape (LSST diaObjectIds are pure
+    digits; ZTF ids are ``ZTF..``)."""
+    n = len(frame)
+    out = np.full(n, np.nan)
+    if "survey_is_lsst" in frame.columns:
+        out = pd.to_numeric(frame["survey_is_lsst"], errors="coerce").to_numpy(dtype=float)
+    if np.isnan(out).any() and "survey" in frame.columns:
+        sv = frame["survey"].astype(str).str.lower()
+        known = sv.isin(["lsst", "ztf"]).to_numpy()
+        fill = np.where(sv.to_numpy() == "lsst", 1.0, 0.0)
+        out = np.where(np.isnan(out) & known, fill, out)
+    if np.isnan(out).any():
+        by_id = frame["object_id"].astype(str).str.fullmatch(r"\d+").to_numpy().astype(float)
+        out = np.where(np.isnan(out), by_id, out)
+    return out > 0.5
 
 # Columns never allowed into the Stage-A feature matrix (label-derived,
 # identifiers, absolute timestamps, free-text).
@@ -278,6 +367,7 @@ def _assemble_features_for_expert(
     log_rows: float | None = None,
     default_exact_code: float | None = None,
     prior_mode: bool = False,
+    sn_filter_experts=None,
 ) -> pd.DataFrame:
     """Build the Stage-A numeric feature block for one expert.
 
@@ -289,8 +379,14 @@ def _assemble_features_for_expert(
     trajectory) — the q_prior counterfactual "we have not fetched this broker
     yet" (spec correction #4c) — and uses the expert's training-time modal
     temporal-exactness code.
+
+    ``sn_filter_experts`` is the SN-filter set that defines the
+    ``is_sn_filter`` feature.  It MUST be the set the model was trained with
+    (persisted in the pooled metadata); ``None`` means the current module
+    default, which is only correct at training time.
     """
     san = sanitize_expert_key(expert_key)
+    sn_filter = _resolve_sn_filter_experts(sn_filter_experts)
     out = pd.DataFrame(index=frame.index)
 
     for column in generic_cols:
@@ -322,7 +418,7 @@ def _assemble_features_for_expert(
             out[slot] = pd.to_numeric(frame[source], errors="coerce")
 
     # Expert metadata.
-    out["is_sn_filter"] = 1.0 if expert_key in SN_FILTER_EXPERTS else 0.0
+    out["is_sn_filter"] = 1.0 if expert_key in sn_filter else 0.0
     out["survey_match"] = _survey_match_values(frame, expert_key)
 
     exact_col = f"temporal_exactness__{san}"
@@ -348,6 +444,8 @@ def assemble_stage_a_long(
     helpfulness: pd.DataFrame,
     *,
     apply_honesty_filters: bool = True,
+    weak_policy: str = "all",
+    sn_filter_experts=None,
 ) -> tuple[pd.DataFrame, list[str], dict[str, tuple[pd.DataFrame, str]]]:
     """Assemble the pooled Stage-A long table from a helpfulness table.
 
@@ -358,10 +456,22 @@ def assemble_stage_a_long(
     helpfulness sub-frame, target_col) for the dedicated-head fallback path.
 
     Honesty filters are verbatim from expert_trust.py:301-351.
+
+    ``weak_policy`` (fusion v13) gates ``label_quality == "weak"`` rows per
+    expert AFTER the target column is resolved (see :func:`weak_rows_allowed`;
+    the LSST/ZTF decision is per row for ``lsst_is_sn_only``); the per-expert
+    ledger ``{expert: {allowed_lsst, allowed_ztf, allowed, kept, dropped,
+    kept_lsst, dropped_lsst}}`` is attached as ``long_df.attrs["weak_ledger"]``.
+    ``sn_filter_experts`` fixes the SN-filter set (target selection AND the
+    ``is_sn_filter`` feature); ``None`` = module default.
     """
+    if weak_policy not in WEAK_POLICIES:
+        raise ValueError(f"weak_policy must be one of {WEAK_POLICIES}, got {weak_policy!r}")
+    sn_filter = _resolve_sn_filter_experts(sn_filter_experts)
     generic_cols = discover_generic_context_cols(helpfulness)
     long_parts: list[pd.DataFrame] = []
     expert_frames: dict[str, tuple[pd.DataFrame, str]] = {}
+    weak_ledger: dict[str, dict[str, Any]] = {}
 
     for expert_key in sorted(str(key) for key in helpfulness["expert_key"].dropna().unique()):
         sub = helpfulness[helpfulness["expert_key"] == expert_key].copy()
@@ -371,12 +481,12 @@ def assemble_stage_a_long(
             # Anti-circularity: never grade a broker against its own labels.
             if "label_source" in sub.columns:
                 sub = sub[sub["label_source"] != "broker_consensus"]
-                if expert_key.startswith("alerce/") or expert_key == "alerce_lc":
+                if is_alerce_family(expert_key):
                     sub = sub[sub["label_source"] != "alerce_self_label"]
         if len(sub) == 0:
             continue
 
-        target_col = trust_target_col(expert_key)
+        target_col = trust_target_col(expert_key, sn_filter)
         if target_col not in sub.columns or sub[target_col].dropna().empty:
             # Legacy fallback (verbatim): helpfulness table pre-dates is_sn.
             if target_col != "is_topclass_correct":
@@ -389,7 +499,37 @@ def assemble_stage_a_long(
             else:
                 continue
 
-        feats = _assemble_features_for_expert(sub, expert_key, generic_cols=generic_cols)
+        # fusion v13: weak-label admission (after the target is known); the
+        # decision is per survey so "lsst_is_sn_only" can leave ZTF rows alone.
+        allowed_lsst = weak_rows_allowed(weak_policy, expert_key, target_col, is_lsst=True)
+        allowed_ztf = weak_rows_allowed(weak_policy, expert_key, target_col, is_lsst=False)
+        if "label_quality" in sub.columns:
+            is_weak = (sub["label_quality"].astype(str) == WEAK_LABEL_QUALITY).to_numpy()
+        else:
+            is_weak = np.zeros(len(sub), dtype=bool)
+        is_lsst_row = _row_is_lsst(sub)
+        drop = is_weak & (
+            (is_lsst_row & (not allowed_lsst)) | (~is_lsst_row & (not allowed_ztf))
+        )
+        kept = is_weak & ~drop
+        weak_ledger[expert_key] = {
+            "allowed_lsst": bool(allowed_lsst),
+            "allowed_ztf": bool(allowed_ztf),
+            "allowed": bool(allowed_lsst and allowed_ztf),
+            "target_col": target_col,
+            "kept": int(kept.sum()),
+            "dropped": int(drop.sum()),
+            "kept_lsst": int((kept & is_lsst_row).sum()),
+            "dropped_lsst": int((drop & is_lsst_row).sum()),
+        }
+        if drop.any():
+            sub = sub[~drop]
+        if len(sub) == 0:
+            continue
+
+        feats = _assemble_features_for_expert(
+            sub, expert_key, generic_cols=generic_cols, sn_filter_experts=sn_filter
+        )
         feats["object_id"] = sub["object_id"].astype(str)
         feats["n_det"] = pd.to_numeric(sub["n_det"], errors="coerce")
         feats["alert_jd"] = pd.to_numeric(sub["alert_jd"], errors="coerce")
@@ -402,6 +542,8 @@ def assemble_stage_a_long(
     if not long_parts:
         raise ValueError("assemble_stage_a_long: no expert rows survived assembly")
     long_df = pd.concat(long_parts, ignore_index=True, sort=False)
+    long_df.attrs["weak_ledger"] = weak_ledger
+    long_df.attrs["weak_policy"] = weak_policy
     return long_df, generic_cols, expert_frames
 
 
@@ -609,6 +751,54 @@ def _select_pooled_params(
     return best[1], best[2]
 
 
+def _oof_pooled_fits(
+    X: pd.DataFrame,
+    y: np.ndarray,
+    w: np.ndarray,
+    groups: np.ndarray,
+    *,
+    params: dict[str, Any],
+    n_estimators: int,
+    seed: int,
+    n_jobs: int,
+    n_splits: int = 5,
+) -> tuple[np.ndarray, list[Any], dict[str, int]]:
+    """GroupKFold(5) OOF on train rows — anti-stacking-leak, same as v6e2.
+
+    Returns ``(oof, fold_bundles, fold_of_group)``: the OOF predictions, the
+    fitted fold models (fold k was fit WITHOUT the objects it predicted) and
+    the held-out fold index of every train object.  fusion v13 reuses the
+    fold models to score the prior-mode matrix of train objects so
+    ``q_prior__`` is out-of-fold too (module doc §2).  When fewer than two
+    object groups exist there are no folds: the in-sample fit is returned as
+    ``oof`` and both fold structures are empty.
+    """
+    from sklearn.model_selection import GroupKFold
+
+    oof = np.full(len(y), np.nan, dtype=float)
+    fold_bundles: list[Any] = []
+    fold_of_group: dict[str, int] = {}
+    unique_groups = np.unique(groups)
+    splits = min(int(n_splits), len(unique_groups))
+    if splits >= 2:
+        group_kfold = GroupKFold(n_splits=splits)
+        for fold, (fit_idx, pred_idx) in enumerate(group_kfold.split(X, y, groups=groups)):
+            bundle = _fit_pooled_classifier(
+                X.iloc[fit_idx], y[fit_idx], w[fit_idx],
+                params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs,
+            )
+            oof[pred_idx] = _predict_binary_classifier(bundle, X.iloc[pred_idx])
+            fold_bundles.append(bundle)
+            for group in np.unique(groups[pred_idx]):
+                fold_of_group[str(group)] = fold
+    else:
+        bundle = _fit_pooled_classifier(
+            X, y, w, params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs
+        )
+        oof[:] = _predict_binary_classifier(bundle, X)
+    return oof, fold_bundles, fold_of_group
+
+
 def _oof_pooled_predictions(
     X: pd.DataFrame,
     y: np.ndarray,
@@ -621,26 +811,12 @@ def _oof_pooled_predictions(
     n_jobs: int,
     n_splits: int = 5,
 ) -> np.ndarray:
-    """GroupKFold(5) OOF on train rows — anti-stacking-leak, same as v6e2."""
-    from sklearn.model_selection import GroupKFold
-
-    oof = np.full(len(y), np.nan, dtype=float)
-    unique_groups = np.unique(groups)
-    splits = min(int(n_splits), len(unique_groups))
-    if splits >= 2:
-        group_kfold = GroupKFold(n_splits=splits)
-        for fit_idx, pred_idx in group_kfold.split(X, y, groups=groups):
-            bundle = _fit_pooled_classifier(
-                X.iloc[fit_idx], y[fit_idx], w[fit_idx],
-                params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs,
-            )
-            oof[pred_idx] = _predict_binary_classifier(bundle, X.iloc[pred_idx])
-    else:
-        bundle = _fit_pooled_classifier(
-            X, y, w, params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs
-        )
-        oof[:] = _predict_binary_classifier(bundle, X)
-    return oof
+    """OOF predictions only (thin wrapper kept for the v8 call surface)."""
+    return _oof_pooled_fits(
+        X, y, w, groups,
+        params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs,
+        n_splits=n_splits,
+    )[0]
 
 
 # --------------------------------------------------------------------------
@@ -889,6 +1065,11 @@ def train_pooled_trust(
     n_jobs: int = 8,
     seed: int = 42,
     grid_small: bool = False,
+    weak_policy: str = "all",
+    sn_filter_experts=None,
+    q_prior_oof: bool = True,
+    emit_headless_q: bool = False,
+    q_prior_experts: str = "all",
 ) -> PooledTrustResult:
     """Train the pooled Stage-A trust model and emit q into the snapshots.
 
@@ -896,13 +1077,35 @@ def train_pooled_trust(
     (additive keyword) collapses the design §5.2 hyperparameter grid to a
     single config — used by unit tests and smoke runs.
 
-    Emission rules (frozen):
+    fusion v13 keywords (all additive; module doc):
+    - ``weak_policy``: "all" (legacy default) | "is_sn_only" | "none" —
+      admission of ``label_quality == "weak"`` rows per expert.
+    - ``sn_filter_experts``: SN-filter set for this training run (default:
+      ``expert_trust.SN_FILTER_EXPERTS``); persisted in the pooled metadata.
+    - ``q_prior_oof``: score train objects' ``q_prior__`` with the GroupKFold
+      fold model that held them out (default True; False = legacy in-sample
+      refit readout).
+    - ``emit_headless_q``: also emit ``q__``/``trust_source__`` for experts
+      WITHOUT a trained head (legacy True behaviour; the scorer never
+      produces those columns, so the default False matches serving).
+    - ``q_prior_experts``: "all" registered experts (legacy default) or only
+      "trained" ones.
+
+    Emission rules:
     - ``q__<san>``: calibrated trust, float, NaN where ``avail__<san> == 0``;
     - ``trust_source__<san>``: 'oof' (train rows matched to OOF predictions),
       'train_model' (refit-on-train predictions), 'unavailable';
     - ``q_prior__<san>``: pooled model with all own_* slots NaN'd, emitted for
-      ALL registered experts on every row (spec correction #4c).
+      ALL registered experts on every row (spec correction #4c); OOF on train
+      objects when ``q_prior_oof``.
     """
+    if weak_policy not in WEAK_POLICIES:
+        raise ValueError(f"weak_policy must be one of {WEAK_POLICIES}, got {weak_policy!r}")
+    if q_prior_experts not in Q_PRIOR_EXPERT_MODES:
+        raise ValueError(
+            f"q_prior_experts must be one of {Q_PRIOR_EXPERT_MODES}, got {q_prior_experts!r}"
+        )
+    sn_filter = _resolve_sn_filter_experts(sn_filter_experts)
     train_ids = {str(object_id) for object_id in train_ids}
     cal_ids = {str(object_id) for object_id in cal_ids}
     test_ids = {str(object_id) for object_id in test_ids}
@@ -915,6 +1118,11 @@ def train_pooled_trust(
         f"  pooled_trust: split validated train={len(train_ids):,}, "
         f"cal={len(cal_ids):,}, test={len(test_ids):,}"
     )
+    print(
+        f"  pooled_trust: weak_policy={weak_policy}, q_prior_oof={q_prior_oof}, "
+        f"emit_headless_q={emit_headless_q}, q_prior_experts={q_prior_experts}, "
+        f"sn_filter_experts={sorted(sn_filter)}"
+    )
 
     out_dir_path = Path(out_dir)
     pooled_dir = out_dir_path / POOLED_SUBDIR
@@ -922,8 +1130,18 @@ def train_pooled_trust(
 
     # --- Long-format assembly (honesty filters verbatim) ---
     long_df, generic_cols, expert_frames = assemble_stage_a_long(
-        helpfulness, apply_honesty_filters=True
+        helpfulness,
+        apply_honesty_filters=True,
+        weak_policy=weak_policy,
+        sn_filter_experts=sn_filter,
     )
+    weak_ledger: dict[str, dict[str, Any]] = dict(long_df.attrs.get("weak_ledger", {}))
+    for expert_key, entry in weak_ledger.items():
+        if entry["dropped"]:
+            print(
+                f"    {expert_key}: weak_policy={weak_policy} dropped "
+                f"{entry['dropped']:,} weak rows ({entry['dropped_lsst']:,} LSST)"
+            )
     long_df = long_df[long_df["y"].notna()].reset_index(drop=True)
     if len(long_df) == 0:
         raise ValueError("train_pooled_trust: no labelled Stage-A rows after honesty filters")
@@ -990,10 +1208,14 @@ def train_pooled_trust(
     print(f"  pooled_trust: params={params}, n_estimators={n_estimators}")
 
     # --- OOF on train; refit-on-train for cal/test (v6e2 protocol) ---
-    oof_train = _oof_pooled_predictions(
+    # The fold models are kept so q_prior__ on train objects can be scored
+    # out-of-fold too (fusion v13 §2); the OOF q__ values are unchanged.
+    oof_train, prior_fold_bundles, prior_fold_of_object = _oof_pooled_fits(
         X_all[train_mask], y_all[train_mask], weights_train, groups_train,
         params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs,
     )
+    if not q_prior_oof:
+        prior_fold_bundles, prior_fold_of_object = [], {}
     pooled_bundle = _fit_pooled_classifier(
         X_all[train_mask], y_all[train_mask], weights_train,
         params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs,
@@ -1079,7 +1301,17 @@ def train_pooled_trust(
         else:
             calibrated_test = deployed_raw_test
         cal_metrics = _binary_metrics(deployed_y_test, calibrated_test)
+        # Cal-SET raw AUC of the deployed head (LSST has no locked test rows
+        # in the v12 split, so this is the only held-out trust read there).
+        if fallback_used and dedicated is not None:
+            cal_set_metrics = _binary_metrics(
+                np.asarray(dedicated["y_cal"], dtype=float),
+                np.asarray(dedicated["q_cal"], dtype=float),
+            )
+        else:
+            cal_set_metrics = _binary_metrics(y_cal_e, q_cal_e)
 
+        weak_entry = weak_ledger.get(expert_key, {})
         metrics[expert_key] = {
             "raw_auc": raw_metrics.get("roc_auc"),
             "cal_auc": cal_metrics.get("roc_auc"),
@@ -1091,8 +1323,15 @@ def train_pooled_trust(
             "target_col": target_col,
             "n_train_rows": int((e_mask & train_mask).sum()),
             "n_cal_rows": int(e_cal.sum()),
+            "cal_set_raw_auc": cal_set_metrics.get("roc_auc"),
             "pooled_raw_auc": pooled_auc,
             "dedicated_auc": dedicated_auc,
+            "is_sn_filter": bool(expert_key in sn_filter),
+            "weak_policy": weak_policy,
+            "n_weak_rows_kept": int(weak_entry.get("kept", 0)),
+            "n_weak_rows_dropped": int(weak_entry.get("dropped", 0)),
+            "n_weak_rows_kept_lsst": int(weak_entry.get("kept_lsst", 0)),
+            "n_weak_rows_dropped_lsst": int(weak_entry.get("dropped_lsst", 0)),
         }
         expert_state[expert_key] = {
             "calibrator": calibrator,
@@ -1114,6 +1353,14 @@ def train_pooled_trust(
         "n_test_rows": int(test_mask.sum()),
         "raw_auc_all_experts": overall_test_metrics.get("roc_auc"),
         "has_global_calibrator": global_calibrator is not None,
+        # fusion v13 provenance
+        "weak_policy": weak_policy,
+        "weak_ledger": weak_ledger,
+        "sn_filter_experts": sorted(sn_filter),
+        "q_prior_oof": bool(q_prior_oof),
+        "q_prior_n_folds": len(prior_fold_bundles),
+        "emit_headless_q": bool(emit_headless_q),
+        "q_prior_experts": q_prior_experts,
     }
 
     # --- Persist artifacts: pooled/ + per-expert dirs ---
@@ -1137,6 +1384,19 @@ def train_pooled_trust(
         "train_ids": sorted(train_ids),
         "cal_ids": sorted(cal_ids),
         "test_ids": sorted(test_ids),
+        # fusion v13: the SN-filter set defines the is_sn_filter feature —
+        # inference MUST reproduce it (PooledTrustView falls back to
+        # LEGACY_SN_FILTER_EXPERTS when this key is absent, i.e. v8-v12).
+        "sn_filter_experts": sorted(sn_filter),
+        "weak_policy": weak_policy,
+        "weak_ledger": weak_ledger,
+        "q_prior_oof": bool(q_prior_oof),
+        "emit_headless_q": bool(emit_headless_q),
+        # Scoring contract (score_fusion_v8.attach_trust_columns): with
+        # prior_mode_version >= 2 the scorer reproduces the training-time
+        # prior-mode features and emits q_prior__ for exactly this set.
+        "q_prior_experts": q_prior_experts,
+        "prior_mode_version": PRIOR_MODE_VERSION,
     }
     with open(pooled_dir / "metadata.json", "w") as fh:
         json.dump(pooled_metadata, fh, indent=2)
@@ -1167,6 +1427,7 @@ def train_pooled_trust(
             json.dump(expert_metadata, fh, indent=2)
 
     # --- Emission into the snapshot frame ---
+    emission_ledger: dict[str, Any] = {}
     output_snapshots = _emit_into_snapshots(
         snapshots,
         pooled_bundle=pooled_bundle,
@@ -1179,6 +1440,19 @@ def train_pooled_trust(
         expert_train_rows=expert_train_rows,
         default_exact_codes=default_exact_codes,
         train_ids=train_ids,
+        sn_filter_experts=sn_filter,
+        prior_fold_bundles=prior_fold_bundles,
+        prior_fold_of_object=prior_fold_of_object,
+        emit_headless_q=emit_headless_q,
+        q_prior_experts=q_prior_experts,
+        ledger=emission_ledger,
+    )
+    metrics["_pooled"]["emission"] = emission_ledger
+    print(
+        f"  pooled_trust: emitted q__ for {len(emission_ledger.get('q_experts', []))} experts, "
+        f"q_prior__ for {len(emission_ledger.get('q_prior_experts', []))}; "
+        f"q_prior OOF on {emission_ledger.get('n_train_rows_prior_oof', 0):,} of "
+        f"{emission_ledger.get('n_train_rows', 0):,} train snapshot rows"
     )
 
     return PooledTrustResult(
@@ -1201,12 +1475,43 @@ def _emit_into_snapshots(
     expert_train_rows: dict[str, int],
     default_exact_codes: dict[str, float | None],
     train_ids: set[str],
+    sn_filter_experts=None,
+    prior_fold_bundles: list[Any] | None = None,
+    prior_fold_of_object: dict[str, int] | None = None,
+    emit_headless_q: bool = False,
+    q_prior_experts: str = "all",
+    ledger: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """q__/trust_source__ for experts present in the snapshot, q_prior__ for
-    ALL registered experts.  NaN-absent rule: absent expert -> q NaN."""
+    """q__/trust_source__ for experts present in the snapshot AND with a
+    trained head (``emit_headless_q=True`` restores the legacy "every expert
+    with an avail__ column" rule), q_prior__ for ALL registered experts
+    (``q_prior_experts="trained"`` restricts it likewise).  NaN-absent rule:
+    absent expert -> q NaN.
+
+    q_prior on train objects: when ``prior_fold_bundles`` /
+    ``prior_fold_of_object`` are given, every train object's prior-mode row is
+    scored by the GroupKFold fold model that held that object out (fusion
+    v13 §2); train objects that contributed no labelled Stage-A row (hence
+    were never fitted on) and all cal/test rows use the refit-on-train model.
+    ``ledger`` (optional dict) receives emission counts.
+    """
+    sn_filter = _resolve_sn_filter_experts(sn_filter_experts)
+    prior_fold_bundles = list(prior_fold_bundles or [])
+    prior_fold_of_object = dict(prior_fold_of_object or {})
     snap_keys = _normalized_keys(snapshots)
-    snap_train = snapshots["object_id"].astype(str).isin(train_ids).to_numpy()
+    snap_object_ids = snapshots["object_id"].astype(str)
+    snap_train = snap_object_ids.isin(train_ids).to_numpy()
     new_cols: dict[str, Any] = {}
+
+    # Held-out fold of every train object (NaN -> no fold model held it out).
+    prior_fold_masks: list[np.ndarray] = []
+    if prior_fold_bundles and prior_fold_of_object:
+        fold_index = snap_object_ids.map(prior_fold_of_object).to_numpy(dtype=float)
+        for fold in range(len(prior_fold_bundles)):
+            prior_fold_masks.append((fold_index == fold) & snap_train)
+    n_prior_oof_rows = int(sum(int(m.sum()) for m in prior_fold_masks))
+    q_experts_emitted: list[str] = []
+    q_prior_experts_emitted: list[str] = []
 
     for expert_key in expert_levels:
         san = sanitize_expert_key(expert_key)
@@ -1215,10 +1520,13 @@ def _emit_into_snapshots(
         fallback_used = bool(state and state["fallback_used"])
         log_rows = np.log1p(float(expert_train_rows.get(expert_key, 0)))
         default_code = default_exact_codes.get(expert_key)
+        has_head = state is not None
 
-        # ---- q__ + trust_source__ (only where avail column exists) ----
+        # ---- q__ + trust_source__ (avail column present AND a trained head,
+        #      matching what score_fusion_v8.attach_trust_columns produces) ----
         avail_col = f"avail__{san}"
-        if avail_col in snapshots.columns:
+        if avail_col in snapshots.columns and (has_head or emit_headless_q):
+            q_experts_emitted.append(expert_key)
             avail = (
                 pd.to_numeric(snapshots[avail_col], errors="coerce")
                 .fillna(0.0)
@@ -1233,8 +1541,11 @@ def _emit_into_snapshots(
                 raw = _predict_binary_classifier(dedicated["bundle"], X_ded)
                 oof_lookup = dedicated["oof_lookup"]
             else:
+                # default_exact_code as PooledTrustView.predict_trust_raw does,
+                # so cal/test q__ written here equal the scorer's (parity).
                 feats = _assemble_features_for_expert(
-                    snapshots, expert_key, generic_cols=generic_cols, log_rows=log_rows
+                    snapshots, expert_key, generic_cols=generic_cols, log_rows=log_rows,
+                    default_exact_code=default_code, sn_filter_experts=sn_filter,
                 )
                 X_e = _prepare_pooled_matrix(feats, feature_cols, expert_levels)
                 raw = _predict_binary_classifier(pooled_bundle, X_e)
@@ -1261,6 +1572,9 @@ def _emit_into_snapshots(
             new_cols[f"trust_source__{san}"] = trust_source
 
         # ---- q_prior__ for ALL registered experts (correction #4c) ----
+        if q_prior_experts == "trained" and not has_head:
+            continue
+        q_prior_experts_emitted.append(expert_key)
         feats_prior = _assemble_features_for_expert(
             snapshots,
             expert_key,
@@ -1268,11 +1582,20 @@ def _emit_into_snapshots(
             log_rows=log_rows,
             default_exact_code=default_code,
             prior_mode=True,
+            sn_filter_experts=sn_filter,
         )
         X_prior = _prepare_pooled_matrix(feats_prior, feature_cols, expert_levels)
         raw_prior = np.asarray(
             _predict_binary_classifier(pooled_bundle, X_prior), dtype=float
-        )
+        ).copy()
+        # fusion v13 §2: train objects are scored by the fold model that held
+        # them out — the refit model saw their labels (via EVERY expert's row
+        # for that object), so its readout is in-sample on train rows.
+        for fold_mask, fold_bundle in zip(prior_fold_masks, prior_fold_bundles):
+            if fold_mask.any():
+                raw_prior[fold_mask] = _predict_binary_classifier(
+                    fold_bundle, X_prior[fold_mask]
+                )
         # q_prior is a POOLED-model readout by definition: when the expert
         # fell back to a dedicated head, its calibrator was fit on dedicated
         # outputs, so use the global calibrator (or raw) instead.
@@ -1283,6 +1606,22 @@ def _emit_into_snapshots(
         else:
             prior_values = raw_prior
         new_cols[f"q_prior__{san}"] = prior_values
+
+    if ledger is not None:
+        ledger.update(
+            {
+                "q_experts": q_experts_emitted,
+                "q_prior_experts": q_prior_experts_emitted,
+                "headless_experts_with_avail": sorted(
+                    key for key in expert_levels
+                    if key not in expert_state
+                    and f"avail__{sanitize_expert_key(key)}" in snapshots.columns
+                ),
+                "n_train_rows": int(snap_train.sum()),
+                "n_train_rows_prior_oof": n_prior_oof_rows,
+                "q_prior_oof_folds": len(prior_fold_bundles),
+            }
+        )
 
     collision = [c for c in new_cols if c in snapshots.columns]
     base = snapshots.drop(columns=collision) if collision else snapshots
@@ -1317,6 +1656,8 @@ class PooledTrustView:
         pooled_metadata: dict[str, Any] | None = None,
         dedicated_bundle: Any = None,
         dedicated_feature_cols: list[str] | None = None,
+        global_calibrator: Any = None,
+        has_head: bool = True,
     ) -> None:
         self.expert_key = expert_key
         self.calibrator = calibrator
@@ -1326,9 +1667,43 @@ class PooledTrustView:
         self._pooled_metadata = pooled_metadata or {}
         self._dedicated_bundle = dedicated_bundle
         self._dedicated_feature_cols = dedicated_feature_cols or []
+        self._global_calibrator = global_calibrator
+        # False for a headless view (registered expert without a per-expert
+        # dir): only q_prior__ is defined for it.
+        self.has_head = bool(has_head)
+        # The SN-filter set that defined the is_sn_filter feature at training
+        # time.  Artifacts trained before fusion v13 did not persist it: they
+        # were all trained with the legacy 4-expert set, never the module's
+        # current one (which v13 extended with the ALeRCE stamp family).
+        self.sn_filter_experts = self.sn_filter_experts_from_metadata(self._pooled_metadata)
+
+    @staticmethod
+    def sn_filter_experts_from_metadata(pooled_metadata: dict[str, Any] | None) -> frozenset[str]:
+        """Persisted ``sn_filter_experts`` or the legacy v8-v12 set."""
+        persisted = (pooled_metadata or {}).get("sn_filter_experts")
+        if persisted is None:
+            return frozenset(LEGACY_SN_FILTER_EXPERTS)
+        return frozenset(str(key) for key in persisted)
+
+    @staticmethod
+    def load_pooled_assets(pooled_dir: str | Path) -> dict[str, Any]:
+        """``{bundle, metadata, global_calibrator}`` from a ``pooled/`` dir
+        (each None/{} when absent).  Load once and share across views."""
+        pooled_path = Path(pooled_dir)
+        assets: dict[str, Any] = {"bundle": None, "metadata": {}, "global_calibrator": None}
+        if (pooled_path / "model.pkl").exists():
+            with open(pooled_path / "model.pkl", "rb") as fh:
+                assets["bundle"] = pickle.load(fh)
+            with open(pooled_path / "metadata.json") as fh:
+                assets["metadata"] = json.load(fh)
+        global_path = pooled_path / GLOBAL_CALIBRATOR_FILENAME
+        if global_path.exists():
+            with open(global_path, "rb") as fh:
+                assets["global_calibrator"] = pickle.load(fh)
+        return assets
 
     @classmethod
-    def load(cls, expert_dir: str) -> "PooledTrustView":
+    def load(cls, expert_dir: str, pooled_assets: dict[str, Any] | None = None) -> "PooledTrustView":
         expert_path = Path(expert_dir)
         with open(expert_path / "metadata.json") as fh:
             metadata = json.load(fh)
@@ -1337,13 +1712,10 @@ class PooledTrustView:
         fallback_used = bool(metadata.get("fallback_used", False))
         pooled_path = (expert_path / metadata.get("pooled_subdir", f"../{POOLED_SUBDIR}")).resolve()
 
-        pooled_bundle = None
-        pooled_metadata: dict[str, Any] = {}
-        if (pooled_path / "model.pkl").exists():
-            with open(pooled_path / "model.pkl", "rb") as fh:
-                pooled_bundle = pickle.load(fh)
-            with open(pooled_path / "metadata.json") as fh:
-                pooled_metadata = json.load(fh)
+        assets = pooled_assets if pooled_assets is not None else cls.load_pooled_assets(pooled_path)
+        pooled_bundle = assets.get("bundle")
+        pooled_metadata: dict[str, Any] = dict(assets.get("metadata") or {})
+        global_calibrator = assets.get("global_calibrator")
 
         calibrator = None
         if calibrator_kind in {"isotonic", "platt"}:
@@ -1352,10 +1724,7 @@ class PooledTrustView:
                 with open(calibrator_path, "rb") as fh:
                     calibrator = pickle.load(fh)
         elif calibrator_kind == "global":
-            global_path = pooled_path / GLOBAL_CALIBRATOR_FILENAME
-            if global_path.exists():
-                with open(global_path, "rb") as fh:
-                    calibrator = pickle.load(fh)
+            calibrator = global_calibrator
 
         dedicated_bundle = None
         dedicated_feature_cols: list[str] | None = None
@@ -1373,7 +1742,78 @@ class PooledTrustView:
             pooled_metadata=pooled_metadata,
             dedicated_bundle=dedicated_bundle,
             dedicated_feature_cols=dedicated_feature_cols,
+            global_calibrator=global_calibrator,
+            has_head=True,
         )
+
+    @classmethod
+    def headless(cls, expert_key: str, pooled_assets: dict[str, Any]) -> "PooledTrustView":
+        """View for a registered expert WITHOUT a per-expert dir: serves only
+        ``predict_prior`` (pooled model in prior mode, global calibrator) —
+        what training emits as ``q_prior__`` for such experts."""
+        return cls(
+            expert_key=expert_key,
+            calibrator=None,
+            calibrator_kind="none",
+            fallback_used=False,
+            pooled_bundle=pooled_assets.get("bundle"),
+            pooled_metadata=dict(pooled_assets.get("metadata") or {}),
+            global_calibrator=pooled_assets.get("global_calibrator"),
+            has_head=False,
+        )
+
+    @property
+    def prior_mode_version(self) -> int:
+        """Persisted q_prior protocol (1 = legacy v8-v12 artifact)."""
+        return int(self._pooled_metadata.get("prior_mode_version", 1) or 1)
+
+    @property
+    def prior_calibrator(self) -> Any:
+        """The calibrator training applied to q_prior__: the expert's own
+        (pooled-model) calibrator, else the global one, else none.  A
+        dedicated-head fallback's calibrator was fit on dedicated outputs, so
+        the pooled prior readout uses the global calibrator instead."""
+        if self.has_head and not self.fallback_used and self.calibrator is not None:
+            return self.calibrator
+        return self._global_calibrator
+
+    def _pooled_features(self, df: pd.DataFrame, *, prior_mode: bool) -> pd.DataFrame:
+        meta = self._pooled_metadata
+        log_rows = np.log1p(float(meta.get("expert_train_rows", {}).get(self.expert_key, 0)))
+        default_code = meta.get("default_exact_codes", {}).get(self.expert_key)
+        feats = _assemble_features_for_expert(
+            df,
+            self.expert_key,
+            generic_cols=[str(c) for c in meta.get("generic_cols", [])],
+            log_rows=log_rows,
+            default_exact_code=default_code,
+            prior_mode=prior_mode,
+            sn_filter_experts=self.sn_filter_experts,
+        )
+        return _prepare_pooled_matrix(
+            feats,
+            [str(c) for c in meta["feature_cols"]],
+            [str(level) for level in meta["expert_levels"]],
+        )
+
+    def predict_prior_raw(self, df: pd.DataFrame) -> np.ndarray:
+        """Uncalibrated q_prior: the pooled model on the training-time
+        prior-mode features (own pred + own traj slots NaN'd, modal exactness
+        code) — identical to ``_emit_into_snapshots`` on non-train rows."""
+        if self._pooled_bundle is None:
+            raise RuntimeError(
+                f"PooledTrustView({self.expert_key}): pooled model not loaded"
+            )
+        X = self._pooled_features(df, prior_mode=True)
+        return np.asarray(_predict_binary_classifier(self._pooled_bundle, X), dtype=float)
+
+    def predict_prior(self, df: pd.DataFrame) -> np.ndarray:
+        """Calibrated q_prior with training's calibrator rule (prior_calibrator)."""
+        raw = self.predict_prior_raw(df)
+        calibrator = self.prior_calibrator
+        if calibrator is None:
+            return raw
+        return np.asarray(calibrator.transform(raw), dtype=float)
 
     def predict_trust(self, df: pd.DataFrame) -> np.ndarray:
         """Calibrated trust probability for this expert's claim on each row."""
@@ -1393,19 +1833,5 @@ class PooledTrustView:
             raise RuntimeError(
                 f"PooledTrustView({self.expert_key}): pooled model not loaded"
             )
-        meta = self._pooled_metadata
-        log_rows = np.log1p(float(meta.get("expert_train_rows", {}).get(self.expert_key, 0)))
-        default_code = meta.get("default_exact_codes", {}).get(self.expert_key)
-        feats = _assemble_features_for_expert(
-            df,
-            self.expert_key,
-            generic_cols=[str(c) for c in meta.get("generic_cols", [])],
-            log_rows=log_rows,
-            default_exact_code=default_code,
-        )
-        X = _prepare_pooled_matrix(
-            feats,
-            [str(c) for c in meta["feature_cols"]],
-            [str(level) for level in meta["expert_levels"]],
-        )
+        X = self._pooled_features(df, prior_mode=False)
         return np.asarray(_predict_binary_classifier(self._pooled_bundle, X), dtype=float)

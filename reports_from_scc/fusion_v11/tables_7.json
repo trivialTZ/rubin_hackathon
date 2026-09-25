@@ -1,0 +1,74 @@
+{
+  "table": 7,
+  "title": "Component-gate ledger (decided on cal) + pre-registered headline & guards",
+  "gates": [
+    {
+      "gate": "head1_per_survey_vs_pooled",
+      "decision": "pooled",
+      "detail": "lsst_is_sn_cal_objects=753 (min=300, per_survey_requested=False)"
+    },
+    {
+      "gate": "head2_on_lsst",
+      "decision": "shared_head2",
+      "detail": "lsst_spec_cal_n=80 (min=30), spearman=0.25752011954528997"
+    },
+    {
+      "gate": "seq_v11_in_out",
+      "decision": "in",
+      "detail": "proj__seq_v11__ columns present in gold; feeds heads + anchor"
+    }
+  ],
+  "aug_frac_final": null,
+  "headline_guards": {
+    "preregistered": {
+      "headline": "object-level spec-only macro OvR AUC @ n_det=5, locked test, fusion_v8 vs re-scored v6e2",
+      "guards": [
+        "LSST-spec slice non-regression",
+        "DP1 EclBin+RRLyrae EF non-regression",
+        "LightGBM bagging-seed spread on headline < 0.02 (5 seeds)"
+      ]
+    },
+    "headline": {
+      "n_objects": 765,
+      "fusion_v8_macro_auc": {
+        "value": 0.8823774568174494,
+        "lo": 0.8585081628892465,
+        "hi": 0.9061151058097591,
+        "n_boot_ok": 1000
+      },
+      "fusion_v8_auc_snia": {
+        "value": 0.8856240281299469,
+        "lo": 0.8615330619177103,
+        "hi": 0.9086048236309612,
+        "n_boot_ok": 1000
+      },
+      "vs_v6e2_snia_auc_delta": {
+        "delta": 0.09215779667427826,
+        "lo": 0.0634130228333127,
+        "hi": 0.11970717920133415
+      },
+      "vs_v6e2_significant_win": true,
+      "claim": "fusion_v8 beats re-scored v6e2 on snia OvR AUC @ n_det=5 (CI95 excludes 0)",
+      "note": "macro OvR AUC has no v6e2 counterpart (binary head); the snia OvR axis is the comparable one"
+    },
+    "guards": [
+      {
+        "guard": "lsst_spec_non_regression",
+        "n_objects": 0,
+        "status": "N/A (no LSST spec test slice locally, or v6e2 unavailable)"
+      },
+      {
+        "guard": "dp1_eclbin_rrlyrae_ef_non_regression",
+        "fusion_v8_ef": 0.007062684569952011,
+        "v6e2_ef": 17.88,
+        "v6e2_source": "documented v6e2 headline (17.88)",
+        "pass": true,
+        "rule": "pass iff fusion_v8 EF@top-1% <= v6e2 EF (lower = better suppression)"
+      },
+      {
+        "guard": "seed_spread_lt_0.02",
+        "status": "N/A (no seed variants recorded in fusion_v8_train.json)"
+      }
+    ]
+  }
+}

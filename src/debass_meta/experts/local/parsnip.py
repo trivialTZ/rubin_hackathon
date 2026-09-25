@@ -156,7 +156,9 @@ class ParSNIPExpert(LocalExpert):
             raw_output=raw_output,
             semantic_type=self.semantic_type,
             model_version=model_version,
-            available=self._parsnip_available,
+            # A stub (no model.pt / classifier.pkl) is not an output: marking it available made avail__parsnip a
+            # proxy for "which pipeline run touched this object" (fusion v13 review, docs/fusion_v13_plan.md).
+            available=self._is_live_ready(),
         )
 
     def metadata(self) -> dict[str, Any]:

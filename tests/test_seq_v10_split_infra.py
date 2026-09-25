@@ -550,3 +550,26 @@ def test_load_seq_train_ids_formats(tmp_path: Path, bsf):
     bad.write_text(json.dumps({"something": 1}))
     with pytest.raises(SystemExit):
         bsf.load_seq_train_ids(bad)
+
+
+def test_benchmark_counterpart_in_locked_test_stays_in_test(tmp_path: Path, bsf):
+    """G6-at-build vs verbatim preservation (2026-07-05 SCC failure, 2026ezw):
+    a frozen LSST-live benchmark id whose ZTF association counterpart sits in
+    the LOCKED TEST set must leave the counterpart in test (held-out on both
+    sides — no leak), not quarantine it into an assert contradiction. A
+    counterpart that is a NEW object is still fully quarantined."""
+    objs, truth, md_path = _manifest_inputs(tmp_path)
+    # LSSTBENCH1's counterpart OX0 is locked TEST; LSSTBENCH2's counterpart is
+    # a NEW object (quarantine path).
+    assoc = {"LSSTBENCH1": "OX0", "LSSTBENCH2": "NEW000"}
+    manifest = bsf.build_split_manifest(
+        objs, truth, md_path, seed=42,
+        association_map=assoc,
+        lsst_locked_test_ids={"LSSTBENCH1", "LSSTBENCH2"},
+    )
+    assert "OX0" in manifest["test_ids"]           # verbatim preservation holds
+    assert "NEW000" not in manifest["train_ids"]
+    assert "NEW000" not in manifest["cal_ids"]
+    assert "NEW000" not in manifest["test_ids"]    # fully quarantined
+    assert manifest["n_lsst_live_locked_in_locked_test"] == 1
+    assert manifest["n_lsst_live_locked_quarantined"] >= 1

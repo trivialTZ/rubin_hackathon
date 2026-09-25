@@ -70,8 +70,12 @@ from debass_meta.access.tns import map_tns_type_to_ternary
 from debass_meta.features.detection import normalize_lightcurve
 from debass_meta.features.lightcurve import (
     FEATURE_NAMES,
+    LC_FALLBACK_ALL_NEGATIVE,
+    NEG_FEATURE_NAMES,
     _ensure_normalized,
+    compute_neg_features,
     extract_features_at_each_epoch,
+    truncated_detection_windows,
 )
 from debass_meta.ingest.gold import (
     _attach_expert_projection,
@@ -193,23 +197,70 @@ def check_bts_mapping_parity(bts_df: pd.DataFrame, *, max_examples: int = 5) -> 
 def _truncated_detection_lists(
     detections: list[dict[str, Any]],
     *,
+    survey: str = "auto",
     max_n_det: int = 20,
 ) -> list[list[dict[str, Any]]]:
-    """Return the truncated detection list for each epoch 1..min(len, max_n_det).
+    """Return the positives-only truncated list for each epoch 1..min(len, max_n_det).
 
-    Replicates the preprocessing inside
-    :func:`debass_meta.features.lightcurve.extract_features_at_each_epoch`
-    (normalize → positive filter → MJD sort → truncate) so that
-    ``extract_ext_features`` consumes EXACTLY the same detection list as the
-    base-51 extractor — the no-leakage proof is inherited, and the agreement
-    is asserted per-row in :func:`_extract_object_rows`.
+    fusion_v11 (B10): this now DELEGATES to the single canonical helper
+    :func:`debass_meta.features.lightcurve.truncated_detection_windows` (the
+    ``pos_prefix`` half of each window) so there is no lockstep copy to drift.
+    The DP1 path still calls this wrapper; ``extract_ext_features`` consumes
+    EXACTLY the same positives-only prefix as the base-51 extractor, and the
+    per-row agreement is asserted in :func:`_extract_object_rows`.
     """
-    ndets = [_ensure_normalized(d) for d in detections]
-    pos_dets = [d for d in ndets if d.get("is_positive", True)]
-    if not pos_dets:
-        pos_dets = ndets
-    pos_dets.sort(key=lambda d: d.get("mjd") or 0)
-    return [pos_dets[: i + 1] for i in range(min(len(pos_dets), max_n_det))]
+    return [
+        pos_prefix
+        for pos_prefix, _full_window in truncated_detection_windows(
+            detections, survey=survey, max_n_det=max_n_det
+        )
+    ]
+
+
+def _neg_features_or_nan(
+    object_id: str,
+    n_det: int,
+    pos_prefix: list[dict[str, Any]],
+    full_window: list[dict[str, Any]],
+    is_fallback: bool = False,
+) -> dict[str, float]:
+    """Compute the 5 NEG features, degrading loudly to NaN on failure.
+
+    Mirrors the EXT try/except degrade-loudly pattern: a malformed window fills
+    NaN + prints a warning rather than aborting the whole build.  The
+    fusion_v11 tripwires are HARD asserts on the success path — a violation is a
+    real contract break, never silently swallowed (spec §2.3, deviation #30):
+      * every det dict carries ``is_positive`` (no silent get(...,True) default);
+      * NON-fallback rows: ``n_det == n_pos_det`` (positive-only epoch contract);
+      * fallback rows (``is_fallback``, ZTF all-negative): ``n_pos_det == 0``
+        (the epochs are kept alive by B3 but carry 0 real positives; they are
+        flagged ``lc_fallback_all_negative == 1`` and excluded from the
+        ``n_pos_det >= 1`` metrics/G2 denominator).
+    """
+    for det in full_window:
+        assert "is_positive" in det, (
+            f"[{object_id}] detection at n_det={n_det} is missing 'is_positive' "
+            f"— normalize_detection must stamp it (no silent get(...,True) default)"
+        )
+    try:
+        neg = compute_neg_features(pos_prefix, full_window)
+    except Exception as exc:  # pragma: no cover - defensive degrade-loudly
+        print(f"  WARNING: NEG features failed for {object_id} at n_det={n_det} "
+              f"({exc}) — columns set to NaN", flush=True)
+        return {name: float("nan") for name in NEG_FEATURE_NAMES}
+    n_pos_det = int(neg["n_pos_det"])
+    if is_fallback:
+        if n_pos_det != 0:
+            raise RuntimeError(
+                f"[{object_id}] fallback row at n_det={n_det} has n_pos_det "
+                f"({n_pos_det}) != 0 — all-negative fallback contract violated"
+            )
+    elif n_pos_det != int(n_det):
+        raise RuntimeError(
+            f"[{object_id}] n_det ({n_det}) != n_pos_det ({n_pos_det}) "
+            f"— positive-only epoch contract violated"
+        )
+    return neg
 
 
 def _extract_object_rows(
@@ -218,45 +269,77 @@ def _extract_object_rows(
     lc_dir_str: str,
     max_n_det: int,
 ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
-    """Worker: load one lightcurve and compute base-51 + EXT features per epoch.
+    """Worker: load one lightcurve and compute base-51 + EXT + NEG features per epoch.
 
     Returns (object_id, lightcurve_source, epoch_rows).  Each epoch row carries
-    ``n_det``, ``alert_mjd``, all FEATURE_NAMES and all EXT_FEATURE_NAMES.
+    ``n_det``, ``alert_mjd``, all FEATURE_NAMES, all EXT_FEATURE_NAMES, all
+    NEG_FEATURE_NAMES and the ``lc_fallback_all_negative`` flag.
+    ``lightcurve_source["all_negative_fallback"]`` records whether the ZTF
+    all-negative fallback fired (feeds the SCC negativity census); it equals the
+    per-row flag value (fallback is an object-level property).
     """
     lc_dir = Path(lc_dir_str)
     lc_path, lc_source = _resolve_lightcurve_path(
         lc_dir, object_id=object_id, associations=None
     )
+    lc_source = dict(lc_source)
+    lc_source["all_negative_fallback"] = False
     if lc_path is None:
         return object_id, lc_source, []
     detections = _load_lightcurve(lc_path)
     if not detections:
         return object_id, lc_source, []
 
-    epoch_feats = extract_features_at_each_epoch(detections, max_n_det=max_n_det)
-    truncations = _truncated_detection_lists(detections, max_n_det=max_n_det)
-    if len(epoch_feats) != len(truncations):
+    # Object survey drives the all-negative fallback gate (kept for ZTF, removed
+    # for LSST) — key off the object identifier, not per-detection heuristics.
+    id_kind = infer_identifier_kind(object_id)
+    survey = "LSST" if id_kind == "lsst_dia_object_id" else "ZTF"
+
+    epoch_feats = extract_features_at_each_epoch(
+        detections, max_n_det=max_n_det, survey=survey
+    )
+    windows = truncated_detection_windows(
+        detections, survey=survey, max_n_det=max_n_det
+    )
+    if len(epoch_feats) != len(windows):
         raise RuntimeError(
             f"[{object_id}] truncation mismatch: {len(epoch_feats)} base epochs "
-            f"vs {len(truncations)} truncated lists"
+            f"vs {len(windows)} windows"
         )
 
+    # SCC negativity census + per-row fallback flag: the ZTF all-negative
+    # fallback fired iff epoch rows were produced from a lightcurve with 0
+    # positive-flagged detections (only possible for ZTF — LSST returns [] and
+    # produces no rows).  ``is_positive`` is honestly read (no silent True).
+    ndets_norm = [_ensure_normalized(d) for d in detections]
+    n_pos_obj = sum(1 for d in ndets_norm if bool(d.get("is_positive")))
+    is_fallback = bool(windows) and n_pos_obj == 0
+    lc_source["all_negative_fallback"] = is_fallback
+
     rows: list[dict[str, Any]] = []
-    for feats, truncated in zip(epoch_feats, truncations):
+    for feats, (pos_prefix, full_window) in zip(epoch_feats, windows):
         n_det = int(feats["n_det"])
         alert_mjd = float(feats["alert_mjd"])
-        last_mjd = float(truncated[-1].get("mjd") or 0)
-        if n_det != len(truncated) or abs(last_mjd - alert_mjd) > 1e-9:
+        last_mjd = float(pos_prefix[-1].get("mjd") or 0)
+        if n_det != len(pos_prefix) or abs(last_mjd - alert_mjd) > 1e-9:
             raise RuntimeError(
                 f"[{object_id}] EXT truncation diverged from base extractor at "
-                f"n_det={n_det}: len={len(truncated)}, alert_mjd={alert_mjd} "
+                f"n_det={n_det}: len={len(pos_prefix)}, alert_mjd={alert_mjd} "
                 f"vs last_mjd={last_mjd}"
             )
         row = dict(feats)
         if EXT_FEATURE_NAMES:
-            ext = extract_ext_features(truncated)
+            ext = extract_ext_features(pos_prefix)
             for name in EXT_FEATURE_NAMES:
                 row[name] = ext.get(name, float("nan"))
+        # NEG features (v11): from the negatives-INCLUDED window.
+        neg = _neg_features_or_nan(
+            object_id, n_det, pos_prefix, full_window, is_fallback=is_fallback
+        )
+        for name in NEG_FEATURE_NAMES:
+            row[name] = neg[name]
+        # Per-row fallback flag (1.0 only on ZTF all-negative rows; spec §2.3).
+        row[LC_FALLBACK_ALL_NEGATIVE] = 1.0 if is_fallback else 0.0
         rows.append(row)
     return object_id, lc_source, rows
 
@@ -481,6 +564,7 @@ def build_split_manifest(
     snapshot_path: Path | None = None,
     seq_train_ids: set[str] | None = None,
     association_map: dict[str, str] | None = None,
+    lsst_locked_test_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """Build the fusion_v8 split manifest.
 
@@ -505,6 +589,13 @@ def build_split_manifest(
         counterpart's photometry) that enters this split as NEW is FORCED
         into train (never cal), with a loud count; a seq-train id (or
         counterpart) in the locked test set is a hard failure.
+
+    v11 addition (B11 / G6-at-build):
+      * ``lsst_locked_test_ids`` — the frozen LSST-live benchmark ids
+        (``data/gold/lsst_live_locked_test.json`` ``test_ids``).  Any such id
+        present in this snapshot is QUARANTINED out of train∪cal (the benchmark
+        is scored separately, never trained/calibrated on), and
+        ``test_ids ∩ (train ∪ cal) == ∅`` is HARD-asserted at build (G6).
     """
     with open(trust_metadata_path) as fh:
         md = json.load(fh)
@@ -516,6 +607,24 @@ def build_split_manifest(
     orig_all = orig_train | orig_cal | orig_test
 
     objs = {str(o) for o in snapshot_object_ids}
+
+    # --- v11 (B11): frozen LSST-live benchmark ids present in this snapshot are
+    # forced OUT of train∪cal (quarantined).  They must not already sit in the
+    # locked v6e2 train/cal (that would be a pre-baked leak). ---
+    # Keep the FULL locked-test id set (not just those present in local gold):
+    # a locked LSST benchmark id typically has NO local gold row, but its ZTF
+    # association counterpart does — and that counterpart must be quarantined
+    # too.  The full set joins the association clustering below so counterpart
+    # relations to it are visible even when the LSST id itself never enters a
+    # split.
+    lsst_locked_all = {str(o) for o in (lsst_locked_test_ids or set())}
+    lsst_locked = lsst_locked_all & objs
+    leaked_locked = lsst_locked & (orig_train | orig_cal)
+    assert not leaked_locked, (
+        f"{len(leaked_locked)} LSST-live-locked benchmark ids are in the locked "
+        f"v6e2 train/cal set (e.g. {sorted(leaked_locked)[:5]}) — the benchmark "
+        f"would be trained/calibrated on; abort."
+    )
     if not smoke:
         missing = orig_all - objs
         assert not missing, (
@@ -533,7 +642,7 @@ def build_split_manifest(
     seq_train = {str(o) for o in (seq_train_ids or set())}
     if association_map:
         rep_of, cluster_members = _association_clusters(
-            sorted(objs | seq_train | orig_all), association_map
+            sorted(objs | seq_train | orig_all | lsst_locked_all), association_map
         )
     else:
         rep_of, cluster_members = {}, {}
@@ -554,7 +663,13 @@ def build_split_manifest(
         cluster = _cluster(oid)
         if len(cluster) <= 1:
             continue
-        if cluster & orig_test:
+        # v11 (B11/G6): a NEW object clustered with a frozen LSST-live benchmark
+        # id (its ZTF association counterpart) shares that benchmark's
+        # photometry — QUARANTINE it exactly as a locked-test counterpart.
+        # Benchmark quarantine has priority over every other locked assignment.
+        if cluster & lsst_locked_all:
+            quarantined.add(oid)
+        elif cluster & orig_test:
             quarantined.add(oid)
         elif cluster & orig_cal:
             forced_cal.add(oid)
@@ -565,6 +680,48 @@ def build_split_manifest(
             f"  ASSOCIATION GUARD: new objects with LOCKED counterparts — "
             f"{len(quarantined):,} quarantined (test counterpart), "
             f"{len(forced_cal):,} forced→cal, {len(forced_train):,} forced→train",
+            flush=True,
+        )
+
+    # v11 (B11): benchmark quarantine WINS over any association forcing.  The
+    # quarantined set is the benchmark ids present in this snapshot PLUS every
+    # in-snapshot association counterpart of ANY locked benchmark id (the LSST
+    # id itself usually has no local gold row, but its ZTF twin does).
+    locked_related = {
+        m for lid in lsst_locked_all for m in _cluster(lid)
+    } & objs
+    # v11 (B11/G6): the literal-id pre-baked-leak assert above only sees LSST
+    # benchmark ids that have a local gold row — but a benchmark id usually has
+    # NONE, entering the clustering only through its ZTF association counterpart.
+    # A counterpart that ALREADY sits in the locked v6e2 train/cal is the exact
+    # pre-baked leak that assert is meant to catch (quarantining it would also
+    # collide with verbatim preservation and trip the generic disjointness assert
+    # with an opaque message). Diagnose it explicitly here.
+    prebaked_counterparts = locked_related & (orig_train | orig_cal)
+    assert not prebaked_counterparts, (
+        f"{len(prebaked_counterparts)} ZTF association counterpart(s) of frozen "
+        f"LSST-live benchmark ids already sit in the locked v6e2 train/cal set "
+        f"(e.g. {sorted(prebaked_counterparts)[:5]}) — the benchmark would be "
+        f"trained/calibrated on via its counterpart's shared photometry; abort. "
+        f"Drop these ids from the benchmark manifest or re-derive the locked split."
+    )
+    locked_test_related: set[str] = set()
+    if locked_related:
+        # A counterpart that sits in the LOCKED TEST set stays there: verbatim
+        # preservation is contractual, and locked-test membership is
+        # G6-compatible (test is never trained/calibrated on — e.g. 2026ezw,
+        # whose ZTF twin ZTF26aalcavs is locked v10 TEST). Everything else is
+        # quarantined out of every split.
+        locked_test_related = locked_related & orig_test
+        to_quarantine = locked_related - locked_test_related
+        forced_cal -= locked_related
+        forced_train -= locked_related
+        quarantined |= to_quarantine
+        print(
+            f"  LSST-LIVE-LOCKED GUARD (G6-at-build): {len(to_quarantine):,} frozen "
+            f"benchmark ids (+association counterparts) quarantined out of "
+            f"train∪cal; {len(locked_test_related):,} counterpart(s) already in "
+            f"the LOCKED TEST set stay there (held-out on both sides)",
             flush=True,
         )
 
@@ -635,6 +792,14 @@ def build_split_manifest(
         cal_ids.isdisjoint(test_ids), "fusion_v8 split has overlapping IDs"
     assert quarantined.isdisjoint(train_ids | cal_ids | test_ids), \
         "quarantined ids must be excluded from every split"
+    # G6-at-build (B11): frozen benchmark ids AND their association
+    # counterparts never in train∪cal.
+    g6_leak = locked_related & (train_ids | cal_ids)
+    assert not g6_leak, (
+        f"G6 FAILED: {len(g6_leak)} LSST-live-locked benchmark ids (or their "
+        f"association counterparts) leaked into train∪cal "
+        f"(e.g. {sorted(g6_leak)[:5]})"
+    )
     assert train_ids | cal_ids | test_ids | quarantined == objs, \
         "fusion_v8 split does not cover snapshot"
     assert test_ids <= orig_test, "new objects leaked into the locked test set"
@@ -662,6 +827,17 @@ def build_split_manifest(
         "n_seq_train_diverted_cal_to_train": len(diverted),
         "n_seq_train_in_locked_cal": len(stale_locked_cal),
         "association_grouped_split": bool(association_map),
+        # ARMED = a locked manifest was SUPPLIED to this build (independent of
+        # whether any benchmark id had a local gold row).  Train/build read this
+        # to hard-fail a split-in-force that predates the manifest (G6 would
+        # silently no-op otherwise). ``lsst_live_locked`` stays "matched in the
+        # snapshot" for backward compat.
+        "lsst_live_locked_armed": bool(lsst_locked_all),
+        "lsst_live_locked": bool(lsst_locked),
+        "n_lsst_live_locked_quarantined": len(locked_related - locked_test_related),
+        "n_lsst_live_locked_in_locked_test": len(locked_test_related),
+        "lsst_live_locked_ids": sorted(lsst_locked),
+        "lsst_live_locked_related_ids": sorted(locked_related),
         "n_new_quarantined_test_counterparts": len(quarantined),
         "n_new_forced_cal_by_association": len(forced_cal),
         "n_new_forced_train_by_association": len(forced_train),
@@ -696,6 +872,7 @@ def build_fusion_snapshots(
     lsst_candidates_path: Path | None = None,
     seq_train_ids_path: Path | None = None,
     association_csv: Path | None = None,
+    lsst_live_locked_path: Path | None = None,
     max_n_det: int = 20,
     n_jobs: int = 8,
     seed: int = 42,
@@ -719,6 +896,14 @@ def build_fusion_snapshots(
         }
         print(f"  association-grouped split: {len(association_map):,} "
               f"LSST↔ZTF pairs from {association_csv}", flush=True)
+    lsst_locked_test_ids: set[str] | None = None
+    if lsst_live_locked_path is not None and Path(lsst_live_locked_path).exists():
+        with open(lsst_live_locked_path) as fh:
+            _locked_manifest = json.load(fh)
+        lsst_locked_test_ids = {str(o) for o in _locked_manifest.get("test_ids", [])}
+        print(f"  LSST-live-locked benchmark: {len(lsst_locked_test_ids):,} frozen "
+              f"test ids from {lsst_live_locked_path} (quarantined at build; G6)",
+              flush=True)
     truth_lookup, bts_fallback, demoted_ids = build_truth_entries(truth_path, bts_path)
     if lsst_candidates_path is not None:
         lsst_truth = load_lsst_candidate_truth(Path(lsst_candidates_path))
@@ -854,6 +1039,13 @@ def build_fusion_snapshots(
                 base_row[feature_name] = feats.get(feature_name)
             for feature_name in EXT_FEATURE_NAMES:
                 base_row[feature_name] = feats.get(feature_name)
+            # NEG features (v11): gold v11 = v10 schema + 5 NEG_FEATURE_NAMES +
+            # the lc_fallback_all_negative flag (6 new columns total, §2.3).
+            for feature_name in NEG_FEATURE_NAMES:
+                base_row[feature_name] = feats.get(feature_name)
+            base_row[LC_FALLBACK_ALL_NEGATIVE] = feats.get(
+                LC_FALLBACK_ALL_NEGATIVE, 0.0
+            )
 
             # Label columns: passed through verbatim (label_source carries
             # provenance strings like 'alerce_self_label' / 'fink_xm_gaia_stellar'
@@ -862,6 +1054,12 @@ def build_fusion_snapshots(
             base_row["target_follow_proxy"] = truth.get("follow_proxy")
             base_row["label_source"] = truth.get("label_source")
             base_row["label_quality"] = truth.get("label_quality")
+            # Subtype provenance (B0/G7): Head-2 admits a row only if it carries
+            # a concrete subtype.  Carry the raw provenance strings through so
+            # HierarchicalFollowup.fit can ENFORCE G7 (untyped-provenance == 0)
+            # rather than silently down-grade to not-evaluable.
+            base_row["tns_type"] = truth.get("tns_type")
+            base_row["bts_type"] = truth.get("bts_type")
 
             if skip_experts:
                 for expert_key in ALL_EXPERT_KEYS:
@@ -891,6 +1089,56 @@ def build_fusion_snapshots(
           f"({n_skipped:,} objects skipped: no lightcurve)", flush=True)
 
     df = pd.DataFrame(all_rows)
+
+    # ---- v11 tripwires (spec §2.3, deviation #30): scoped by the fallback flag.
+    # NON-fallback rows: n_det == n_pos_det (positive-only epoch contract).
+    # Fallback rows (ZTF all-negative, kept alive by B3): n_pos_det == 0 and
+    # survey == ZTF.  ``lc_fallback_all_negative`` is guaranteed present (the
+    # builder stamps it on every row). ----
+    if "n_pos_det" in df.columns and LC_FALLBACK_ALL_NEGATIVE in df.columns:
+        flag = df[LC_FALLBACK_ALL_NEGATIVE].astype(float)
+        n_pos = df["n_pos_det"]
+        n_det = df["n_det"].astype(float)
+        nonfb = df[(flag == 0.0) & n_pos.notna() & (n_pos.astype(float) != n_det)]
+        assert nonfb.empty, (
+            f"v11 tripwire FAILED: {len(nonfb):,} non-fallback rows have "
+            f"n_pos_det != n_det "
+            f"(e.g. {nonfb[['object_id', 'n_det', 'n_pos_det']].head(3).to_dict('records')})"
+        )
+        fb = df[flag == 1.0]
+        bad_fb = fb[
+            (fb["n_pos_det"].astype(float) != 0.0)
+            | (fb["survey"].astype(str).str.upper() != "ZTF")
+        ]
+        assert bad_fb.empty, (
+            f"v11 tripwire FAILED: {len(bad_fb):,} fallback rows violate "
+            f"n_pos_det == 0 and survey == ZTF "
+            f"(e.g. {bad_fb[['object_id', 'survey', 'n_pos_det']].head(3).to_dict('records')})"
+        )
+
+    # ---- SCC negativity census (B3 deliverable): locked-object all-negativity ----
+    # Count objects whose ZTF all-negative fallback fired (fallback-dependent),
+    # overall and among the locked v6e2/v10 split objects — reported BEFORE any
+    # further fallback contract change.
+    fallback_ids = {
+        oid for oid, (src, _rows) in results.items()
+        if isinstance(src, dict) and src.get("all_negative_fallback")
+    }
+    locked_ids: set[str] = set()
+    if trust_metadata_path is not None and Path(trust_metadata_path).exists():
+        with open(trust_metadata_path) as fh:
+            _md_census = json.load(fh)
+        locked_ids = {
+            str(o)
+            for key in ("train_ids", "cal_ids", "test_ids")
+            for o in _md_census.get(key, [])
+        }
+    n_locked_fallback = len(fallback_ids & locked_ids)
+    print(
+        f"  SCC negativity census: {len(fallback_ids):,} objects fallback-dependent "
+        f"(all-negative, ZTF fallback fired) of which {n_locked_fallback:,} are "
+        f"locked v6e2/v10 split objects", flush=True
+    )
 
     # ---- Pass 3: trajectory features ----
     if not skip_traj and _TRAJ_AVAILABLE and build_trajectory_features is not None:
@@ -937,6 +1185,7 @@ def build_fusion_snapshots(
         snapshot_path=output_path,
         seq_train_ids=seq_train_ids,
         association_map=association_map,
+        lsst_locked_test_ids=lsst_locked_test_ids,
     )
     split_manifest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(split_manifest_path, "w") as fh:
@@ -1007,7 +1256,9 @@ def build_dp1_fusion(
         if not detections:
             continue
         normalized = normalize_lightcurve(detections, survey="LSST")
-        truncations = _truncated_detection_lists(normalized, max_n_det=max_n_det)
+        truncations = _truncated_detection_lists(
+            normalized, survey="LSST", max_n_det=max_n_det
+        )
         n_matched_objects += 1
         for row_idx in idx:
             n_det = int(df.at[row_idx, "n_det"])
@@ -1068,6 +1319,11 @@ def main() -> None:
                         help="LSST↔ZTF association CSV: counterparts are grouped "
                              "into one split cluster for NEW objects (missing "
                              "file → per-object split, unchanged behaviour)")
+    parser.add_argument("--lsst-live-locked", default="data/gold/lsst_live_locked_test.json",
+                        help="Frozen LSST-live benchmark manifest ({'test_ids':[...]}): "
+                             "those ids are quarantined out of train∪cal at build "
+                             "(G6-at-build). Missing file → no-op (mirrors "
+                             "--association-csv).")
     parser.add_argument("--output", default=None,
                         help=f"Snapshot parquet (default {_DEFAULT_OUTPUT})")
     parser.add_argument("--split-manifest", default=None,
@@ -1114,6 +1370,7 @@ def main() -> None:
             lsst_candidates_path=None if args.no_lsst_weak else Path(args.lsst_candidates),
             seq_train_ids_path=Path(args.seq_train_ids) if args.seq_train_ids else None,
             association_csv=Path(args.association_csv) if args.association_csv else None,
+            lsst_live_locked_path=Path(args.lsst_live_locked) if args.lsst_live_locked else None,
             max_n_det=args.max_n_det,
             n_jobs=args.n_jobs,
             seed=args.seed,

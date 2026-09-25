@@ -23,19 +23,48 @@ from .calibrate import IsotonicCalibrator
 # AGN-heavy samples and inverts on spec-Ia rows.
 # For these experts we train trust with target=is_sn (bool target_class != 'other').
 # Honest SN-filter AUC: ~0.85 instead of inflated 0.99.
-SN_FILTER_EXPERTS = {
+#
+# LEGACY_SN_FILTER_EXPERTS is the set in force for fusion v8 .. v12.  The
+# pooled Stage-A model uses membership as a feature (``is_sn_filter``), so
+# artifacts trained before the set was persisted in their metadata MUST be
+# scored with this exact set (see pooled_trust.PooledTrustView).  Never edit
+# it; extend SN_FILTER_EXPERTS instead.
+LEGACY_SN_FILTER_EXPERTS = frozenset({
     "fink_lsst/snn",
     "fink_lsst/cats",
     "fink/slsn",        # Fink ZTF SLSN-RF — projector caps p_snia=0
     "ampel/snguess",    # AMPEL SNGuess — projector caps p_snia=0.5
+})
+
+SN_FILTER_EXPERTS = {
+    *LEGACY_SN_FILTER_EXPERTS,
+    # fusion v13: the ALeRCE projections below carry NO Ia/non-Ia distinction —
+    # projectors/alerce.py routes the whole "SN" (stamp) / "Transient" (BHRF
+    # top-level) mass to p_nonIa_snlike with p_snia == 0 exactly.  Under
+    # is_topclass_correct a correct "SN" call on a spectroscopic Ia was graded
+    # WRONG, so those heads learned P(non-Ia SN) instead of P(SN).
+    "alerce/stamp_classifier",                    # _classify_stamp_events
+    "alerce/stamp_classifier_2025_beta",          # _classify_stamp_events
+    "alerce/stamp_classifier_rubin_beta",         # _classify_stamp_events
+    "alerce/lc_classifier_BHRF_forced_phot_top",  # _classify_top_level_events
 }
 
 
-def trust_target_col(expert_key: str) -> str:
+def is_alerce_family(expert_key: str) -> bool:
+    """True for every expert graded circularly by ALeRCE-derived labels
+    (the broker's own classifiers AND the local ALeRCE LC re-run)."""
+    return expert_key.startswith("alerce/") or expert_key == "alerce_lc"
+
+
+def trust_target_col(expert_key: str, sn_filter_experts=None) -> str:
     """Return the helpfulness-row column this expert's trust head should
     be trained against. Default is is_topclass_correct (ternary top-1).
-    SN-filter experts use is_sn (binary SN vs other)."""
-    if expert_key in SN_FILTER_EXPERTS:
+    SN-filter experts use is_sn (binary SN vs other).
+
+    ``sn_filter_experts`` overrides the module-level set (used to reproduce
+    the set a persisted artifact was trained with)."""
+    experts = SN_FILTER_EXPERTS if sn_filter_experts is None else sn_filter_experts
+    if expert_key in experts:
         return "is_sn"
     return "is_topclass_correct"
 
@@ -317,7 +346,7 @@ def train_expert_trust_suite(
             # Always exclude broker_consensus (circular for all experts)
             expert_rows = expert_rows[expert_rows["label_source"] != "broker_consensus"]
             # For ALeRCE experts, also exclude alerce_self_label
-            if expert_key.startswith("alerce/") or expert_key == "alerce_lc":
+            if is_alerce_family(expert_key):
                 expert_rows = expert_rows[expert_rows["label_source"] != "alerce_self_label"]
             n_dropped_circ = n_before_circ - len(expert_rows)
             if n_dropped_circ > 0:

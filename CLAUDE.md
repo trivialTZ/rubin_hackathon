@@ -69,8 +69,10 @@ pipeline with a union feature set (51 LC features across ugrizy bands).
 | `oracle_lsst` | LSST | rerun_exact | Local ORACLE (dormant; domain mismatch on DP1) |
 
 Defined in `src/debass_meta/projectors/base.py:EXPERT_REGISTRY`. SN-filter
-experts (`fink/slsn`, `ampel/snguess`, `fink_lsst/snn`, `fink_lsst/cats`)
-are listed in `models/expert_trust.py:SN_FILTER_EXPERTS` and trained with
+experts (`fink/slsn`, `ampel/snguess`, `fink_lsst/snn`, `fink_lsst/cats`, and since
+fusion v13 the ALeRCE stamp classifiers and `alerce/lc_classifier_BHRF_forced_phot_top`,
+whose "SN" projects to non-Ia SN) are listed in `models/expert_trust.py:SN_FILTER_EXPERTS`
+(the set is saved in each trust artifact, so older models score unchanged) and trained with
 `target=is_sn` (NOT `is_topclass_correct`) to avoid inflated AUC.
 
 ## Python Environment

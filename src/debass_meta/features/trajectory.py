@@ -213,21 +213,26 @@ def _project_fink_lsst_snn(sub: pd.DataFrame) -> pd.DataFrame:
 
 
 def _project_fink_lsst_cats(sub: pd.DataFrame) -> pd.DataFrame:
-    """Mirror projectors/fink_lsst.py _project_cats per event.
+    """Mirror projectors/fink_lsst.py _project_cats (cats_ternary) per event.
 
     Class 11 (SN-like) → p_snia = 0.5 * score (Ia/non-Ia indistinguishable);
-    every other class (21/31 non-Ia, 41/51 + unknown → other) has p_snia = 0.
-    Missing score is treated as 0 like the projector's ``or 0`` fallback.
-    Rows without a parseable class are dropped (projector raises → no
-    projection in gold).
+    the non-SN classes 12/13/21/22 → p_snia = (1 - score) / 8 (the SN-like
+    share of the remainder, split 50/50). Unknown codes give no projection
+    and are dropped, like the projector. Missing score is treated as 0 like
+    the projector's ``or 0`` fallback. Rows without a parseable class are
+    dropped (projector raises → no projection in gold).
     """
+    from debass_meta.projectors.fink_lsst import CATS_N_CLASSES, CATS_NON_SN, CATS_SN_LIKE
+
     frame = sub[sub["_class"] != ""].copy()
     frame["_class_num"] = pd.to_numeric(frame["_class"], errors="coerce")
     frame = frame[frame["_class_num"].notna()]
     # Last class row per event ≙ the projector's class_events[-1].
     frame = _one_row_per_event(frame)
+    frame = frame[frame["_class_num"].isin([CATS_SN_LIKE, *CATS_NON_SN])].copy()
     score = frame["canonical_projection"].fillna(0.0)
-    frame["p_snia"] = np.where(frame["_class_num"] == 11, 0.5 * score, 0.0)
+    frame["p_snia"] = np.where(frame["_class_num"] == CATS_SN_LIKE, 0.5 * score,
+                               0.5 * (1.0 - score) / (CATS_N_CLASSES - 1))
     return frame[_EVENT_KEYS + ["p_snia"]]
 
 

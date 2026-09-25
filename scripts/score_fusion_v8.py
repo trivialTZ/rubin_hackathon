@@ -107,25 +107,45 @@ def attach_trust_columns(df: pd.DataFrame, trust_dir: Path) -> pd.DataFrame:
     q_prior (spec correction #4c): pooled model scored with the expert's own
     prediction slots NaN'd out, emitted for ALL rows regardless of availability
     ("expected helpfulness if we fetched this broker").
+
+    q_prior protocol is gated on the artifact (pooled/metadata.json):
+    - ``prior_mode_version`` >= 2 (fusion v13): ``PooledTrustView.predict_prior``
+      rebuilds the TRAINING-time prior-mode features (own pred + own traj
+      slots NaN'd, modal exactness code, training's calibrator rule) and the
+      set of q_prior__ columns is the persisted ``q_prior_experts`` set
+      ("all" registered experts, incl. headless ones, or "trained" only) —
+      so scoring emits exactly what train_pooled_trust wrote for cal/test rows;
+    - otherwise (v8-v12 artifacts): the legacy readout — proj__ columns masked
+      through ``predict_trust``, trust dirs only — kept bit-identical.
     """
     dirs = _expert_dirs(trust_dir)
     if not dirs:
         print(f"  [warn] no expert dirs under {trust_dir} — q columns left as-is")
         return df
     try:
-        from debass_meta.models.pooled_trust import PooledTrustView
+        from debass_meta.models.pooled_trust import POOLED_SUBDIR, PooledTrustView
     except Exception as exc:
         print(f"  [warn] pooled_trust not importable ({exc}) — q columns left as-is")
         return df
 
     df = df.copy()
+    pooled_assets = PooledTrustView.load_pooled_assets(trust_dir / POOLED_SUBDIR)
+    pooled_meta = dict(pooled_assets.get("metadata") or {})
+    prior_v2 = int(pooled_meta.get("prior_mode_version", 1) or 1) >= 2
+    if prior_v2:
+        print(f"  trust: prior_mode_version={pooled_meta.get('prior_mode_version')}, "
+              f"q_prior_experts={pooled_meta.get('q_prior_experts', 'all')} (from artifact)")
+
+    def _needs(col: str) -> bool:
+        return col not in df.columns or df[col].isna().all()
+
     for expert_dir in dirs:
         san = expert_dir.name
         q_col, qp_col, src_col = f"q__{san}", f"q_prior__{san}", f"trust_source__{san}"
         avail_col = f"avail__{san}"
         own_proj_cols = [c for c in df.columns if c.startswith(f"proj__{san}__")]
         try:
-            view = PooledTrustView.load(str(expert_dir))
+            view = PooledTrustView.load(str(expert_dir), pooled_assets=pooled_assets)
         except Exception as exc:
             print(f"  [warn] PooledTrustView.load failed for {san}: {exc}")
             continue
@@ -135,7 +155,7 @@ def attach_trust_columns(df: pd.DataFrame, trust_dir: Path) -> pd.DataFrame:
             if avail_col in df.columns
             else np.zeros(len(df), dtype=bool)
         )
-        if q_col not in df.columns or df[q_col].isna().all():
+        if _needs(q_col):
             q = np.full(len(df), np.nan)
             if avail.any():
                 try:
@@ -145,14 +165,35 @@ def attach_trust_columns(df: pd.DataFrame, trust_dir: Path) -> pd.DataFrame:
                     print(f"  [warn] predict_trust failed for {san}: {exc}")
             df[q_col] = q
             df[src_col] = np.where(avail, "score_time", "unavailable")
-        if qp_col not in df.columns or df[qp_col].isna().all():
+        if _needs(qp_col):
             try:
-                masked = df.copy()
-                for c in own_proj_cols:
-                    masked[c] = np.nan
-                df[qp_col] = np.asarray(view.predict_trust(masked), dtype=float)
+                if prior_v2:
+                    df[qp_col] = np.asarray(view.predict_prior(df), dtype=float)
+                else:
+                    masked = df.copy()
+                    for c in own_proj_cols:
+                        masked[c] = np.nan
+                    df[qp_col] = np.asarray(view.predict_trust(masked), dtype=float)
             except Exception as exc:
                 print(f"  [warn] q_prior failed for {san}: {exc}")
+                df[qp_col] = np.nan
+
+    # fusion v13: q_prior__ for headless registered experts when the artifact
+    # was trained with q_prior_experts="all" (training emitted them).
+    if prior_v2 and str(pooled_meta.get("q_prior_experts", "all")) == "all":
+        from debass_meta.projectors import sanitize_expert_key
+
+        with_dir = {d.name for d in dirs}
+        for expert_key in pooled_meta.get("expert_levels", []):
+            san = sanitize_expert_key(str(expert_key))
+            qp_col = f"q_prior__{san}"
+            if san in with_dir or not _needs(qp_col):
+                continue
+            try:
+                view = PooledTrustView.headless(str(expert_key), pooled_assets)
+                df[qp_col] = np.asarray(view.predict_prior(df), dtype=float)
+            except Exception as exc:
+                print(f"  [warn] headless q_prior failed for {san}: {exc}")
                 df[qp_col] = np.nan
     return df
 

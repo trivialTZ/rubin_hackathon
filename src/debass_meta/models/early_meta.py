@@ -58,6 +58,13 @@ DEFAULT_FEATURES = [
     "mean_quality",
     # Survey flag (1)
     "survey_is_lsst",
+    # Negative-flux features (fusion_v11 NEG_FEATURE_NAMES; legacy path — the
+    # fusion Stage-B auto-discovers columns and does not read this list)
+    "n_det_neg",
+    "frac_neg",
+    "n_pos_det",
+    "t_since_last_pos",
+    "neg_run_frac",
     # Broker scores (11)
     "alerce_SNIa",
     "alerce_SNIbc",

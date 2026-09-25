@@ -5,7 +5,7 @@ from .snguess import AmpelSNGuessExpert
 from .alerce_lc import AlerceLCExpert
 from .salt3_fit import Salt3Chi2Expert
 from .lc_features import LcFeaturesExpert
-from .seq_v9 import SeqV9Expert
+from .seq_v9 import SeqV9Expert, SeqV11Expert
 
 ALL_LOCAL_EXPERTS = [
     SuperNNovaExpert,
@@ -16,6 +16,7 @@ ALL_LOCAL_EXPERTS = [
     Salt3Chi2Expert,
     LcFeaturesExpert,
     SeqV9Expert,
+    SeqV11Expert,
 ]
 
 # Convenience lists for CPU vs GPU pipeline stages

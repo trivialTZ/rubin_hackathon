@@ -42,6 +42,7 @@ import csv
 import json
 import sys
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,13 +53,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from debass_meta.features.sequence_dataset import (  # noqa: E402
     NormStats,
+    _cont_dim_for_schema,
     load_object_sequence,
+    load_object_tokens,
+    sequence_arrays,
     sequence_survey,
 )
 from debass_meta.models.seq_classifier import (  # noqa: E402
     CLASS_TO_TERNARY,
     CLASSES,
     TERNARY_CLASSES,
+    TERNARY_TO_CLASSES,
     SeqClassifier,
     SeqClassifierArtifact,
     classification_loss,
@@ -76,6 +81,95 @@ TERN_IDX = {c: i for i, c in enumerate(TERNARY_CLASSES)}
 HEADLINE_QUALITIES = {"spectroscopic", "tns_untyped"}
 DIAG_N_DETS = (3, 5, 10)
 
+# ── Marginalized coarse-label loss: auditable tier → allowed-4way-class set ──
+# Each training row is supervised on the GROUPED softmax mass of an ALLOWED
+# class set (loss = −log Σ_{c∈allowed} p_c — the marginalized coarse-label
+# loss, implemented by classification_loss / marginalized_nll with class_masks).
+# A parsed fine subtype ALWAYS wins as an exact singleton (the limiting case
+# that reduces the loss to plain cross-entropy).  When the raw type does NOT
+# parse to a subclass, the row's label QUALITY tier decides the allowed set via
+# this module-level dict (auditable + testable):
+#
+#   * SN-ish tiers (spec/TNS/BTS-untyped/consensus, weak stamp-SN) supervise
+#     SN-vs-non_sn ONLY — {snia, snii, other_sn}; NEVER which SN subclass and
+#     NEVER "not-Ia" (a generic "SN"/AT-name/stamp-SN cannot exclude Ia — the
+#     v10 anti-Ia bias fix).
+#   * non-SN tiers (host-galaxy context, weak stamp asteroid/VS/bogus) → {non_sn}.
+#   * A tier mapped to None carries NO 4-way information: the row is kept only
+#     if it is admitted by its ternary bucket, else excluded via --exclude-tiers.
+SN_LIKE_CLASSES = ("snia", "snii", "other_sn")
+NON_SN_CLASSES = ("non_sn",)
+TIER_ALLOWED_CLASSES: dict[str, tuple[str, ...] | None] = {
+    "spectroscopic": SN_LIKE_CLASSES,   # spec SN w/o parsed subtype → SN-vs-non_sn
+    "tns_untyped": SN_LIKE_CLASSES,     # AT-name / untyped transient → SN-ish
+    "bts_untyped": SN_LIKE_CLASSES,     # BTS scanned but untyped → SN-ish
+    "consensus": SN_LIKE_CLASSES,       # broker consensus SN (cannot exclude Ia)
+    "context": NON_SN_CLASSES,          # host-galaxy context negative
+    "weak": None,                       # weak: decided by label source (stamp)
+}
+
+# n_det strata for the length-deconfounded sampler (inclusive bounds).
+NDET_BUCKETS = ((1, 3), (4, 6), (7, 10), (11, 20))
+
+
+def ndet_bucket(n: int, buckets: tuple[tuple[int, int], ...] = NDET_BUCKETS) -> tuple[int, int]:
+    """The (lo, hi) stratum for prefix length ``n`` (n above the top bucket
+    collapses into the top bucket)."""
+    for lo, hi in buckets:
+        if lo <= n <= hi:
+            return (lo, hi)
+    return buckets[-1]
+
+
+def allowed_classes_for(
+    ternary: str,
+    fine: str | None = None,
+    grouped_sn: bool = False,
+    quality: str | None = None,
+    *,
+    exclude_tiers: frozenset[str] = frozenset(),
+) -> tuple[str, ...]:
+    """Allowed 4-way class set for one row (the marginalized-loss support).
+
+    Faithful, auditable re-expression of the row supervision:
+      * ``quality`` in ``exclude_tiers`` → ``()`` (row carries no classification
+        loss — dropped from the classification training set);
+      * a parsed ``fine`` subtype → exact singleton ``(fine,)`` (CE limiting case);
+      * a grouped-SN row → :data:`SN_LIKE_CLASSES` (SN-vs-non_sn only);
+      * otherwise the ternary bucket's fold group (:data:`TERNARY_TO_CLASSES`) —
+        which for the nonIa_snlike/other/snia tiers is exactly what the
+        :data:`TIER_ALLOWED_CLASSES` audit table documents.
+
+    Equal to ``seq_classifier.supervision_mask(ternary, fine, grouped_sn)``
+    (as a set) whenever the row is not tier-excluded — proven in the tests."""
+    if quality is not None and quality in exclude_tiers:
+        return ()
+    if fine is not None:
+        return (fine,)
+    if grouped_sn:
+        return SN_LIKE_CLASSES
+    return tuple(TERNARY_TO_CLASSES[ternary])
+
+
+def mask_from_allowed(allowed: tuple[str, ...]) -> np.ndarray:
+    """Bool mask over :data:`CLASSES` for an allowed-class tuple."""
+    m = np.zeros(len(CLASSES), dtype=bool)
+    for c in allowed:
+        m[CLS_IDX[c]] = True
+    return m
+
+
+def marginalized_nll(logits: torch.Tensor, class_masks: torch.Tensor) -> torch.Tensor:
+    """Per-row marginalized coarse-label NLL: −log Σ_{c∈mask} softmax(logits)_c.
+
+    ``logits`` (..., C) float, ``class_masks`` (..., C) bool → (...) NLL.  A
+    singleton mask reduces to plain cross-entropy; a k-element mask marginalizes
+    over the k allowed classes (identical math to the grouped term inside
+    ``seq_classifier.classification_loss``)."""
+    lse_all = torch.logsumexp(logits, dim=-1)
+    grouped = torch.logsumexp(logits.masked_fill(~class_masks, float("-inf")), dim=-1)
+    return lse_all - grouped
+
 
 @dataclass
 class RowLabel:
@@ -91,6 +185,11 @@ class SeqSet:
 
     oids: list[str] = field(default_factory=list)
     seqs: list = field(default_factory=list)
+    # Ordered token dicts per object (index-aligned with ``seqs``), populated
+    # ONLY when ``keep_tokens`` — the substrate for train-time random-phase
+    # windows.  Empty list ⇒ random windows unavailable (prefix-only), so
+    # eval/OOF/inference SeqSets (never keep_tokens) are provably prefix-only.
+    tokens: list = field(default_factory=list)
     y3: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     y4: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))  # -1 = unknown
     masks: np.ndarray = field(default_factory=lambda: np.zeros((0, len(CLASSES)), dtype=bool))
@@ -189,6 +288,50 @@ def load_lsst_candidate_labels(path: Path) -> dict[str, RowLabel]:
     return out
 
 
+def load_extra_truth(paths: list[str] | list[Path]) -> dict[str, RowLabel]:
+    """Merge additional truth parquet(s) into object → RowLabel (train-only).
+
+    Each parquet must carry ``object_id`` + ``final_class_ternary`` (+ optional
+    ``label_quality`` and raw type columns tns_type/bts_type/final_class_raw).
+    Rows flow through the SAME 4-way refinement as the primary truth: a raw type
+    that parses to a fine subclass folding to the ternary → exact singleton;
+    otherwise a nonIa_snlike row gets grouped-SN supervision.  Objects appearing
+    in more than one parquet keep the LAST occurrence."""
+    import pandas as pd
+
+    out: dict[str, RowLabel] = {}
+    for p in paths:
+        p = Path(p)
+        if not p.exists():
+            print(f"  WARNING: --extra-truth {p} not found — skipped", flush=True)
+            continue
+        df = pd.read_parquet(p)
+        if "object_id" not in df.columns or "final_class_ternary" not in df.columns:
+            print(f"  WARNING: --extra-truth {p} lacks object_id/final_class_ternary — skipped",
+                  flush=True)
+            continue
+        type_cols = [c for c in ("tns_type", "bts_type", "final_class_raw") if c in df.columns]
+        has_q = "label_quality" in df.columns
+        for row in df.itertuples(index=False):
+            tern = getattr(row, "final_class_ternary", None)
+            if tern not in TERN_IDX:
+                continue
+            oid = str(getattr(row, "object_id"))
+            qual = str(getattr(row, "label_quality")) if has_q else "weak"
+            lab = RowLabel(ternary=str(tern), quality=qual)
+            fine = None
+            for c in type_cols:
+                fine = fine_class_from_raw(getattr(row, c, None))
+                if fine is not None:
+                    break
+            if fine is not None and CLASS_TO_TERNARY.get(fine) == lab.ternary:
+                lab.fine = fine
+            elif lab.ternary == "nonIa_snlike":
+                lab.grouped_sn = True
+            out[oid] = lab
+    return out
+
+
 def load_split(split_path: Path) -> tuple[set[str], set[str], set[str], set[str]]:
     """(train, cal, test, quarantined) object IDs from the split manifest.
 
@@ -237,14 +380,30 @@ def pad(seqs, idxs, stats: NormStats, device):
 def collect(labels: dict[str, RowLabel], ids: set[str], *, lc_dir: Path, max_len: int,
             all_split_ids: set[str] | None = None, allow_extra: bool = False,
             quality_allow: set[str] | None = None, limit: int | None = None,
-            surveys: str = "both") -> SeqSet:
+            surveys: str = "both", schema: str = "v9",
+            exclude_tiers: frozenset[str] = frozenset(),
+            keep_tokens: bool = False,
+            extra_lc_dirs: list[Path] | None = None) -> SeqSet:
     """Load sequences + supervision structure for one split.
 
     ``allow_extra`` admits labelled objects absent from every split (the weak
-    LSST cohort) — train only.  ``quality_allow`` restricts label tiers (used
-    for the honest test diagnostics).  ``surveys`` filters by the loaded
-    sequence's survey (staged ZTF→LSST recipes; applied to TRAIN only).
-    """
+    LSST cohort + ``--extra-truth`` cohort) — train only.  ``quality_allow``
+    restricts label tiers (used for the honest test diagnostics).  ``surveys``
+    filters by the loaded sequence's survey (staged ZTF→LSST recipes; applied to
+    TRAIN only).  ``exclude_tiers`` drops rows whose quality tier carries no
+    4-way information (empty allowed set).  ``keep_tokens`` additionally stores
+    the ordered token list per object (train-only, for random-phase windows).
+    ``extra_lc_dirs`` are searched (after ``lc_dir``) for cached lightcurves —
+    the ``--extra-lc-dir`` backlog/augmentation cohort."""
+    dirs = [lc_dir, *(extra_lc_dirs or [])]
+
+    def _load_seq(oid: str):
+        for d in dirs:
+            loaded = load_object_sequence(d, oid, max_len=max_len, schema=schema)
+            if loaded is not None:
+                return loaded, d
+        return None, None
+
     pool = [o for o in labels
             if (o in ids) or (allow_extra and all_split_ids is not None and o not in all_split_ids)]
     out = SeqSet()
@@ -255,12 +414,16 @@ def collect(labels: dict[str, RowLabel], ids: set[str], *, lc_dir: Path, max_len
         lab = labels[oid]
         if quality_allow is not None and lab.quality not in quality_allow:
             continue
-        loaded = load_object_sequence(lc_dir, oid, max_len=max_len)
+        allowed = allowed_classes_for(lab.ternary, lab.fine, lab.grouped_sn, lab.quality,
+                                      exclude_tiers=exclude_tiers)
+        if not allowed:
+            continue  # tier-excluded: no 4-way supervision for this row
+        loaded, hit_dir = _load_seq(oid)
         if loaded is None or len(loaded[0]) < 1:
             continue
         if surveys != "both" and sequence_survey(loaded[0]) != surveys:
             continue
-        mask = supervision_mask(lab.ternary, lab.fine, lab.grouped_sn)
+        mask = mask_from_allowed(allowed)
         if lab.grouped_sn or (lab.fine is None and lab.ternary == "nonIa_snlike"):
             y4_val = -1
         elif lab.fine is not None:
@@ -271,6 +434,9 @@ def collect(labels: dict[str, RowLabel], ids: set[str], *, lc_dir: Path, max_len
             y4_val = CLS_IDX["non_sn"]
         out.oids.append(oid)
         out.seqs.append(loaded)
+        if keep_tokens:
+            toks = load_object_tokens(hit_dir, oid, max_len=max_len, schema=schema)
+            out.tokens.append(toks)  # index-aligned with seqs (may be None)
         y3.append(TERN_IDX[lab.ternary])
         y4.append(y4_val)
         masks.append(mask)
@@ -298,6 +464,125 @@ def class_balance_weights(tr: SeqSet) -> tuple[np.ndarray, np.ndarray]:
     return cls_w, obj_w
 
 
+def build_training_rows(
+    tr: SeqSet,
+    fit_idx: np.ndarray,
+    *,
+    balanced: bool = True,
+    buckets: tuple[tuple[int, int], ...] = NDET_BUCKETS,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Expand fit objects into ``(object_index, n_det)`` prefix rows + a
+    sampling-probability weight per row (the length-deconfounding sampler).
+
+    Base per-row weight is ``quality_i / n_rows_of_object_i`` so every object
+    contributes its quality mass ONCE regardless of length (the Stage-B
+    1/n_rows principle).  With ``balanced`` the weights are additionally
+    class-balanced WITHIN each (survey × n_det-bucket) stratum and every
+    stratum is scaled to equal total mass, so the sampled ternary-class
+    distribution is ~flat both across classes within a bucket AND across
+    buckets — removing the "class ⇒ length" shortcut (SNe short, persistent
+    variables long).  ``balanced=False`` keeps only the 1/n_rows base weight
+    (objects equal, length skew intact) — the OLD behaviour.
+
+    Returns ``(rows (R,2) int64, weights (R,) float64 summing to 1)``."""
+    rows: list[tuple[int, int]] = []
+    obj_len: dict[int, int] = {}
+    for i in fit_idx:
+        i = int(i)
+        L = len(tr.seqs[i][0])
+        obj_len[i] = L
+        for n in range(1, L + 1):
+            rows.append((i, n))
+    rows_arr = np.array(rows, dtype=np.int64).reshape(-1, 2)
+    R = len(rows_arr)
+    if R == 0:
+        return rows_arr, np.zeros(0, dtype=np.float64)
+    quals = tr.quals if len(tr.quals) else np.ones(len(tr.oids))
+    base = np.array([quals[i] / max(obj_len[i], 1) for i, _ in rows_arr], dtype=np.float64)
+    if not balanced:
+        w = base
+    else:
+        w = base.copy()
+        cls = tr.y3[rows_arr[:, 0]]
+        survey = np.where(tr.is_lsst[rows_arr[:, 0]], "lsst", "ztf")
+        idx_by_key: dict[tuple, list[int]] = defaultdict(list)
+        for r, (_, n) in enumerate(rows_arr):
+            idx_by_key[(survey[r], ndet_bucket(int(n), buckets))].append(r)
+        for ridx in idx_by_key.values():
+            ridx = np.array(ridx, dtype=np.int64)
+            b = base[ridx]
+            c = cls[ridx]
+            present = np.unique(c)
+            total = float(b.sum())
+            per_class = total / len(present) if len(present) else 0.0
+            for cc in present:
+                sel = c == cc
+                eff = float(b[sel].sum())
+                w[ridx[sel]] = b[sel] * (per_class / eff) if eff > 0 else b[sel]
+            s = float(w[ridx].sum())              # equalize stratum totals
+            if s > 0:
+                w[ridx] = w[ridx] / s
+    tot = float(w.sum())
+    if tot > 0:
+        w = w / tot
+    return rows_arr, w
+
+
+def build_row_batch(
+    tr: SeqSet,
+    batch_rows: np.ndarray,
+    stats: NormStats,
+    device,
+    *,
+    schema: str = "v9",
+    rng: np.random.Generator | None = None,
+    random_windows: bool = False,
+    rw_prob: float = 0.5,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Pad a batch of ``(object_index, n_det)`` rows into (cont, bands, lengths,
+    class_masks), normalized by ``stats``.
+
+    A row is the object's causal PREFIX of length ``n`` (a slice of the
+    precomputed sequence — byte-identical to inference).  When ``random_windows``
+    and the object has spare length, with probability ``rw_prob`` a random
+    contiguous window ``tokens[start:start+n]`` is re-tensorized instead
+    (``pre_truncated=True`` re-anchors it) — a TRAIN-ONLY phase augmentation.
+    With ``random_windows=False`` (every eval/OOF/inference path) ``start`` is
+    always 0, so the batch is provably the prefix set."""
+    conts: list[np.ndarray] = []
+    bandss: list[np.ndarray] = []
+    lengths: list[int] = []
+    masks: list[np.ndarray] = []
+    have_tokens = bool(tr.tokens)
+    for i, n in batch_rows:
+        i, n = int(i), int(n)
+        cont_full, bands_full = tr.seqs[i]
+        start = 0
+        if (random_windows and rng is not None and have_tokens
+                and i < len(tr.tokens) and tr.tokens[i] is not None):
+            toks = tr.tokens[i]
+            if len(toks) > n and rng.random() < rw_prob:
+                start = int(rng.integers(0, len(toks) - n + 1))
+        if start > 0:
+            c, b = sequence_arrays(tr.tokens[i][start:start + n], pre_truncated=True, schema=schema)
+        else:
+            c, b = cont_full[:n], bands_full[:n]
+        conts.append(stats.apply(c))
+        bandss.append(b)
+        lengths.append(len(c))
+        masks.append(tr.masks[i])
+    Lmax = max(lengths)
+    cd = conts[0].shape[1]
+    cont = np.zeros((len(batch_rows), Lmax, cd), dtype=np.float32)
+    bands = np.zeros((len(batch_rows), Lmax), dtype=np.int64)
+    for j, (c, b) in enumerate(zip(conts, bandss)):
+        cont[j, : len(c)] = c
+        bands[j, : len(b)] = b
+    return (torch.from_numpy(cont).to(device), torch.from_numpy(bands).to(device),
+            torch.tensor(lengths, dtype=torch.long, device=device),
+            torch.from_numpy(np.array(masks, dtype=bool)).to(device))
+
+
 def fit_classifier(tr: SeqSet, obj_w: np.ndarray, fit_idx: np.ndarray, val_idx: np.ndarray,
                    *, args, stats: NormStats, device, encoder_dir: Path,
                    seed: int, tag: str,
@@ -312,7 +597,10 @@ def fit_classifier(tr: SeqSet, obj_w: np.ndarray, fit_idx: np.ndarray, val_idx: 
         encoder, _ = load_encoder(encoder_dir)  # fresh warm start per model
     else:
         from debass_meta.models.seq_encoder import SeqEncoder, SeqEncoderConfig
-        encoder = SeqEncoder(SeqEncoderConfig())
+        # No SSL encoder → build one sized to the tokenization schema (v11 adds
+        # the is_negative + signed_flux channels, cont_dim=11).
+        encoder = SeqEncoder(SeqEncoderConfig(
+            cont_dim=_cont_dim_for_schema(getattr(args, "seq_schema", "v9"))))
     clf = SeqClassifier(encoder)
     if getattr(args, "init_from", None):
         # Warm start the WHOLE classifier (encoder + head) from an existing
@@ -353,12 +641,41 @@ def fit_classifier(tr: SeqSet, obj_w: np.ndarray, fit_idx: np.ndarray, val_idx: 
                 w_sum += bw
         return nll_sum / max(w_sum, 1e-8)
 
-    best_nll, best_state, bad, log = float("inf"), None, 0, []
-    for epoch in range(1, args.epochs + 1):
-        if epoch == args.freeze_epochs + 1:
-            opt.param_groups[1]["lr"] = args.encoder_lr
-            print(f"  [{tag}] epoch {epoch}: encoder unfrozen (lr {args.encoder_lr})", flush=True)
-        clf.train()
+    # Length-deconfounded sampling (default ON): train on balanced
+    # (object, n_det) prefix rows sampled ∝ length-deconfounding weights, with
+    # last-step marginalized-mass loss.  --no-balanced-sampling restores the
+    # legacy object-level deep-supervision loop (byte-identical below).
+    balanced = bool(getattr(args, "balanced_sampling", True))
+    random_windows = bool(getattr(args, "random_windows", False))
+    rw_prob = float(getattr(args, "random_window_prob", 0.5))
+    schema = getattr(args, "seq_schema", "v9")
+    rows_arr, row_w = (build_training_rows(tr, fit_idx, balanced=True)
+                       if balanced else (np.zeros((0, 2), dtype=np.int64), np.zeros(0)))
+    if balanced and random_windows and not tr.tokens:
+        print(f"  [{tag}] WARNING: --random-windows set but no cached tokens — "
+              f"falling back to prefix-only", flush=True)
+
+    def train_epoch_balanced() -> float:
+        n_draw = len(rows_arr)
+        sel = rng.choice(n_draw, size=n_draw, replace=True, p=row_w)
+        tot, cnt = 0.0, 0
+        for s in range(0, n_draw, args.batch):
+            batch_rows = rows_arr[sel[s: s + args.batch]]
+            cont, bands, lengths, cmasks = build_row_batch(
+                tr, batch_rows, stats, device, schema=schema, rng=rng,
+                random_windows=random_windows, rw_prob=rw_prob)
+            opt.zero_grad()
+            logits = clf(cont, bands)                          # (B, L, C)
+            last = logits[torch.arange(len(batch_rows), device=device), lengths - 1]
+            loss = marginalized_nll(last, cmasks).mean()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(clf.parameters(), 5.0)
+            opt.step()
+            tot += float(loss) * len(batch_rows)
+            cnt += len(batch_rows)
+        return tot / max(cnt, 1)
+
+    def train_epoch_legacy() -> float:
         order = fit_idx[rng.permutation(len(fit_idx))]
         tot, wtot = 0.0, 0.0
         for s in range(0, len(order), args.batch):
@@ -374,6 +691,18 @@ def fit_classifier(tr: SeqSet, obj_w: np.ndarray, fit_idx: np.ndarray, val_idx: 
             bw = float(w_fit_t[sub_t].sum())
             tot += float(loss) * bw
             wtot += bw
+        return tot / max(wtot, 1e-8)
+
+    best_nll, best_state, bad, log = float("inf"), None, 0, []
+    for epoch in range(1, args.epochs + 1):
+        if epoch == args.freeze_epochs + 1:
+            opt.param_groups[1]["lr"] = args.encoder_lr
+            print(f"  [{tag}] epoch {epoch}: encoder unfrozen (lr {args.encoder_lr})", flush=True)
+        clf.train()
+        train_nll = (train_epoch_balanced() if (balanced and len(rows_arr))
+                     else train_epoch_legacy())
+        tot = train_nll  # kept for the log line below
+        wtot = 1.0
         val_nll = eval_nll(val_idx)
         log.append({"epoch": epoch, "train_nll": tot / max(wtot, 1e-8), "val_nll": val_nll})
         marker = ""
@@ -497,12 +826,41 @@ def main() -> None:
     ap.add_argument("--surveys", choices=("ztf", "lsst", "both"), default="both",
                     help="Restrict TRAIN objects by the loaded sequence's survey "
                          "(staged ZTF→LSST recipes); cal/test stay unfiltered")
+    ap.add_argument("--seq-schema", choices=("v9", "v11"), default="v9",
+                    help="Sequence tokenization schema (must match the --encoder / "
+                         "--init-from artifact's cont_dim).  v11 = full-window 11-dim "
+                         "with is_negative + signed_flux tokens; written into the "
+                         "artifact meta so experts/local/seq_v9.py routes it.")
     ap.add_argument("--init-from", default=None,
                     help="Warm-start the classifier (encoder+head) from an existing "
                          "artifact dir (e.g. the ZTF stage for LSST adaptation)")
     ap.add_argument("--per-survey-norm", action="store_true",
                     help="Survey-keyed NormStats when fitting stats from scratch "
                          "(no effect when an encoder/init-from artifact supplies them)")
+    ap.add_argument("--balanced-sampling", action=argparse.BooleanOptionalAction, default=True,
+                    help="Length-deconfounded sampling: train on (object, n_det) prefix "
+                         "rows sampled ∝ 1/n_rows × class-balance within (survey × n_det "
+                         "bucket) strata, so class no longer correlates with length.  "
+                         "--no-balanced-sampling restores the legacy object deep-supervision "
+                         "loop.")
+    ap.add_argument("--random-windows", action=argparse.BooleanOptionalAction, default=False,
+                    help="TRAIN-ONLY random-phase augmentation: for objects with spare "
+                         "detections, sometimes sample a random contiguous window instead "
+                         "of the prefix.  Eval/OOF/inference stay prefix-only.")
+    ap.add_argument("--random-window-prob", type=float, default=0.5,
+                    help="Per-row probability of a random window when --random-windows is set")
+    ap.add_argument("--exclude-tiers", nargs="*", default=[],
+                    help="Label quality tiers to drop from the classification loss "
+                         "(rows whose tier carries no 4-way information)")
+    ap.add_argument("--extra-lc-dir", action="append", default=[],
+                    help="Additional lightcurve dir(s) searched (after --lc-dir) for cached "
+                         "lightcurves — repeatable; backlog/augmented LSST cohort (train-only)")
+    ap.add_argument("--extra-truth", action="append", default=[],
+                    help="Additional truth parquet(s) with object_id/final_class_ternary/"
+                         "label_quality — repeatable; merged as TRAIN-ONLY labels (never cal/test)")
+    ap.add_argument("--allow-missing-survey-eval", action="store_true",
+                    help="Permit a surveys='both' artifact whose held-out TEST diagnostics "
+                         "lack one survey (default: hard error — the ZTF-only-test blind spot)")
     ap.add_argument("--oof-folds", type=int, default=5,
                     help="K-fold OOF artifacts for train rows (0/1 disables)")
     ap.add_argument("--final-eval", action="store_true",
@@ -554,10 +912,28 @@ def main() -> None:
         print(f"  + {added:,} weak LSST candidates (grouped sn-like supervision)", flush=True)
     # LSST-candidate objects are NEW objects → train-only (never cal/test).
 
+    # --extra-truth: backlog/augmented cohort merged as TRAIN-ONLY labels (never
+    # cal/test/quarantined); their lightcurves come from --extra-lc-dir.
+    extra_lc_dirs = [Path(d) for d in (args.extra_lc_dir or [])]
+    if args.extra_truth:
+        extra = load_extra_truth(args.extra_truth)
+        added_x = 0
+        for oid, lab in extra.items():
+            if (oid not in labels and oid not in cal_ids
+                    and oid not in test_ids and oid not in quarantined_ids):
+                labels[oid] = lab
+                added_x += 1
+        print(f"  + {added_x:,} extra-truth objects (train-only; "
+              f"lc dirs {[str(d) for d in extra_lc_dirs]})", flush=True)
+
+    exclude_tiers = frozenset(args.exclude_tiers or [])
     tr = collect(labels, train_ids, lc_dir=lc_dir, max_len=args.max_len,
                  all_split_ids=all_split_ids, allow_extra=True, limit=args.limit,
-                 surveys=args.surveys)
-    ca = collect(labels, cal_ids, lc_dir=lc_dir, max_len=args.max_len, limit=args.limit)
+                 surveys=args.surveys, schema=args.seq_schema,
+                 exclude_tiers=exclude_tiers, keep_tokens=bool(args.random_windows),
+                 extra_lc_dirs=extra_lc_dirs)
+    ca = collect(labels, cal_ids, lc_dir=lc_dir, max_len=args.max_len, limit=args.limit,
+                 schema=args.seq_schema, exclude_tiers=exclude_tiers)
     print(f"  train objects {len(tr):,} (surveys={args.surveys}; "
           f"4-way known {np.bincount(tr.y4[tr.y4 >= 0], minlength=4)}, "
           f"grouped {int((tr.y4 < 0).sum()):,}), cal {len(ca):,}", flush=True)
@@ -619,6 +995,7 @@ def main() -> None:
                     "best_inner_val_nll": fnll,
                     "encoder_warm_start": str(enc_dir), "seed": args.seed,
                     "split_manifest": str(args.split),
+                    "seq_schema": args.seq_schema,
                 },
             )
             fart.save(fdir)
@@ -649,13 +1026,28 @@ def main() -> None:
     # variant on the locked test would turn it into a model-selection set.
     if args.final_eval:
         te = collect(labels, test_ids, lc_dir=lc_dir, max_len=args.max_len,
-                     quality_allow=HEADLINE_QUALITIES, limit=args.limit)
-        test_diag: dict = {"n_test_objects": len(te)}
+                     quality_allow=HEADLINE_QUALITIES, limit=args.limit,
+                     schema=args.seq_schema)
+        n_ztf = int((~te.is_lsst).sum())
+        n_lsst = int(te.is_lsst.sum())
+        test_diag: dict = {"n_test_objects": len(te),
+                           "n_test_ztf": n_ztf, "n_test_lsst": n_lsst}
+        # Per-survey eval assertion: a surveys='both' artifact whose held-out
+        # TEST has zero objects on a survey is the ZTF-only-test blind spot that
+        # shipped once — refuse to save it silently.
+        if args.surveys == "both" and (n_ztf == 0 or n_lsst == 0):
+            msg = (f"surveys='both' but locked-TEST diagnostics cover only "
+                   f"ztf={n_ztf} lsst={n_lsst} objects — a per-survey blind spot. "
+                   f"Override with --allow-missing-survey-eval if intentional.")
+            if not args.allow_missing_survey_eval:
+                raise SystemExit(f"ABORT: {msg}")
+            print(f"  WARNING (--allow-missing-survey-eval): {msg}", flush=True)
         if len(te) >= 10:
             test_diag.update(diagnostics(clf, te, stats, device, args.batch, temperature,
                                          per_survey=True))
         print(f"  TEST diagnostics (HEADLINE — locked test, {'/'.join(sorted(HEADLINE_QUALITIES))} "
-              f"labels only, {len(te):,} objects):", json.dumps(test_diag, indent=1), flush=True)
+              f"labels only, {len(te):,} objects; ztf={n_ztf} lsst={n_lsst}):",
+              json.dumps(test_diag, indent=1), flush=True)
     else:
         test_diag = {"skipped": "--final-eval not set — locked test untouched"}
         print("  TEST diagnostics SKIPPED (--final-eval not set) — locked test untouched",
@@ -688,11 +1080,21 @@ def main() -> None:
             "oof_folds": args.oof_folds if fold_assign else 0,
             "oof_fold_summary": fold_meta,
             "surveys": args.surveys,
+            "seq_schema": args.seq_schema,
             "init_from": str(args.init_from) if args.init_from else None,
             "encoder_warm_start": str(enc_dir), "seed": args.seed,
             "lsst_weak_included": not args.no_lsst,
             "split_manifest": str(args.split),
             "truth_table": str(args.truth_table),
+            # Additive config keys (optional — legacy loaders ignore them).
+            "balanced_sampling": bool(args.balanced_sampling),
+            "random_windows": bool(args.random_windows),
+            "random_window_prob": float(args.random_window_prob),
+            "ndet_buckets": [list(b) for b in NDET_BUCKETS],
+            "exclude_tiers": sorted(exclude_tiers),
+            "extra_lc_dirs": [str(d) for d in extra_lc_dirs],
+            "extra_truth": [str(p) for p in (args.extra_truth or [])],
+            "allow_missing_survey_eval": bool(args.allow_missing_survey_eval),
         },
     )
     art.save(out_dir)

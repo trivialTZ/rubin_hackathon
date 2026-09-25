@@ -312,11 +312,36 @@ def test_parity_fink_lsst_snn() -> None:
 
 
 def test_parity_fink_lsst_cats() -> None:
-    for class_name, score in (("11", 0.9), ("21", 0.99), ("22", 0.5), ("41", 0.8)):
+    # Fink LSST CATS codes are the ELAsTiCC broad classes 11/12/13/21/22.
+    # 11 SN-like → p_snia = 0.5 * score; the others → (1 - score) / 8.
+    expected = {"11": 0.45, "12": 0.4 / 8, "13": 0.3 / 8, "21": 0.01 / 8, "22": 0.5 / 8}
+    for class_name, score in (("11", 0.9), ("12", 0.6), ("13", 0.7), ("21", 0.99), ("22", 0.5)):
         events = [_ev("obj1", "fink_lsst/cats", _T0, score,
                       field="clf_cats_class", class_name=class_name)]
-        assert _last_p_snia(events, "fink_lsst/cats", _T0) == pytest.approx(
-            _projector_p_snia("fink_lsst/cats", events), abs=1e-12), class_name
+        got = _last_p_snia(events, "fink_lsst/cats", _T0)
+        assert got == pytest.approx(_projector_p_snia("fink_lsst/cats", events), abs=1e-12), class_name
+        assert got == pytest.approx(expected[class_name], abs=1e-12), class_name
+
+    # Unknown codes (e.g. the old 41) project to nothing in both paths.
+    unknown = [_ev("obj1", "fink_lsst/cats", _T0, 0.8, field="clf_cats_class", class_name="41")]
+    assert _dispatch_projector("fink_lsst/cats", unknown).get("p_snia") is None
+    out = build_trajectory_features(pd.DataFrame(unknown), _gold_keys("obj1", [_T0]))
+    assert np.isnan(out.loc[0, _col("fink_lsst/cats", "n")])
+
+
+def test_cats_ternary_mapping() -> None:
+    from debass_meta.projectors.fink_lsst import cats_ternary
+
+    # SN-like: score to SN (50/50 Ia/non-Ia), rest to other.
+    assert cats_ternary(11, 0.8) == pytest.approx((0.4, 0.4, 0.2))
+    # Periodic variable at 0.9: P(not SN) = 1 - 0.1/4 — never a non-Ia SN vote.
+    snia, nonia, other = cats_ternary(21, 0.9)
+    assert snia == pytest.approx(0.0125) and nonia == pytest.approx(0.0125)
+    assert other == pytest.approx(0.975)
+    for code in (12, 13, 22):
+        t = cats_ternary(code, 0.5)
+        assert sum(t) == pytest.approx(1.0) and t[2] > 0.8
+    assert cats_ternary(41, 0.8) is None and cats_ternary(51, 0.8) is None
 
 
 def test_parity_fink_lsst_early_snia() -> None:

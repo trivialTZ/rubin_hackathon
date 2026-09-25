@@ -167,11 +167,13 @@ class SuperNNovaExpert(LocalExpert):
     def predict_epoch(self, object_id: str, lightcurve: Any, epoch_jd: float) -> ExpertOutput:
         """Score object using lightcurve truncated to epoch_jd."""
         truncated = self._truncate(lightcurve, epoch_jd)
+        dets = truncated if isinstance(truncated, list) else []
+        live = self._model_file is not None and self._snn_available and bool(dets)
 
-        if self._model_file is not None and self._snn_available:
+        if live:
             probs = self._run_snn(object_id, truncated)
         else:
-            # Stub: return uniform priors when model not loaded
+            # Stub: uniform priors when the model is not loaded or nothing to score
             probs = {cls: 1.0 / len(self.CLASSES) for cls in self.CLASSES}
 
         return ExpertOutput(
@@ -180,8 +182,10 @@ class SuperNNovaExpert(LocalExpert):
             epoch_jd=epoch_jd,
             class_probabilities=probs,
             raw_output={"truncated_n_det": len(truncated) if isinstance(truncated, list) else 0},
-            model_version="stub" if self._model_file is None else "loaded",
-            available=self._snn_available,
+            model_version="loaded" if live else "stub",
+            # a stub (uniform priors) is not an expert output: marking it available made the
+            # stub/non-stub split a label proxy on LSST (docs/fusion_v13_plan.md, v13b)
+            available=bool(live),
         )
 
     def metadata(self) -> dict[str, Any]:
@@ -239,7 +243,7 @@ class SuperNNovaExpert(LocalExpert):
                     class_probabilities=dict(stub_probs),
                     raw_output={"truncated_n_det": n_det},
                     model_version="stub",
-                    available=self._snn_available,
+                    available=False,
                 )
                 for oid, _, epoch_jd, n_det in items
             ]
@@ -309,7 +313,7 @@ class SuperNNovaExpert(LocalExpert):
                     class_probabilities=dict(stub_probs),
                     raw_output={"truncated_n_det": 0, "reason": "conversion_failed"},
                     model_version="stub",
-                    available=self._snn_available,
+                    available=False,
                 ))
                 continue
 
@@ -323,7 +327,7 @@ class SuperNNovaExpert(LocalExpert):
                     class_probabilities=dict(stub_probs),
                     raw_output={"truncated_n_det": n_det, "reason": "classify_lcs_miss"},
                     model_version="stub",
-                    available=self._snn_available,
+                    available=False,
                 ))
             else:
                 results.append(ExpertOutput(

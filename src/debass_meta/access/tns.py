@@ -93,6 +93,63 @@ def load_tns_credentials(*, sandbox: bool = False) -> TNSCredentials:
 
 
 # ------------------------------------------------------------------ #
+# TNS bulk public-objects download                                    #
+# ------------------------------------------------------------------ #
+
+_TNS_BULK_DIR = "https://www.wis-tns.org/system/files/tns_public_objects"
+
+
+def tns_bulk_url(date: str | None = None) -> str:
+    """URL for the TNS public-objects bulk export.
+
+    ``date is None`` → the full master ``tns_public_objects.csv.zip``.
+    ``date="YYYYMMDD"`` → that day's *diff* file
+    ``tns_public_objects_YYYYMMDD.csv.zip`` (only rows modified that day;
+    the current day 404s until it closes; hourly ``_HH`` files are 404 and
+    must not be used — see fusion_v11 spec §1).
+    """
+    if date is None:
+        return f"{_TNS_BULK_DIR}/tns_public_objects.csv.zip"
+    date = str(date).strip()
+    if not (len(date) == 8 and date.isdigit()):
+        raise ValueError(
+            f"TNS bulk diff date must be 'YYYYMMDD' (8 digits); got {date!r}"
+        )
+    return f"{_TNS_BULK_DIR}/tns_public_objects_{date}.csv.zip"
+
+
+def fetch_tns_bulk(
+    credentials: TNSCredentials,
+    *,
+    date: str | None = None,
+    timeout_s: float = 300.0,
+    session: requests.Session | None = None,
+) -> bytes:
+    """Download the TNS public-objects bulk ZIP and return the raw bytes.
+
+    ``POST`` with form ``api_key=<key>`` and the ``tns_marker`` User-Agent
+    header (``TNSCredentials.user_agent``). Returns the ``.zip`` payload
+    (13.6 MB master / small daily diff). There is **no** ``Content-Length``
+    header, so byte-range resume is impossible — callers re-download the
+    whole file (master) or the small daily diff and upsert.
+
+    Parameters
+    ----------
+    credentials : TNSCredentials
+        From :func:`load_tns_credentials`.
+    date : str | None
+        ``None`` → full master; ``"YYYYMMDD"`` → that day's diff file.
+    """
+    url = tns_bulk_url(date)
+    headers = {"User-Agent": credentials.user_agent}
+    data = {"api_key": credentials.api_key}
+    sess = session or requests
+    resp = sess.post(url, headers=headers, data=data, timeout=timeout_s)
+    resp.raise_for_status()
+    return resp.content
+
+
+# ------------------------------------------------------------------ #
 # TNS type → ternary mapping                                          #
 # ------------------------------------------------------------------ #
 #

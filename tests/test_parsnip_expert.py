@@ -103,6 +103,20 @@ def test_parsnip_metadata_requires_classifier(monkeypatch, tmp_path: Path) -> No
     assert meta["inference_implemented"] is True
 
 
+def test_parsnip_stub_output_is_unavailable(monkeypatch, tmp_path: Path) -> None:
+    """Without classifier.pkl the expert emits uniform stub probabilities; they must not count as an output."""
+    _install_fake_parsnip(monkeypatch)
+    model_dir = tmp_path / "parsnip"
+    model_dir.mkdir()
+    (model_dir / "model.pt").write_text("weights")
+
+    out = ParSNIPExpert(model_dir=model_dir, device="cpu").predict_epoch(
+        "obj", [{"mjd": 60000.0, "band": "g", "mag": 20.0}], 2460000.5 + 1.0)
+
+    assert out.model_version == "stub"
+    assert out.available is False
+
+
 def test_parsnip_predict_epoch_returns_classifier_probabilities(
     monkeypatch, tmp_path: Path
 ) -> None:

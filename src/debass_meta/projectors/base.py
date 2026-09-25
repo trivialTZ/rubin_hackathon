@@ -55,6 +55,9 @@ EXPERT_REGISTRY: dict[str, tuple[str, str]] = {
     # --- Local v9 sequence classifier (causal GRU over per-detection
     #     photometry; mixed ZTF+LSST band vocabulary; SSL + fine-tune) ---
     "seq_v9":                          ("any",  "local_seq_v9"),
+    # --- Local v11 sequence classifier (v9 GRU + negative-detection tokens:
+    #     is_negative + signed_flux; reuses the seq_v9 ternary projector) ---
+    "seq_v11":                         ("any",  "local_seq_v9"),
 }
 
 # Backward-compatible flat list — Phase 1 experts (original 8)
@@ -210,6 +213,13 @@ def _dispatch_projector(expert_key: str, events: list[dict[str, Any]]) -> dict[s
 
         return project_events(expert_key, events)
     if expert_key == "seq_v9":
+        from .local_seq_v9 import project_events
+
+        return project_events(expert_key, events)
+    if expert_key == "seq_v11":
+        # v11 shares the seq_v9 projector: identical ternary + p4_* contract,
+        # only the upstream tokenization schema differs.  Explicit branch (not
+        # auto-discovery) per the B7/A1 export contract.
         from .local_seq_v9 import project_events
 
         return project_events(expert_key, events)
