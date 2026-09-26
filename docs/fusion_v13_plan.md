@@ -382,3 +382,27 @@ follow-up. Saved models are unaffected (folds are fit-time only).
 v13e's settings with the stable folds (Stage A still v13c's, frozen). Same acceptance. The spread between v13d's and
 v13e's calibrators (same heads, two fold maps) is a measure of how fragile the LSST isotonic calibrator is with about
 45 SN objects; v13f fixes one fold map, it does not remove that fragility.
+
+### v13f result (SCC 7744369, 11 min, exit 0): 14 of 15
+
+Guards all pass. α per LSST cell is now the grid minimum of a fold map that no longer depends on the node: 0.75 in
+`lsst|2+|>=0.25` (SN-vs-other loss 0.299; anchor alone 0.355, model alone 0.330) and 0.5 in `lsst|1|>=0.25`.
+Benchmark, v13f (v13b), SN-vs-other AUC / Brier P(SN) at n = 3 / 5 / 10 / latest:
+
+| inputs | n = 3 | n = 5 | n = 10 | latest |
+|---|---|---|---|---|
+| full | 0.945 / 0.075 (0.930 / 0.090) | 0.907 / 0.087 (0.895 / 0.088) | 0.868 / 0.078 (0.875 / 0.090) | 0.958 / 0.082 (0.952 / 0.082) |
+| brokers only | 0.951 / 0.077 (0.902 / 0.091) | 0.929 / 0.087 (0.849 / 0.099) | 0.894 / 0.074 (0.765 / 0.095) | 0.951 / 0.088 (0.909 / 0.098) |
+| no brokers | 0.903 / 0.101 (0.903 / 0.121) | 0.872 / 0.103 (0.862 / 0.116) | 0.828 / 0.097 (0.832 / 0.114) | 0.931 / 0.106 (0.923 / 0.114) |
+
+Full inputs, median P(SN) 0.92 to 0.93 on SNe and 0.05 to 0.08 on others (v13b 0.91 / 0.08 to 0.11; n = 10 excluded,
+0.36 on SNe). Explorer cohort: typed ZTF AUC 0.912 / 0.910 / 0.888 / 0.947 (v13b 0.921 / 0.896 / 0.891 / 0.934),
+Brier 0.017 / 0.014 / 0.015 / 0.013 (as v13b); typed Rubin SNe median P(SN) 0.93 (v13b 0.89). The one fail is
+criterion 5a, ZTF AUC at latest 0.947 against v13c − 0.01 = 0.948; the fold map alone moved that number by 0.008
+(v13e 0.939) and the n = 3 value by 0.04 (v13e 0.954), because the isotonic calibrators' plateaus create ties.
+
+Not solved: the no-broker SNe still at n = 10 (median P(SN) 0.24; a population of faint, low-reliability SNe, see
+the v13d diagnosis); DP2 typed SNe (local experts only) stay low (private notes); Rubin Ia|SN at chance. Next
+(v13g / label work): a smoother LSST calibrator than isotonic (plateau ties cost AUC and move with the fold map),
+the negative-only Rubin SNe in the gold, more Rubin SN labels. Stage A is still v13c's (fitted with the old folds on
+an AVX-512 node): reusing it is reproducible, refitting it on another node type would not be until it is rerun.
