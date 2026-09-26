@@ -273,6 +273,7 @@ def cell_key(survey: str, n_exp_bucket: str, cov_bucket: str) -> str:
 
 ALPHA_OBJECTIVES = ("multiclass", "sn_binary")
 ALPHA_SE_UNITS = ("row", "object")
+ALPHA_RULES = ("1se", "best")
 _SN_INDEX = (_CLASS_INDEX["snia"], _CLASS_INDEX["nonIa_snlike"])
 
 
@@ -296,6 +297,7 @@ def _fit_alpha_1se(
     *,
     objective: str = "multiclass",
     groups: np.ndarray | None = None,
+    rule: str = "1se",
 ) -> tuple[float, dict]:
     """Grid α by mean cal log-loss; 1-SE rule preferring the anchor (smaller α).
 
@@ -306,7 +308,10 @@ def _fit_alpha_1se(
     fusion v13d: ``objective`` picks the loss (:func:`_sample_losses`);
     ``groups`` (e.g. object ids) makes the SE cluster-robust,
     ``sqrt(Σ_g (Σ_{i∈g} w_i (l_i-μ))²)/Σw``, since the rows of one object
-    (its epochs and availability copies) are not independent."""
+    (its epochs and availability copies) are not independent.  ``rule="best"``
+    takes the grid minimum (the SE is still reported): with few objects per
+    cell a clustered SE makes the 1-SE rule fall back to the anchor even where
+    the out-of-fold loss clearly prefers the model (fusion v13d)."""
     loss = lambda a: _sample_losses(model, anchor, a, y, objective)  # noqa: E731
     if w is None and groups is None:
         means = {a: float(loss(a).mean()) for a in ALPHA_GRID}
@@ -324,7 +329,7 @@ def _fit_alpha_1se(
         se = float(np.sqrt((dev ** 2).sum()) / sw) if len(y) > 1 else 0.0
     thresh = means[best] + se
     candidates = [a for a in ALPHA_GRID if means[a] <= thresh + 1e-12]
-    chosen = min(candidates)  # α=0 == pure anchor
+    chosen = best if rule == "best" else min(candidates)  # α=0 == pure anchor
     info = {
         "means": means,
         "best_grid": best,
@@ -336,7 +341,7 @@ def _fit_alpha_1se(
 
 
 _V13D_DEFAULTS: dict[str, Any] = {"anchor_call_experts": [], "alpha_objective": "multiclass",
-                                  "alpha_se": "row", "base_rate_unit": "row"}
+                                  "alpha_se": "row", "base_rate_unit": "row", "alpha_rule": "1se"}
 
 
 @dataclass
@@ -360,6 +365,7 @@ class BlendSpec:
     alpha_objective: str = "multiclass"
     alpha_se: str = "row"
     base_rate_unit: str = "row"
+    alpha_rule: str = "1se"
 
     def to_dict(self) -> dict[str, Any]:
         d = {
@@ -378,7 +384,8 @@ class BlendSpec:
         v13d = {k: v for k, v in (("anchor_call_experts", list(self.anchor_call_experts)),
                                   ("alpha_objective", self.alpha_objective),
                                   ("alpha_se", self.alpha_se),
-                                  ("base_rate_unit", self.base_rate_unit))
+                                  ("base_rate_unit", self.base_rate_unit),
+                                  ("alpha_rule", self.alpha_rule))
                 if v != _V13D_DEFAULTS[k]}
         if v13d:
             d["v13d"] = v13d
@@ -401,6 +408,7 @@ class BlendSpec:
             alpha_objective=str((d.get("v13d") or {}).get("alpha_objective", "multiclass")),
             alpha_se=str((d.get("v13d") or {}).get("alpha_se", "row")),
             base_rate_unit=str((d.get("v13d") or {}).get("base_rate_unit", "row")),
+            alpha_rule=str((d.get("v13d") or {}).get("alpha_rule", "1se")),
         )
 
     def anchor_kwargs(self) -> dict[str, Any]:
@@ -535,6 +543,7 @@ def fit_alpha(
     alpha_objective: str = "multiclass",
     alpha_se: str = "row",
     base_rate_unit: str = "row",
+    alpha_rule: str = "1se",
 ) -> BlendSpec:
     """Fit the per-cell α table on a calibration frame.
 
@@ -561,10 +570,13 @@ def fit_alpha(
     ``alpha_se="object"`` clusters the 1-SE rule's SE by ``object_id``;
     ``base_rate_unit="object"`` estimates the anchor's P(Ia|SN) fallback with
     one vote per object instead of per row (objects with more epochs no longer
-    dominate it).
+    dominate it); ``alpha_rule="best"`` takes the grid minimum instead of the
+    1-SE rule.
     """
     if alpha_objective not in ALPHA_OBJECTIVES:
         raise ValueError(f"alpha_objective must be one of {ALPHA_OBJECTIVES}")
+    if alpha_rule not in ALPHA_RULES:
+        raise ValueError(f"alpha_rule must be one of {ALPHA_RULES}")
     if alpha_se not in ALPHA_SE_UNITS or base_rate_unit not in ALPHA_SE_UNITS:
         raise ValueError(f"alpha_se / base_rate_unit must be one of {ALPHA_SE_UNITS}")
     df = cal_df.copy()
@@ -627,13 +639,13 @@ def fit_alpha(
 
     def _fit(m: np.ndarray) -> tuple[float, dict]:
         return _fit_alpha_1se(model[m], anchor[m], y[m], _w(m), objective=alpha_objective,
-                              groups=None if groups_all is None else groups_all[m])
+                              groups=None if groups_all is None else groups_all[m], rule=alpha_rule)
 
     spec = BlendSpec(base_rates=base_rates, default_base_rate=default_base_rate,
                      drop_experts=[str(k) for k in drop_experts],
                      anchor_call_experts=sorted(str(k) for k in anchor_call_experts),
                      alpha_objective=alpha_objective, alpha_se=alpha_se,
-                     base_rate_unit=base_rate_unit)
+                     base_rate_unit=base_rate_unit, alpha_rule=alpha_rule)
     g3_cells: dict[str, Any] = {}
 
     # per-cell fits
@@ -647,7 +659,7 @@ def fit_alpha(
                 ck = cell_key(sv, neb, cb)
                 spec.alpha_cells[ck] = {"alpha": a, "n": int(m.sum()),
                                         "grid_best": info["best_grid"]}
-                if (alpha_objective, alpha_se) != ("multiclass", "row"):
+                if (alpha_objective, alpha_se, alpha_rule) != ("multiclass", "row", "1se"):
                     spec.alpha_cells[ck]["loss_by_alpha"] = {
                         str(k): round(v, 6) for k, v in info["means"].items()}
                     spec.alpha_cells[ck]["se"] = round(info["se"], 6)

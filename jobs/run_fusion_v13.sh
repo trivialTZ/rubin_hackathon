@@ -33,6 +33,9 @@
 #   (docs/fusion_v13_plan.md, v13d): event_count__ / exact__ kept out of both heads; the anchor weights the is_sn
 #   trust-head experts by the trust of their call; alpha fitted on the SN-vs-other log-loss with an object-clustered
 #   SE; the anchor's P(Ia|SN) fallback per object. v13c is scored on the same benchmark ablation for a paired table.
+# FUSION_V13_ARM=v13e: *_v13e — v13d with alpha the grid minimum per cell (--alpha-rule best): v13d's
+#   object-clustered SE (0.05 to 0.08 in the LSST cells, few SN objects) made the 1-SE rule pick alpha 0.25 / 0 where
+#   the out-of-fold loss is lowest at 0.75 / 0.5. Stage A from v13c; v13c and v13d scored on the same ablation.
 # FUSION_V13_SMOKE=1: --smoke, outputs *_v13_smoke.
 # FUSION_V13_REUSE_STAGE_A=1: reuse this arm's Stage-A snapshot + trust dir from an earlier run (--skip-stage-a).
 # FUSION_V13_STAGE_A_FROM=<sfx>: copy that arm's Stage-A trust dir (+ link its snapshot) and reuse it.
@@ -67,6 +70,13 @@ if [[ "${ARM}" == "v13d" ]]; then
               --head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__
               --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
               --anchor-call-weight-sn-filter)
+fi
+if [[ "${ARM}" == "v13e" ]]; then
+    SFX=v13e; BASE=v13c; GOLD_TAG=v13c; DP2_TAG=v13cloc; ABL_MODELS=(v13c v13d); STAGE_A_FROM="${STAGE_A_FROM:-v13c}"
+    ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova
+              --head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__
+              --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
+              --anchor-call-weight-sn-filter --alpha-rule best)
 fi
 if [[ "${SMOKE}" == "1" ]]; then
     SFX="${SFX}_smoke"; SMOKE_ARGS=(--smoke)

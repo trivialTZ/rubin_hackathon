@@ -327,3 +327,31 @@ Acceptance (fixed before the run; benchmark slices n = 3 / 5 / 10 / latest):
 If 1 to 5 pass, v13d replaces v13b on the explorer site. The benchmark was used to diagnose v13c, so these settings
 were chosen from the failure analysis and are fitted on train / cal only; no α or setting is picked from benchmark
 scores.
+
+### v13d result (SCC 7744078, 38 min, exit 0): fails its acceptance (10 of 15)
+
+Guards all pass. Benchmark, v13d (v13c, v13b), SN-vs-other AUC / Brier P(SN):
+
+| inputs | n = 3 | n = 5 | n = 10 | latest |
+|---|---|---|---|---|
+| full | 0.933 / 0.096 (0.913 / 0.091, 0.930 / 0.090) | 0.902 / 0.102 (0.893 / 0.097, 0.895 / 0.088) | 0.864 / 0.090 (0.851 / 0.087, 0.875 / 0.090) | 0.949 / 0.095 (0.948 / 0.089, 0.952 / 0.082) |
+| brokers only | 0.942 / 0.088 (0.863 / 0.133, 0.902 / 0.091) | 0.930 / 0.097 (0.814 / 0.143, 0.849 / 0.099) | 0.894 / 0.093 (0.760 / 0.137, 0.765 / 0.095) | 0.943 / 0.103 (0.886 / 0.128, 0.909 / 0.098) |
+| no brokers | 0.883 / 0.117 (0.889 / 0.102, 0.903 / 0.121) | 0.862 / 0.118 (0.859 / 0.107, 0.862 / 0.116) | 0.826 / 0.098 (0.806 / 0.097, 0.832 / 0.114) | 0.918 / 0.111 (0.921 / 0.108, 0.923 / 0.114) |
+
+Pass: full AUC inside v13b's CI at every slice; brokers-only Brier ≤ 0.10 at n = 3 / 5 / 10; no-broker Brier at 10 and
+latest; explorer ZTF Brier. Fail: full Brier (0.096 / 0.102 / 0.090 / 0.095 vs v13b 0.090 / 0.088 / 0.090 / 0.082);
+brokers-only Brier at latest (0.103); no-broker Brier at n = 3 / 5; explorer ZTF AUC at latest (0.943 vs v13c 0.958;
+v13b 0.934). The ranking fixes worked (brokers-only AUC +0.06 to +0.13 over v13c; the no-broker n = 10 SN median
+P(SN) 0.60, v13c 0.30), the calibration did not: others keep a median P(SN) of 0.16 to 0.22 on full inputs.
+
+Cause (blend.json): the object-clustered SE is 0.046 in cell `lsst|2+|>=0.25` and 0.078 in `lsst|1|>=0.25` (about
+45 LSST SN objects), so the 1-SE rule chose α 0.25 and 0 where the out-of-fold SN-vs-other loss is lowest at 0.75
+(0.279; anchor alone 0.355) and 0.5. v13d is not deployed.
+
+### v13e (declared after v13d's result, before its own)
+
+v13d with `--alpha-rule best`: α is the grid minimum of the out-of-fold ∪ cal SN-vs-other loss per cell. The 1-SE
+rule's preference for the anchor assumed the anchor is the safe default; on LSST its out-of-fold loss is 0.36 against
+0.28, and a 5-point grid fitted on cross-fitted predictions of about 1,000 LSST objects has little room to overfit.
+This choice follows v13d's benchmark failure, so the benchmark is no longer a clean test for the α rule; v13e keeps
+the same acceptance (criteria 1 to 5 above) and its result will be read with that caveat.

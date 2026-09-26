@@ -123,3 +123,19 @@ def test_head_feature_prefix_drop_is_persisted():
     assert head._drop_prefixed(cols) == ["n_det", "q__alerce_lc"]
     assert head._v13_settings()["feature_drop_prefixes"] == ["event_count__", "exact__"]
     assert "feature_drop_prefixes" not in HierarchicalFollowup()._v13_settings()
+
+
+def test_alpha_rule_best_takes_the_grid_minimum():
+    rng = np.random.default_rng(2)
+    n_obj, copies = 20, 10
+    y = np.repeat(rng.integers(0, 3, n_obj), copies)
+    model = np.full((n_obj * copies, 3), 0.05)
+    model[np.arange(len(y)), y] = 0.9
+    model[::7] = [1 / 3, 1 / 3, 1 / 3]
+    anchor = np.tile([0.3, 0.3, 0.4], (len(y), 1))
+    groups = np.repeat(np.arange(n_obj), copies)
+    a_1se, info = _fit_alpha_1se(model, anchor, y, groups=groups, objective="sn_binary")
+    a_best, info_b = _fit_alpha_1se(model, anchor, y, groups=groups, objective="sn_binary", rule="best")
+    assert a_best == info_b["best_grid"] and a_1se <= a_best
+    assert BlendSpec.from_dict(BlendSpec(alpha_rule="best").to_dict()).alpha_rule == "best"
+    assert "v13d" not in BlendSpec(alpha_rule="1se").to_dict()

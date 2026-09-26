@@ -453,6 +453,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                            "or the SN-vs-other log-loss (P(SN) = p_snia + p_nonia)")
     v13d.add_argument("--alpha-se", choices=anchor_blend.ALPHA_SE_UNITS, default="row",
                       help="Standard error of the 1-SE rule per row, or clustered by object")
+    v13d.add_argument("--alpha-rule", choices=anchor_blend.ALPHA_RULES, default="1se",
+                      help="α per cell: the 1-SE rule preferring the anchor, or the grid minimum")
     v13d.add_argument("--anchor-base-rate-unit", choices=anchor_blend.ALPHA_SE_UNITS, default="row",
                       help="Anchor P(Ia|SN) fallback estimated per row or per object")
     v13d.add_argument("--anchor-call-weight-sn-filter", action="store_true",
@@ -820,6 +822,8 @@ def main(argv: list[str] | None = None) -> int:
         alpha_kwargs["alpha_objective"] = args.alpha_objective
     if args.alpha_se != "row":
         alpha_kwargs["alpha_se"] = args.alpha_se
+    if args.alpha_rule != "1se":
+        alpha_kwargs["alpha_rule"] = args.alpha_rule
     if args.anchor_base_rate_unit != "row":
         alpha_kwargs["base_rate_unit"] = args.anchor_base_rate_unit
     if args.anchor_call_weight_sn_filter:
