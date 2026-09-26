@@ -737,6 +737,11 @@ class HierarchicalFollowup:
     # factor (context 0.15, ...), so calibrated P(SN) follows the object mix
     # instead of the training emphasis (docs/fusion_v13_plan.md, Results).
     head1_cal_weights: str = "train"
+    # v13d: feature-name prefixes kept out of both heads.  ``event_count__`` and
+    # ``exact__`` only restate availability / pipeline bookkeeping; in v13b the
+    # untimed local-expert rows put event_count__alerce_lc at ~160 on LSST
+    # training rows against 8 at serving (docs/fusion_v13_plan.md, v13d).
+    feature_drop_prefixes: tuple[str, ...] = ()
 
     # --- fitted state (populated by fit / load) ---
     head1_feature_cols: list[str] = field(default_factory=list)
@@ -820,7 +825,14 @@ class HierarchicalFollowup:
             "drop_experts": list(self.drop_experts),
             "head1_serving_masks": {k: list(v) for k, v in self.head1_serving_masks.items()},
             "head1_cal_weights": self.head1_cal_weights,
+            **({"feature_drop_prefixes": list(self.feature_drop_prefixes)}
+               if self.feature_drop_prefixes else {}),
         }
+
+    def _drop_prefixed(self, cols: list[str]) -> list[str]:
+        if not self.feature_drop_prefixes:
+            return cols
+        return [c for c in cols if not c.startswith(tuple(self.feature_drop_prefixes))]
 
     # ------------------------------------------------ v13 serving-side masks
 
@@ -970,7 +982,7 @@ class HierarchicalFollowup:
         # masking-induced from genuine correlation.
         production = self._serving_mask_frame(train_df, head="head1")[keep]
 
-        self.head1_feature_cols = _numeric_feature_cols(frame)
+        self.head1_feature_cols = self._drop_prefixed(_numeric_feature_cols(frame))
 
         # Gate: per-survey vs pooled (default pooled when the LSST is_sn cal
         # frame is small — B1).  LSST cal-object count decides.
@@ -1361,7 +1373,7 @@ class HierarchicalFollowup:
             cols = _numeric_feature_cols(h2_df)
         else:
             cols = []
-        self.head2_feature_cols = [c for c in cols if c not in _HEAD2_DROP_COLS]
+        self.head2_feature_cols = [c for c in self._drop_prefixed(cols) if c not in _HEAD2_DROP_COLS]
 
         h2_oof_rows: pd.DataFrame | None = None
         if len(h2_df) >= 2:
@@ -1784,6 +1796,7 @@ class HierarchicalFollowup:
             g8_override=bool(v13.get("g8_override", False)),
             drop_experts=tuple(v13.get("drop_experts", ())),
             head1_cal_weights=str(v13.get("head1_cal_weights", "train")),
+            feature_drop_prefixes=tuple(v13.get("feature_drop_prefixes", ())),
         )
         obj.head1_serving_masks = {
             str(k): tuple(v) for k, v in (v13.get("head1_serving_masks") or {}).items()}

@@ -175,9 +175,7 @@ def main(argv: list[str] | None = None) -> None:
     blend_dir = Path(args.blend_dir)
     try:
         spec = anchor_blend.BlendSpec.load(blend_dir)
-        df = anchor_blend.compute_anchor(
-            df, base_rate_by_survey=spec.base_rates,
-            default_base_rate=spec.default_base_rate)
+        df = anchor_blend.compute_anchor(df, **spec.anchor_kwargs())
         df = anchor_blend.apply(df, spec)
         print(f"  applied anchored blend from {blend_dir} "
               f"(alpha levels: {pd.Series(df['alpha_fallback_level']).value_counts().to_dict()})")

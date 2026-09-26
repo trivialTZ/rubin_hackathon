@@ -281,3 +281,49 @@ TNS × EDP2 explorer cohort: typed ZTF objects AUC 0.935 / 0.892 / 0.873 / 0.958
 / 0.896 / 0.891 / 0.934), Brier 0.016 / 0.013 / 0.015 / 0.012 (v13b 0.017 / 0.014 / 0.015 / 0.013); the 12 typed Rubin
 SNe median P(SN) 0.82 (v13b 0.89). At the latest detection, v13c vs v13b P(SN) on the cohort: ZTF Spearman 0.94, 0.6%
 of objects move by more than 0.2; Rubin Spearman 0.93, median −0.03, 17% move by more than 0.2.
+
+## v13d (pre-registered 2026-09-25, before the run)
+
+Diagnosis of v13c (two reviews; scripts in the session notes, SCC `data/v13d_diag/`):
+- **The model stage is not worse than v13b.** v13c head 1 + calibrator on the benchmark: full inputs Brier 0.089 /
+  0.089 / 0.095 / 0.084 (v13b 0.080 / 0.095 / 0.089 / 0.085), brokers-only others P(SN) 0.005 (v13b 0.007). The
+  hedging and the brokers-only over-calling come from the blend.
+- **The α 1-SE rule sits on a knife edge.** Cell `lsst|2+|>=0.25`, 3-class log-loss on OOF-train ∪ cal: v13b
+  α 0.75 0.498 ± 0.017 vs α 0.5 0.516 (kept 0.75); v13c 0.508 ± 0.020 vs 0.521 (fell to 0.5). The 3-class loss in that
+  cell is dominated by the Ia/non-Ia split of 45 LSST SN objects (loss 1.5 to 2.1, head 2 at chance on Rubin), which
+  is not what the blend is for on Rubin, and the SE counts each row (epochs and dropout copies) as independent.
+- **The anchor points the wrong way on brokers-only rows** (benchmark AUC 0.43 to 0.57). Trust heads of the SN-filter
+  experts target `is_sn`, so their q estimates P(SN), not P(expert right): the Rubin stamp classifier, correct on
+  others (P(SN) 0.03), gets q ≈ 0 there and drops out of the pool, while Fink CATS / SNN (P(SN) 0.86 / 0.72 on the same
+  others) keep q ≈ 0.2. Unweighted, the same anchor reaches AUC 0.81 to 0.85.
+- **v13b's Rubin confidence was partly the timing bug.** Head 1 split on `event_count__alerce_lc` at 12 / 60 / 144:
+  LSST training rows had about 160 untimed events, every serving LSST row has 8, which lands on the ZTF-like branch
+  (+0.8 to +1.3 log-odds on every Rubin row). v13c still splits at 40, which serving never reaches.
+- The anchor's P(Ia|SN) fallback for LSST (0.35) is a row average over 38 objects; per object it is 0.47.
+- Not addressed in v13d (next): only 38 LSST spectroscopic SNe in train and 7 in cal against 961 / 56 catalogue
+  others, so the LSST calibrator sees 4.2% SNe; 23 Rubin SNe with only negative detections (SN light in the
+  template, 15% of the benchmark SNe) are dropped by the gold builder; `lc_features_bv` reads DP2 SNe as "other"; the
+  n = 10 no-broker dip is a population effect (the SNe still detected at n = 10 are faint, low-reliability ones and
+  score low at every n_det), not an n_det effect.
+
+v13d (`FUSION_V13_ARM=v13d`): v13c's golds and Stage A, heads and blend refitted with
+- `--head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__` (both heads);
+- `--anchor-call-weight-sn-filter`: experts whose trust head targets `is_sn` enter the anchor with the trust of their
+  call (q if they say SN, 1 − q if not);
+- `--alpha-objective sn_binary --alpha-se object`: α grid, 1-SE rule and the G3 per-survey verification on the
+  SN-vs-other log-loss, SE clustered by object;
+- `--anchor-base-rate-unit object`.
+All options default to the v13c behaviour and are stored in the artifacts (`blend.json` key `v13d`, head metadata
+`v13.feature_drop_prefixes`); v13b / v13c re-score to 1e-16 with the new code (`tests/test_anchor_blend_v13d.py`).
+
+Acceptance (fixed before the run; benchmark slices n = 3 / 5 / 10 / latest):
+1. Guards G2, G3, G6, G7 pass; G8 as in v13c (0.25 bound).
+2. Full inputs: SN-vs-other AUC inside v13b's bootstrap CI at every slice; Brier P(SN) ≤ v13b + 0.005 at 3 of 4
+   slices.
+3. Brokers only: Brier P(SN) ≤ 0.10 at every slice.
+4. No brokers: Brier P(SN) ≤ v13c + 0.005 at every slice.
+5. Explorer cohort, typed ZTF: AUC ≥ v13c − 0.01 and Brier ≤ v13c + 0.002 at latest.
+6. Reported, not gated: DP2 typed SNe median P(SN), Rubin Ia|SN, ZTF macro@5, trust AUCs.
+If 1 to 5 pass, v13d replaces v13b on the explorer site. The benchmark was used to diagnose v13c, so these settings
+were chosen from the failure analysis and are fitted on train / cal only; no α or setting is picked from benchmark
+scores.

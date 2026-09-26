@@ -444,7 +444,31 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                           "the report and exit before any model fitting")
     v13.add_argument("--stage-a-q-prior-experts", choices=("all", "trained"), default=None,
                      help="Passed to train_pooled_trust(q_prior_experts=...) when supported")
+    v13d = p.add_argument_group("fusion v13d (defaults = v13c behaviour; docs/fusion_v13_plan.md, v13d)")
+    v13d.add_argument("--head-drop-feature-prefix", action="append", default=[], metavar="PREFIX",
+                      help="Keep columns with this prefix out of both heads (e.g. event_count__, "
+                           "exact__). Persisted in the head metadata. Repeatable.")
+    v13d.add_argument("--alpha-objective", choices=anchor_blend.ALPHA_OBJECTIVES, default="multiclass",
+                      help="Loss the α grid / 1-SE rule / G3 verification use: 3-class log-loss, "
+                           "or the SN-vs-other log-loss (P(SN) = p_snia + p_nonia)")
+    v13d.add_argument("--alpha-se", choices=anchor_blend.ALPHA_SE_UNITS, default="row",
+                      help="Standard error of the 1-SE rule per row, or clustered by object")
+    v13d.add_argument("--anchor-base-rate-unit", choices=anchor_blend.ALPHA_SE_UNITS, default="row",
+                      help="Anchor P(Ia|SN) fallback estimated per row or per object")
+    v13d.add_argument("--anchor-call-weight-sn-filter", action="store_true",
+                      help="Weight the experts whose trust head targets is_sn (read from the trust "
+                           "dir) by the trust of their call in the anchor: q if they say SN, 1-q if not")
     return p
+
+
+def is_sn_trust_experts(trust_dir: Path) -> list[str]:
+    """Experts whose Stage-A trust head in ``trust_dir`` targets ``is_sn``."""
+    out = []
+    for meta in sorted(Path(trust_dir).glob("*/metadata.json")):
+        d = json.loads(meta.read_text())
+        if d.get("target_col") == "is_sn" and d.get("expert_key"):
+            out.append(str(d["expert_key"]))
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -555,6 +579,7 @@ def main(argv: list[str] | None = None) -> int:
             context_mask_scope=args.head1_context_mask, head1_survey_masks=survey_masks_dr,
             dropout=dropout, drop_experts=tuple(drop_experts),
             g8_max_corr=args.g8_max_corr if args.g8_max_corr is not None else 0.2,
+            feature_drop_prefixes=tuple(args.head_drop_feature_prefix),
         )
         g8 = head.g8_dry_run(snapshots, train_ids, cal_ids)
         report["guards"]["G8"] = g8
@@ -708,6 +733,7 @@ def main(argv: list[str] | None = None) -> int:
         g8_override=bool(args.acknowledge_g8),
         drop_experts=tuple(drop_experts),
         head1_cal_weights=str(args.head1_cal_weights),
+        feature_drop_prefixes=tuple(args.head_drop_feature_prefix),
     )
     try:
         head.fit(snap_trust, train_ids, cal_ids, test_ids)
@@ -790,6 +816,15 @@ def main(argv: list[str] | None = None) -> int:
         alpha_kwargs["exclude_qualities"] = exclude_q
     if drop_experts:
         alpha_kwargs["drop_experts"] = tuple(drop_experts)
+    if args.alpha_objective != "multiclass":
+        alpha_kwargs["alpha_objective"] = args.alpha_objective
+    if args.alpha_se != "row":
+        alpha_kwargs["alpha_se"] = args.alpha_se
+    if args.anchor_base_rate_unit != "row":
+        alpha_kwargs["base_rate_unit"] = args.anchor_base_rate_unit
+    if args.anchor_call_weight_sn_filter:
+        alpha_kwargs["anchor_call_experts"] = tuple(is_sn_trust_experts(Path(args.trust_dir)))
+        print(f"  anchor: call-trust weights for is_sn trust heads {list(alpha_kwargs['anchor_call_experts'])}")
     if head.oof_frame_ is not None:
         # B4 (v13): α on OOF-train ∪ cal, both in the availability-dropout
         # mixture, weighted by the object-normalized sample weights.  The train
@@ -819,9 +854,7 @@ def main(argv: list[str] | None = None) -> int:
     report["guards"]["G3"] = evaluate_g3(spec)
     # α fallback ledger + per-cell n after honesty filtering
     cal_blended = anchor_blend.apply(
-        anchor_blend.compute_anchor(
-            cal_df, base_rate_by_survey=spec.base_rates,
-            default_base_rate=spec.default_base_rate),
+        anchor_blend.compute_anchor(cal_df, **spec.anchor_kwargs()),
         spec)
     report["blend"] = {
         "blend_dir": str(blend_dir),
@@ -850,9 +883,7 @@ def main(argv: list[str] | None = None) -> int:
     for i, name in enumerate(_MODEL_COLS):
         conf_cal[name] = p_conf_model[:, i]
     conf_cal = anchor_blend.apply(
-        anchor_blend.compute_anchor(
-            conf_cal, base_rate_by_survey=spec.base_rates,
-            default_base_rate=spec.default_base_rate),
+        anchor_blend.compute_anchor(conf_cal, **spec.anchor_kwargs()),
         spec)
     p_deploy_cal = conf_cal[list(_MODEL_COLS)].to_numpy(dtype=float)
     y_cal = class_index(conf_cal["target_class"])
@@ -889,9 +920,7 @@ def main(argv: list[str] | None = None) -> int:
     for i, name in enumerate(_MODEL_COLS):
         scored[name] = p_full_model[:, i]
     scored = anchor_blend.apply(
-        anchor_blend.compute_anchor(
-            scored, base_rate_by_survey=spec.base_rates,
-            default_base_rate=spec.default_base_rate),
+        anchor_blend.compute_anchor(scored, **spec.anchor_kwargs()),
         spec)
     g2 = evaluate_g2(scored, train_ids, cal_ids,
                      acknowledge_unevaluable=args.acknowledge_g2_unevaluable,

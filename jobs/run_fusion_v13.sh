@@ -29,6 +29,10 @@
 #   (no more averaging over every epoch), SALT3 re-fitted with the per-point Birge-rescaled mapping everywhere. The
 #   benchmark, DP2 and explorer-cohort golds are the v13c ones; only v13c is scored on them (older stacks were trained
 #   on the old SALT3 outputs; their benchmark predictions stay as they are).
+# FUSION_V13_ARM=v13d: *_v13d — v13c's golds and Stage A (copied in), heads and blend refitted with the v13d fixes
+#   (docs/fusion_v13_plan.md, v13d): event_count__ / exact__ kept out of both heads; the anchor weights the is_sn
+#   trust-head experts by the trust of their call; alpha fitted on the SN-vs-other log-loss with an object-clustered
+#   SE; the anchor's P(Ia|SN) fallback per object. v13c is scored on the same benchmark ablation for a paired table.
 # FUSION_V13_SMOKE=1: --smoke, outputs *_v13_smoke.
 # FUSION_V13_REUSE_STAGE_A=1: reuse this arm's Stage-A snapshot + trust dir from an earlier run (--skip-stage-a).
 # FUSION_V13_STAGE_A_FROM=<sfx>: copy that arm's Stage-A trust dir (+ link its snapshot) and reuse it.
@@ -56,6 +60,13 @@ fi
 if [[ "${ARM}" == "v13c" ]]; then
     SFX=v13c; BASE=v13c; GOLD_TAG=v13c; DP2_TAG=v13cloc; ABL_MODELS=()
     ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova)
+fi
+if [[ "${ARM}" == "v13d" ]]; then
+    SFX=v13d; BASE=v13c; GOLD_TAG=v13c; DP2_TAG=v13cloc; ABL_MODELS=(v13c); STAGE_A_FROM="${STAGE_A_FROM:-v13c}"
+    ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova
+              --head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__
+              --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
+              --anchor-call-weight-sn-filter)
 fi
 if [[ "${SMOKE}" == "1" ]]; then
     SFX="${SFX}_smoke"; SMOKE_ARGS=(--smoke)

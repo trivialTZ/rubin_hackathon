@@ -153,6 +153,7 @@ def compute_anchor(
     default_base_rate: float = 0.5,
     ia_capable: frozenset[str] = IA_CAPABLE,
     exclude_experts: frozenset[str] | tuple[str, ...] = (),
+    call_weighted_experts: frozenset[str] | tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """Add ``p_{snia,nonia,other}_anchor`` and ``n_experts_fired`` to ``df``.
 
@@ -164,11 +165,19 @@ def compute_anchor(
     ``exclude_experts`` (fusion v13 ``drop_experts``) never fire, whatever their
     columns hold — an expert dropped from the whole stack must not re-enter the
     anchor at serving with the q=1 default of a missing trust head.
+
+    ``call_weighted_experts`` (fusion v13d, default none) are weighted by the
+    trust of the call they make instead of q.  Their trust heads target
+    ``is_sn``, so q estimates P(SN), not P(expert right): an SN-filter expert
+    that correctly says "not SN" gets q near 0 and dropped out of the pool,
+    while one wrongly saying "SN" kept its weight.  The call trust is q where
+    the expert says SN (p_sn >= 0.5) and 1 - q where it says not SN.
     """
     df = df.copy()
     n = len(df)
     key_by_san = _key_by_san()
     excluded = set(ANCHOR_EXCLUDED) | {str(k) for k in exclude_experts}
+    call_weighted = {str(k) for k in call_weighted_experts}
     sans = sorted({
         m.group(1) for c in df.columns
         for m in [re.match(r"proj__(.+)__p_snia$", c)] if m
@@ -190,6 +199,8 @@ def compute_anchor(
         p_sn = p_snia + p_nonia
         q = _num(df, f"q__{san}")
         q = np.where(np.isfinite(q), q, 1.0) if f"q__{san}" in df.columns else np.ones(n)
+        if key in call_weighted:
+            q = np.where(p_sn >= 0.5, q, 1.0 - q)
         avail_col = f"avail__{san}"
         avail = (
             df[avail_col].fillna(0).astype(bool).to_numpy()
@@ -260,35 +271,57 @@ def cell_key(survey: str, n_exp_bucket: str, cov_bucket: str) -> str:
     return f"{survey}|{n_exp_bucket}|{cov_bucket}"
 
 
-def _sample_losses(model: np.ndarray, anchor: np.ndarray, alpha: float, y: np.ndarray) -> np.ndarray:
+ALPHA_OBJECTIVES = ("multiclass", "sn_binary")
+ALPHA_SE_UNITS = ("row", "object")
+_SN_INDEX = (_CLASS_INDEX["snia"], _CLASS_INDEX["nonIa_snlike"])
+
+
+def _sample_losses(model: np.ndarray, anchor: np.ndarray, alpha: float, y: np.ndarray,
+                   objective: str = "multiclass") -> np.ndarray:
+    """Per-row log-loss of the α-blend.  ``sn_binary`` (fusion v13d) scores
+    only the SN-vs-other axis, P(SN) = p_snia + p_nonia: the Ia|SN split is
+    ignored, so it cannot drive α where the Ia axis carries no information."""
     blend = alpha * model + (1.0 - alpha) * anchor
-    p_true = blend[np.arange(len(y)), y]
+    if objective == "sn_binary":
+        p_sn = blend[:, list(_SN_INDEX)].sum(axis=1)
+        p_true = np.where(np.isin(y, _SN_INDEX), p_sn, 1.0 - p_sn)
+    else:
+        p_true = blend[np.arange(len(y)), y]
     return -np.log(np.clip(p_true, EPS, 1.0))
 
 
 def _fit_alpha_1se(
     model: np.ndarray, anchor: np.ndarray, y: np.ndarray,
     w: np.ndarray | None = None,
+    *,
+    objective: str = "multiclass",
+    groups: np.ndarray | None = None,
 ) -> tuple[float, dict]:
     """Grid α by mean cal log-loss; 1-SE rule preferring the anchor (smaller α).
 
     ``w`` (fusion v13, optional) weights the rows: the mean becomes the
     weighted mean and the SE its linearization ``sqrt(Σ w²(l-μ)²)/Σw``.  With
-    ``w=None`` the arithmetic is the original unweighted one."""
-    if w is None:
-        means = {a: float(_sample_losses(model, anchor, a, y).mean()) for a in ALPHA_GRID}
+    ``w=None`` the arithmetic is the original unweighted one.
+
+    fusion v13d: ``objective`` picks the loss (:func:`_sample_losses`);
+    ``groups`` (e.g. object ids) makes the SE cluster-robust,
+    ``sqrt(Σ_g (Σ_{i∈g} w_i (l_i-μ))²)/Σw``, since the rows of one object
+    (its epochs and availability copies) are not independent."""
+    loss = lambda a: _sample_losses(model, anchor, a, y, objective)  # noqa: E731
+    if w is None and groups is None:
+        means = {a: float(loss(a).mean()) for a in ALPHA_GRID}
         best = min(means, key=lambda a: means[a])
-        losses_best = _sample_losses(model, anchor, best, y)
+        losses_best = loss(best)
         se = float(losses_best.std(ddof=1) / np.sqrt(len(y))) if len(y) > 1 else 0.0
     else:
-        w = np.asarray(w, dtype=float)
+        w = np.ones(len(y)) if w is None else np.asarray(w, dtype=float)
         sw = float(w.sum())
-        means = {a: float((w * _sample_losses(model, anchor, a, y)).sum() / sw)
-                 for a in ALPHA_GRID}
+        means = {a: float((w * loss(a)).sum() / sw) for a in ALPHA_GRID}
         best = min(means, key=lambda a: means[a])
-        losses_best = _sample_losses(model, anchor, best, y)
-        se = (float(np.sqrt((w ** 2 * (losses_best - means[best]) ** 2).sum()) / sw)
-              if len(y) > 1 else 0.0)
+        dev = w * (loss(best) - means[best])
+        if groups is not None:
+            dev = pd.Series(dev).groupby(pd.Series(np.asarray(groups)).to_numpy()).sum().to_numpy()
+        se = float(np.sqrt((dev ** 2).sum()) / sw) if len(y) > 1 else 0.0
     thresh = means[best] + se
     candidates = [a for a in ALPHA_GRID if means[a] <= thresh + 1e-12]
     chosen = min(candidates)  # α=0 == pure anchor
@@ -300,6 +333,10 @@ def _fit_alpha_1se(
         "loss_anchor": means[0.0],
     }
     return chosen, info
+
+
+_V13D_DEFAULTS: dict[str, Any] = {"anchor_call_experts": [], "alpha_objective": "multiclass",
+                                  "alpha_se": "row", "base_rate_unit": "row"}
 
 
 @dataclass
@@ -318,6 +355,11 @@ class BlendSpec:
     n_min: int = CELL_N_MIN
     g3: dict[str, Any] = field(default_factory=dict)
     drop_experts: list[str] = field(default_factory=list)   # fusion v13
+    # fusion v13d (defaults = v11..v13c behaviour; see fit_alpha)
+    anchor_call_experts: list[str] = field(default_factory=list)
+    alpha_objective: str = "multiclass"
+    alpha_se: str = "row"
+    base_rate_unit: str = "row"
 
     def to_dict(self) -> dict[str, Any]:
         d = {
@@ -333,6 +375,13 @@ class BlendSpec:
         }
         if self.drop_experts:  # v11/v12 blend.json stays byte-identical
             d["drop_experts"] = list(self.drop_experts)
+        v13d = {k: v for k, v in (("anchor_call_experts", list(self.anchor_call_experts)),
+                                  ("alpha_objective", self.alpha_objective),
+                                  ("alpha_se", self.alpha_se),
+                                  ("base_rate_unit", self.base_rate_unit))
+                if v != _V13D_DEFAULTS[k]}
+        if v13d:
+            d["v13d"] = v13d
         return d
 
     @classmethod
@@ -348,7 +397,18 @@ class BlendSpec:
             n_min=int(d.get("n_min", CELL_N_MIN)),
             g3=d.get("g3", {}),
             drop_experts=[str(k) for k in d.get("drop_experts", [])],
+            anchor_call_experts=[str(k) for k in (d.get("v13d") or {}).get("anchor_call_experts", [])],
+            alpha_objective=str((d.get("v13d") or {}).get("alpha_objective", "multiclass")),
+            alpha_se=str((d.get("v13d") or {}).get("alpha_se", "row")),
+            base_rate_unit=str((d.get("v13d") or {}).get("base_rate_unit", "row")),
         )
+
+    def anchor_kwargs(self) -> dict[str, Any]:
+        """``compute_anchor`` keyword arguments that reproduce this spec's anchor."""
+        return {"base_rate_by_survey": self.base_rates,
+                "default_base_rate": self.default_base_rate,
+                "exclude_experts": tuple(self.drop_experts),
+                "call_weighted_experts": tuple(self.anchor_call_experts)}
 
     def save(self, out_dir: str | Path) -> Path:
         out_dir = Path(out_dir)
@@ -471,6 +531,10 @@ def fit_alpha(
     exclude_qualities: tuple[str, ...] = (),
     weight_col: str | None = None,
     drop_experts: tuple[str, ...] = (),
+    anchor_call_experts: tuple[str, ...] = (),
+    alpha_objective: str = "multiclass",
+    alpha_se: str = "row",
+    base_rate_unit: str = "row",
 ) -> BlendSpec:
     """Fit the per-cell α table on a calibration frame.
 
@@ -489,7 +553,20 @@ def fit_alpha(
     meaning.  ``spec.g3["fit_frame"]`` records both settings.  ``drop_experts``
     are excluded from the anchor here AND persisted on the spec so
     :func:`apply` excludes them at serving too.
+
+    fusion v13d (defaults = the v13c behaviour, all persisted on the spec):
+    ``anchor_call_experts`` are weighted in the anchor by the trust of their
+    call (:func:`compute_anchor`); ``alpha_objective="sn_binary"`` fits α (and
+    runs the per-survey verification) on the SN-vs-other log-loss and AUC;
+    ``alpha_se="object"`` clusters the 1-SE rule's SE by ``object_id``;
+    ``base_rate_unit="object"`` estimates the anchor's P(Ia|SN) fallback with
+    one vote per object instead of per row (objects with more epochs no longer
+    dominate it).
     """
+    if alpha_objective not in ALPHA_OBJECTIVES:
+        raise ValueError(f"alpha_objective must be one of {ALPHA_OBJECTIVES}")
+    if alpha_se not in ALPHA_SE_UNITS or base_rate_unit not in ALPHA_SE_UNITS:
+        raise ValueError(f"alpha_se / base_rate_unit must be one of {ALPHA_SE_UNITS}")
     df = cal_df.copy()
     hon = (_honesty_mask(df, exclude_qualities=tuple(exclude_qualities))
            if apply_honesty else np.ones(len(df), dtype=bool))
@@ -512,11 +589,17 @@ def fit_alpha(
     for sv in np.unique(surveys):
         m = (surveys == sv) & is_sn
         if m.sum() > 0:
-            base_rates[sv] = float(np.clip(is_ia[m].mean(), *BASE_RATE_CLIP))
+            if base_rate_unit == "object" and "object_id" in df.columns:
+                rate = pd.Series(is_ia[m]).groupby(
+                    df.loc[m, "object_id"].astype(str).to_numpy()).first().mean()
+            else:
+                rate = is_ia[m].mean()
+            base_rates[sv] = float(np.clip(rate, *BASE_RATE_CLIP))
 
     df = compute_anchor(df, base_rate_by_survey=base_rates,
                         default_base_rate=default_base_rate,
-                        exclude_experts=tuple(drop_experts))
+                        exclude_experts=tuple(drop_experts),
+                        call_weighted_experts=tuple(anchor_call_experts))
 
     model = np.column_stack([_num(df, c) for c in model_cols])
     anchor = df[list(_ANCHOR_COLS)].to_numpy(dtype=float)
@@ -539,8 +622,18 @@ def fit_alpha(
     def _w(m: np.ndarray) -> np.ndarray | None:
         return None if w_all is None else w_all[m]
 
+    groups_all = (df["object_id"].astype(str).to_numpy()
+                  if alpha_se == "object" and "object_id" in df.columns else None)
+
+    def _fit(m: np.ndarray) -> tuple[float, dict]:
+        return _fit_alpha_1se(model[m], anchor[m], y[m], _w(m), objective=alpha_objective,
+                              groups=None if groups_all is None else groups_all[m])
+
     spec = BlendSpec(base_rates=base_rates, default_base_rate=default_base_rate,
-                     drop_experts=[str(k) for k in drop_experts])
+                     drop_experts=[str(k) for k in drop_experts],
+                     anchor_call_experts=sorted(str(k) for k in anchor_call_experts),
+                     alpha_objective=alpha_objective, alpha_se=alpha_se,
+                     base_rate_unit=base_rate_unit)
     g3_cells: dict[str, Any] = {}
 
     # per-cell fits
@@ -550,10 +643,14 @@ def fit_alpha(
                 m = usable & (surveys == sv) & (n_exp_b == neb) & (cov_b == cb)
                 if m.sum() < CELL_N_MIN:
                     continue
-                a, info = _fit_alpha_1se(model[m], anchor[m], y[m], _w(m))
+                a, info = _fit(m)
                 ck = cell_key(sv, neb, cb)
                 spec.alpha_cells[ck] = {"alpha": a, "n": int(m.sum()),
                                         "grid_best": info["best_grid"]}
+                if (alpha_objective, alpha_se) != ("multiclass", "row"):
+                    spec.alpha_cells[ck]["loss_by_alpha"] = {
+                        str(k): round(v, 6) for k, v in info["means"].items()}
+                    spec.alpha_cells[ck]["se"] = round(info["se"], 6)
                 g3_cells[ck] = {
                     "loss_blend": info["loss_blend"],
                     "loss_anchor": info["loss_anchor"],
@@ -564,12 +661,12 @@ def fit_alpha(
     for sv in np.unique(surveys):
         m = usable & (surveys == sv)
         if m.sum() >= 1:
-            a, info = _fit_alpha_1se(model[m], anchor[m], y[m], _w(m))
+            a, info = _fit(m)
             spec.alpha_survey[sv] = {"alpha": a, "n": int(m.sum())}
 
     # global fallback fit
     if usable.sum() >= 1:
-        a, _ = _fit_alpha_1se(model[usable], anchor[usable], y[usable], _w(usable))
+        a, _ = _fit(usable)
         spec.alpha_global = {"alpha": a, "n": int(usable.sum())}
 
     # ── post-fit per-survey pooled verification (G3) ─────────────────────
@@ -584,10 +681,10 @@ def fit_alpha(
         ])[:, None]
         blend = alphas * model[m] + (1.0 - alphas) * anchor[m]
         wm = _w(m)
-        ll_blend = float(_neg_logloss(blend, y[m], wm))
-        ll_anchor = float(_neg_logloss(anchor[m], y[m], wm))
-        auc_blend = _macro_ovr_auc(y[m], blend, wm)
-        auc_anchor = _macro_ovr_auc(y[m], anchor[m], wm)
+        ll_blend = float(_neg_logloss(blend, y[m], wm, alpha_objective))
+        ll_anchor = float(_neg_logloss(anchor[m], y[m], wm, alpha_objective))
+        auc_blend = _verify_auc(y[m], blend, wm, alpha_objective)
+        auc_anchor = _verify_auc(y[m], anchor[m], wm, alpha_objective)
         ok = ll_blend <= ll_anchor + 1e-9 and (
             auc_blend is None or auc_anchor is None or auc_blend >= auc_anchor - 1e-9
         )
@@ -596,8 +693,8 @@ def fit_alpha(
             # collapse to single per-survey α
             a_sv = spec.alpha_survey[sv]["alpha"]
             blend_sv = a_sv * model[m] + (1.0 - a_sv) * anchor[m]
-            ll_sv = float(_neg_logloss(blend_sv, y[m], wm))
-            auc_sv = _macro_ovr_auc(y[m], blend_sv, wm)
+            ll_sv = float(_neg_logloss(blend_sv, y[m], wm, alpha_objective))
+            auc_sv = _verify_auc(y[m], blend_sv, wm, alpha_objective)
             if ll_sv <= ll_anchor + 1e-9 and (
                 auc_sv is None or auc_anchor is None or auc_sv >= auc_anchor - 1e-9
             ):
@@ -634,13 +731,25 @@ def fit_alpha(
     return spec
 
 
-def _neg_logloss(proba: np.ndarray, y: np.ndarray, w: np.ndarray | None = None) -> float:
-    p_true = proba[np.arange(len(y)), y]
-    nll = -np.log(np.clip(p_true, EPS, 1.0))
+def _neg_logloss(proba: np.ndarray, y: np.ndarray, w: np.ndarray | None = None,
+                 objective: str = "multiclass") -> float:
+    nll = _sample_losses(proba, proba, 1.0, y, objective)
     if w is None:
         return float(nll.mean())
     w = np.asarray(w, dtype=float)
     return float((w * nll).sum() / w.sum())
+
+
+def _verify_auc(y: np.ndarray, proba: np.ndarray, w: np.ndarray | None,
+                objective: str) -> float | None:
+    if objective != "sn_binary":
+        return _macro_ovr_auc(y, proba, w)
+    from sklearn.metrics import roc_auc_score
+    y_sn = np.isin(y, _SN_INDEX).astype(int)
+    if y_sn.min() == y_sn.max():
+        return None
+    kw = {} if w is None else {"sample_weight": np.asarray(w, dtype=float)}
+    return float(roc_auc_score(y_sn, proba[:, list(_SN_INDEX)].sum(axis=1), **kw))
 
 
 # ── apply ─────────────────────────────────────────────────────────────────
@@ -660,13 +769,12 @@ def apply(
     (n_experts_fired==0 or NaN anchor) are pinned to the model (α=1).
     """
     df = df.copy()
-    if not all(c in df.columns for c in _ANCHOR_COLS) or spec.drop_experts:
+    if (not all(c in df.columns for c in _ANCHOR_COLS) or spec.drop_experts
+            or spec.anchor_call_experts):
         # v13: a spec with dropped experts always recomputes the anchor so a
         # caller's anchor (scorer: compute_anchor without the spec) cannot
-        # let a dropped expert fire.
-        df = compute_anchor(df, base_rate_by_survey=spec.base_rates,
-                            default_base_rate=spec.default_base_rate,
-                            exclude_experts=tuple(spec.drop_experts))
+        # let a dropped expert fire; v13d: likewise for call-trust weights.
+        df = compute_anchor(df, **spec.anchor_kwargs())
 
     model = np.column_stack([_num(df, c) for c in model_cols])
     anchor = df[list(_ANCHOR_COLS)].to_numpy(dtype=float)
