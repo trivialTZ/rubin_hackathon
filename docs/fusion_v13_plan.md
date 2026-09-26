@@ -240,3 +240,44 @@ Recomputed on SCC (three chained jobs):
    `snapshots_{lsst,ztf}_v13c`, DP2 `snapshots_v13cloc`.
 3. `jobs/run_fusion_v13.sh` with `FUSION_V13_ARM=v13c`: the v13b flags, Stage A retrained. Only v13c is scored on the
    v13c golds; v12 / v13b benchmark predictions stay as they were.
+4. `jobs/run_v13c_dp2_lcf.sh`: `lc_features_bv` re-run on DP2 with the flux fix (it landed after job 2 was queued),
+   DP2 gold rebuilt and re-scored.
+
+### v13c results (SCC 7739792 gold 3 h 15 min, 7739793 train 62 min + scoring 11 min, 7740520 DP2 8 min; all exit 0)
+
+Inputs after the rebuild: SALT3 degenerate rows 58.9% → 5.9% (training silver), 69% → 8% (benchmark), 44% → 10% and
+36% → 3% (explorer LSST / ZTF); DP2 now has SALT3 and `lc_features_bv` output. No NaN `alert_jd` in any gold. The
+train / cal / test split is identical to v12w (0 objects moved), so the comparison isolates the fixes.
+
+Guards all pass (G8 0.214 ZTF / 0.173 LSST). Acceptance: 23 pass, 8 fail, 4 n/a (the no-broker AUC rows compare with
+v12, which is not re-scored on the v13c golds; against the v13b ablation's v12 rows they pass at n = 3 and 5 and fail at
+10 and latest). Benchmark, v13c vs v13b (v12):
+
+| inputs | metric | n = 3 | n = 5 | n = 10 | latest |
+|---|---|---|---|---|---|
+| full | SN-vs-other AUC | 0.913 vs 0.930 (0.937) | 0.893 vs 0.895 (0.894) | 0.851 vs 0.875 (0.842) | 0.948 vs 0.952 (0.929) |
+| full | Brier P(SN) | 0.091 vs 0.090 (0.105) | 0.097 vs 0.088 (0.130) | 0.087 vs 0.090 (0.112) | 0.089 vs 0.082 (0.115) |
+| full | Brier 3-class | 0.283 vs 0.300 | 0.262 vs 0.258 | 0.211 vs 0.217 | 0.338 vs 0.356 |
+| no brokers | SN-vs-other AUC | 0.889 vs 0.903 (0.880) | 0.859 vs 0.862 (0.859) | 0.806 vs 0.832 (0.826) | 0.921 vs 0.923 (0.933) |
+| no brokers | Brier P(SN) | 0.102 vs 0.121 | 0.107 vs 0.116 | 0.097 vs 0.114 | 0.108 vs 0.114 |
+| no local | Brier P(SN) | 0.133 vs 0.091 | 0.143 vs 0.099 | 0.137 vs 0.095 | 0.128 vs 0.098 |
+| lightcurve only | Brier P(SN) | 0.101 vs 0.110 | 0.116 vs 0.116 | 0.111 vs 0.109 | 0.127 vs 0.131 |
+
+- Every difference from v13b is inside the bootstrap CIs (benchmark n = 140 to 222). v13c is more hedged: full-input
+  median P(SN) 0.80 to 0.82 on SNe and 0.13 to 0.20 on others (v13b 0.91 and 0.08 to 0.11; n = 10 excluded, where
+  both drop to 0.4). The anchored blend dropped α in the
+  main Rubin cell (`lsst|2+|>=0.25`) from 0.75 to 0.5 through its 1-SE rule (grid best still 0.75; the Rubin
+  out-of-fold blend loss is 0.436 vs 0.417 in v13b).
+- Regressions: brokers without local experts over-call SN on others (median P(SN) 0.34 to 0.40 vs 0.20 to 0.21; Brier above); the
+  no-broker n = 10 dip is unchanged (median P(SN) on SNe 0.30, v13b 0.36); DP2 typed SNe (local experts only) are
+  scored much lower, and v13c scores them lower with or without the new DP2 SALT3 / `lc_features_bv` inputs, so this is
+  the retrained stack plus the smaller α, not the DP2 inputs (numbers in the private notes).
+- ZTF macro@5 0.920 [0.900, 0.938]; Rubin Ia|SN still chance (0.46 [0.34, 0.59] at latest). Trust: Rubin stamp 0.898
+  vs is-SN; Fink SNN / CATS 0.781 / 0.780; local heads within 0.03 of v12.
+- v13b's LSST training rows carried the timing look-ahead (local experts averaged over all epochs); the serving golds
+  were timed in both runs, so the benchmark comparison is fair, and v13c is the first stack without the look-ahead.
+
+TNS × EDP2 explorer cohort: typed ZTF objects AUC 0.935 / 0.892 / 0.873 / 0.958 at n = 3 / 5 / 10 / latest (v13b 0.921
+/ 0.896 / 0.891 / 0.934), Brier 0.016 / 0.013 / 0.015 / 0.012 (v13b 0.017 / 0.014 / 0.015 / 0.013); the 12 typed Rubin
+SNe median P(SN) 0.82 (v13b 0.89). At the latest detection, v13c vs v13b P(SN) on the cohort: ZTF Spearman 0.94, 0.6%
+of objects move by more than 0.2; Rubin Spearman 0.93, median −0.03, 17% move by more than 0.2.
