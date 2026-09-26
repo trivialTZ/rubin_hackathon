@@ -1156,7 +1156,7 @@ class HierarchicalFollowup:
         predictions; NaN where a fold could not be fit.  Fold models are the
         pooled realization (the per-survey arm, when gated on, only affects the
         deployed head)."""
-        from sklearn.model_selection import GroupKFold
+        from debass_meta.models.folds import StableGroupKFold as GroupKFold  # CPU-independent folds (v13f)
 
         groups = frame["object_id"].astype(str).to_numpy()
         n_groups = len(np.unique(groups))

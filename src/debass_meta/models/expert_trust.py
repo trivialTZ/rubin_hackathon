@@ -313,7 +313,7 @@ def train_expert_trust_suite(
     exclude_circular_consensus: bool = True,
     n_jobs: int = 1,
 ):
-    from sklearn.model_selection import GroupKFold
+    from debass_meta.models.folds import StableGroupKFold as GroupKFold  # CPU-independent folds (v13f)
 
     output_df = snapshot_df.copy()
     metrics_report: dict[str, Any] = {}

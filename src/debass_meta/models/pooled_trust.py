@@ -773,7 +773,7 @@ def _oof_pooled_fits(
     object groups exist there are no folds: the in-sample fit is returned as
     ``oof`` and both fold structures are empty.
     """
-    from sklearn.model_selection import GroupKFold
+    from debass_meta.models.folds import StableGroupKFold as GroupKFold  # CPU-independent folds (v13f)
 
     oof = np.full(len(y), np.nan, dtype=float)
     fold_bundles: list[Any] = []
@@ -960,7 +960,7 @@ def _train_dedicated_head(
 ) -> dict[str, Any] | None:
     """Train a v6e2-style per-expert head on the (already honesty-filtered)
     helpfulness sub-frame; same OOF protocol as the pooled model."""
-    from sklearn.model_selection import GroupKFold
+    from debass_meta.models.folds import StableGroupKFold as GroupKFold  # CPU-independent folds (v13f)
 
     rows = expert_rows[pd.to_numeric(expert_rows[target_col], errors="coerce").notna()].copy()
     if len(rows) == 0:

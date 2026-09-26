@@ -820,7 +820,7 @@ def _grouped_cv_loss(
     n_splits: int = 3,
 ) -> float:
     """Grouped-CV held-out weighted log-loss of a calibrator kind on cal."""
-    from sklearn.model_selection import GroupKFold
+    from debass_meta.models.folds import StableGroupKFold as GroupKFold  # CPU-independent folds (v13f)
 
     n_groups = len(np.unique(groups))
     splits = min(int(n_splits), n_groups)

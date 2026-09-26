@@ -355,3 +355,30 @@ rule's preference for the anchor assumed the anchor is the safe default; on LSST
 0.28, and a 5-point grid fitted on cross-fitted predictions of about 1,000 LSST objects has little room to overfit.
 This choice follows v13d's benchmark failure, so the benchmark is no longer a clean test for the α rule; v13e keeps
 the same acceptance (criteria 1 to 5 above) and its result will be read with that caveat.
+
+### v13e result (SCC 7744203, 12 min, exit 0): 14 of 15, but not reproducible
+
+Benchmark, v13e (v13b), SN-vs-other AUC / Brier P(SN): full 0.939 / 0.080 (0.930 / 0.090), 0.906 / 0.090 (0.895 /
+0.088), 0.867 / 0.081 (0.875 / 0.090), 0.956 / 0.084 (0.952 / 0.082); brokers only 0.938 / 0.076, 0.922 / 0.087,
+0.889 / 0.078, 0.949 / 0.089; no brokers 0.892 / 0.104, 0.871 / 0.107, 0.828 / 0.094, 0.925 / 0.105 (v13b Brier 0.121
+/ 0.116 / 0.114 / 0.114). Explorer cohort, typed ZTF at latest AUC 0.939 (v13c 0.958, v13b 0.934; the one fail),
+Brier 0.0125; typed Rubin SNe median P(SN) 0.88 (v13b 0.89).
+
+v13e's α in cell `lsst|2+|>=0.25` was 0.5, not the 0.75 that v13d's loss curve gave, although both runs share the
+same heads (identical `model.pkl`) and anchor. The cross-fitted out-of-fold head predictions differ on every row
+(up to 0.80; same distribution), and so do the calibrators (calibrated P(SN) up to 0.18 apart; model-only AUC at
+n = 10 0.924 vs 0.856). Cause: `GroupKFold` orders groups by size with `np.argsort`, which NumPy 2.2 runs on SIMD
+kernels whose order among equal sizes depends on the CPU. v13d ran on a node without AVX-512 (scc-me8, E5-2650 v2),
+v13e on one with it (scc-612, Gold 6526Y); on one node the same `GroupKFold` call gives a different fold map with
+`NPY_DISABLE_CPU_FEATURES` set to the AVX-512 features. Every cross-fitted quantity since v13 (head calibrators, α,
+G2, and Stage A's out-of-fold q) therefore depended on the node the job landed on.
+
+Fix: `models/folds.py:StableGroupKFold` (same greedy balancing, stable sort, ties by object id; identical fold map
+with and without AVX-512, `tests/test_folds.py`) replaces `GroupKFold` in Stage A, both heads and the multiclass
+follow-up. Saved models are unaffected (folds are fit-time only).
+
+### v13f (declared before its run)
+
+v13e's settings with the stable folds (Stage A still v13c's, frozen). Same acceptance. The spread between v13d's and
+v13e's calibrators (same heads, two fold maps) is a measure of how fragile the LSST isotonic calibrator is with about
+45 SN objects; v13f fixes one fold map, it does not remove that fragility.
