@@ -406,3 +406,6 @@ the v13d diagnosis); DP2 typed SNe (local experts only) stay low (private notes)
 (v13g / label work): a smoother LSST calibrator than isotonic (plateau ties cost AUC and move with the fold map),
 the negative-only Rubin SNe in the gold, more Rubin SN labels. Stage A is still v13c's (fitted with the old folds on
 an AVX-512 node): reusing it is reproducible, refitting it on another node type would not be until it is rerun.
+
+**Deployed (2026-09-26):** the explorer site uses v13f (tns-edp2-explorer ad135cb), on the maintainer's decision with
+the one acceptance miss (criterion 5a, 0.001 short) noted above; trust stays hidden and Rubin IDs show no P(Ia).
