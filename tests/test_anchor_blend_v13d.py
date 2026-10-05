@@ -139,3 +139,27 @@ def test_alpha_rule_best_takes_the_grid_minimum():
     assert a_best == info_b["best_grid"] and a_1se <= a_best
     assert BlendSpec.from_dict(BlendSpec(alpha_rule="best").to_dict()).alpha_rule == "best"
     assert "v13d" not in BlendSpec(alpha_rule="1se").to_dict()
+
+
+def test_alpha_fit_rows_original_drops_lsst_dropout_copies():
+    """fusion v13h: --alpha-fit-rows lsst:original fits the LSST cells on real rows only."""
+    rows = []
+    for i in range(240):
+        sn = i % 2 == 0
+        copy = i >= 60                                  # 60 real rows, 180 dropout copies
+        r = _row(0.9 if (sn and copy) else (0.1 if copy else 0.5), 0.8, 0.5, 0.5)
+        good = (0.45, 0.45, 0.1) if sn else (0.05, 0.05, 0.9)
+        r.update(object_id=f"o{i % 60}", target_class="snia" if sn else "other", n_det=5,
+                 is_aug=1.0 if copy else 0.0, **dict(zip(("p_snia", "p_nonia", "p_other"),
+                                                       (1 / 3, 1 / 3, 1 / 3) if copy else good)))
+        rows.append(r)
+    df = pd.DataFrame(rows)
+    kw = dict(alpha_objective="sn_binary", alpha_rule="best", apply_honesty=False)
+    pooled = fit_alpha(df, **kw)
+    real = fit_alpha(df, original_rows_surveys=("LSST",), **kw)
+    (ck,) = real.alpha_cells                        # one LSST cell (2+ experts)
+    assert pooled.alpha_cells[ck]["alpha"] < 1.0
+    assert real.alpha_cells[ck]["alpha"] == 1.0 and real.alpha_cells[ck]["n"] == 60
+    assert real.g3["fit_frame"]["original_rows_surveys"] == ["lsst"]
+    assert real.g3["fit_frame"]["n_copies_dropped"] == 180
+    assert "fit_frame" not in pooled.g3

@@ -37,6 +37,17 @@
 #   object-clustered SE (0.05 to 0.08 in the LSST cells, few SN objects) made the 1-SE rule pick alpha 0.25 / 0 where
 #   the out-of-fold loss is lowest at 0.75 / 0.5. Stage A from v13c; v13c scored on the same ablation.
 # FUSION_V13_ARM=v13f: *_v13f — v13e's settings; the code now uses CPU-independent fold maps (models/folds.py).
+# FUSION_V13_ARM=v13h: *_v13h — v13g with the LSST α cells fit on real rows only (--alpha-fit-rows lsst:original; the
+#   availability-dropout copies set v13g's LSST α to 0.5 / 0.75 where its real rows prefer 1). Stage A from v13g.
+# FUSION_V13_ARM=v13i: *_v13i — v13g with the LSST α cells fit under the head-1 calibrators' object weights
+#   (--alpha-weights lsst:object). v13h showed the copies were not the cause: under the label-quality weights the α frame
+#   is 21% SN while the LSST calibrator's object mix is 3.8%, so α was correcting P(SN)'s level. Stage A from v13g.
+# FUSION_V13_ARM=v13j: v13i with G2 on P(Ia|SN) (--g2-metric p_ia_given_sn); same models and outputs as v13i.
+# FUSION_V13_HEAD1_CALIBRATOR="lsst:beta" (space-separated SURVEY:KIND, KIND = beta | platt | isotonic): per-survey head-1
+#   calibrator family (smooth beta calibration instead of the LSST isotonic plateaus); default empty = unchanged.
+# FUSION_V13_CALL_TRUST=1: Stage A also fits the is_sn "call trust" heads (--stage-a-call-trust) and the scorer emits
+#   call_trust__ / sn_call__; Stage A is then refitted (a reused Stage A has no such heads), so q__ is refitted too.
+# FUSION_V13_SFX=<name>: output suffix override (use a new name when an option above changes a deployed arm's outputs).
 # FUSION_V13_SMOKE=1: --smoke, outputs *_v13_smoke.
 # FUSION_V13_REUSE_STAGE_A=1: reuse this arm's Stage-A snapshot + trust dir from an earlier run (--skip-stage-a).
 # FUSION_V13_STAGE_A_FROM=<sfx>: copy that arm's Stage-A trust dir (+ link its snapshot) and reuse it.
@@ -79,6 +90,36 @@ if [[ "${ARM}" == "v13e" || "${ARM}" == "v13f" ]]; then
               --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
               --anchor-call-weight-sn-filter --alpha-rule best)
 fi
+if [[ "${ARM}" == "v13g" ]]; then
+    SFX=v13g; BASE=v13g; GOLD_TAG=v13g; DP2_TAG=v13gloc; ABL_MODELS=(v13f)
+    ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova
+              --head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__
+              --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
+              --anchor-call-weight-sn-filter --alpha-rule best
+              --head1-calibrator lsst:beta --stage-a-call-trust)
+fi
+if [[ "${ARM}" == "v13h" ]]; then
+    SFX=v13h; BASE=v13g; GOLD_TAG=v13g; DP2_TAG=v13gloc; ABL_MODELS=(v13f v13g); STAGE_A_FROM="${STAGE_A_FROM:-v13g}"
+    ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova
+              --head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__
+              --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
+              --anchor-call-weight-sn-filter --alpha-rule best
+              --head1-calibrator lsst:beta --alpha-fit-rows lsst:original)
+fi
+if [[ "${ARM}" == "v13i" || "${ARM}" == "v13j" ]]; then
+    SFX="${ARM}"; BASE=v13g; GOLD_TAG=v13g; DP2_TAG=v13gloc; ABL_MODELS=(v13f v13g); STAGE_A_FROM="${STAGE_A_FROM:-v13g}"
+    ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova
+              --head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__
+              --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
+              --anchor-call-weight-sn-filter --alpha-rule best
+              --head1-calibrator lsst:beta --alpha-weights lsst:object)
+    if [[ "${ARM}" == "v13j" ]]; then ARM_ARGS+=(--g2-metric p_ia_given_sn); fi
+fi
+for spec in ${FUSION_V13_HEAD1_CALIBRATOR:-}; do ARM_ARGS+=(--head1-calibrator "${spec}"); done
+if [[ "${FUSION_V13_CALL_TRUST:-0}" == "1" ]]; then
+    ARM_ARGS+=(--stage-a-call-trust); STAGE_A_FROM=""; FUSION_V13_REUSE_STAGE_A=0
+fi
+if [[ -n "${FUSION_V13_SFX:-}" ]]; then SFX="${FUSION_V13_SFX}"; fi
 if [[ "${SMOKE}" == "1" ]]; then
     SFX="${SFX}_smoke"; SMOKE_ARGS=(--smoke)
     ACK_ARGS=(--acknowledge-g7-not-evaluable)
@@ -91,6 +132,8 @@ SPLIT="data/gold/split_fusion_${BASE}.json"
 DP1_SNAP="data/gold/dp1_snapshots_fusion_${BASE}.parquet"
 TRUTH_V11="data/truth/object_truth_v11.parquet"
 LOCKED="data/gold/lsst_live_locked_test.json"
+# v13g: the build-time quarantine union (frozen benchmark + hard-negative test, jobs/run_fusion_v13g_gold.sh)
+if [[ "${BASE}" == "v13g" ]]; then LOCKED="data/gold/lsst_locked_union_v13g.json"; fi
 SNAP_TRUST="data/gold/object_epoch_snapshots_fusion_${SFX}_trust.parquet"
 TRUST="models/trust_fusion_${SFX}"; FOLLOW="models/followup_fusion_${SFX}"
 BLEND="models/anchor_blend_${SFX}"; CONF="models/conformal_fusion_${SFX}"
@@ -151,6 +194,13 @@ for m in ${ABL_MODELS[@]+"${ABL_MODELS[@]}"}; do ABL_ARGS+=(--model "${m}"); don
 python3 -u scripts/eval_input_ablation.py --gold "${BENCH_GOLD}" --truth "${BENCH}/truth.parquet" \
     "${ABL_ARGS[@]}" --out-dir "${BENCH}/ablate_${SFX}"
 cp "${BENCH}/ablate_${SFX}/predictions_abl_full_${SFX}.parquet" "${BENCH}/scores/predictions_bench_${SFX}.parquet"
+# 3b. v13g: the hard-negative test set (frozen, data/gold/lsst_hardneg_test_20261004.json), scored once per version
+HN=data/hardneg_20261004
+if [[ -f "${HN}/gold/test_${GOLD_TAG}.parquet" ]]; then
+    python3 -u scripts/eval_input_ablation.py --gold "${HN}/gold/test_${GOLD_TAG}.parquet" \
+        --truth "${HN}/test_truth.parquet" --manifest data/gold/lsst_hardneg_test_20261004.json \
+        "${ABL_ARGS[@]}" --out-dir "${HN}/ablate_${SFX}"
+fi
 
 # 4. DP2 typed objects: lightcurve + local experts, no brokers
 python3 -u scripts/score_fusion_v11.py --tag "dp2_${SFX}" --snapshots "${DP2_GOLD}" \

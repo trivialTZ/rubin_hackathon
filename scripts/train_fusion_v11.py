@@ -50,6 +50,11 @@ fusion v13 flags (docs/fusion_v13_plan.md; all default to the v11/v12 path):
                                           cal; α and G2 on OOF-train ∪ cal
   --head1-cal-weights object          v13b calibrators without label-quality factors
   --stage-a-weak-policy / --stage-a-q-prior-experts   Stage-A passthroughs
+  --head1-calibrator lsst:beta        v13g per-survey calibrator family (beta | platt | isotonic)
+  --stage-a-call-trust                v13g also fit is_sn "call trust" heads in Stage A (call_trust.py)
+  --alpha-fit-rows lsst:original      v13h α cells of a survey fit on real rows (no dropout copies)
+  --alpha-weights lsst:object         v13i α cells of a survey fit with the head-1 calibrators' object weights
+  --g2-metric p_ia_given_sn           v13j G2 on P(Ia|SN) instead of the deployed p_snia
 
 Outputs:
   models/trust_fusion_v11/                       (Stage A)
@@ -158,15 +163,27 @@ def _lsst_spec_ia_frame(
     return frame.reset_index(drop=True)
 
 
+G2_METRICS = ("p_snia", "p_ia_given_sn")
+
+
 def evaluate_g2(
     snap_scored: pd.DataFrame, train_ids: set[str], cal_ids: set[str],
     *, acknowledge_unevaluable: bool, test_ids: set[str] | None = None,
+    metric: str = "p_snia",
 ) -> dict[str, Any]:
     """G2: on the LSST spec-Ia union, median p_snia >= 0.15 AND max > 0.2, n >= 10.
 
     ``snap_scored`` must already carry the DEPLOYED (post-blend) ``p_snia``.
     Returns a status dict; ``status`` ∈ {PASS, FAIL, G2_UNEVALUABLE}.
+
+    fusion v13j: ``metric="p_ia_given_sn"`` applies the same thresholds to
+    P(Ia|SN) = p_snia / (p_snia + p_nonia), the Ia axis alone.  The v10 failure
+    G2 was written for (LSST Ia suppressed) is still caught, but the level of
+    P(SN), a product choice checked elsewhere since the 2026-10-04 contract,
+    no longer decides it.  Both medians are reported either way.
     """
+    if metric not in G2_METRICS:
+        raise ValueError(f"G2 metric must be one of {G2_METRICS}")
     frame = _lsst_spec_ia_frame(snap_scored, train_ids, cal_ids, test_ids)
     n = int(len(frame))
     n_all_nan = 0
@@ -179,17 +196,25 @@ def evaluate_g2(
             "reason": f"only {n} eligible LSST spec-Ia union rows (require n>=10)",
             "acknowledged": bool(acknowledge_unevaluable),
         }
-    p = pd.to_numeric(frame["p_snia"], errors="coerce").to_numpy(float)
-    p = p[np.isfinite(p)]
-    med = float(np.median(p)) if len(p) else float("nan")
-    mx = float(np.max(p)) if len(p) else float("nan")
+    ia = pd.to_numeric(frame["p_snia"], errors="coerce").to_numpy(float)
+    sn = ia + pd.to_numeric(frame["p_nonia"], errors="coerce").to_numpy(float)
+    vals = {"p_snia": ia, "p_ia_given_sn": np.divide(ia, sn, out=np.full_like(ia, np.nan), where=sn > 0)}
+    stats = {}
+    for k, v in vals.items():
+        v = v[np.isfinite(v)]
+        stats[k] = (float(np.median(v)) if len(v) else float("nan"), float(np.max(v)) if len(v) else float("nan"))
+    med, mx = stats[metric]
     ok = (med >= 0.15) and (mx > 0.2)
-    return {
+    out = {
         "guard": "G2", "status": "PASS" if ok else "FAIL",
         "n_rows": n, "n_lc_all_nan": n_all_nan,
-        "median_p_snia": med, "max_p_snia": mx,
+        "median_p_snia": stats["p_snia"][0], "max_p_snia": stats["p_snia"][1],
         "threshold": {"median_min": 0.15, "max_min": 0.2},
     }
+    if metric != "p_snia":
+        out.update(metric=metric, median_p_ia_given_sn=stats["p_ia_given_sn"][0],
+                   max_p_ia_given_sn=stats["p_ia_given_sn"][1])
+    return out
 
 
 # ── guard G3 (from the BlendSpec) ────────────────────────────────────────────
@@ -357,6 +382,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="<=200-object end-to-end run on local data")
     p.add_argument("--skip-stage-a", action="store_true",
                    help="Reuse q/q_prior columns from an existing --output-snapshots parquet")
+    p.add_argument("--g2-metric", choices=G2_METRICS, default="p_snia",
+                   help="v13j: what G2's thresholds apply to: deployed p_snia (default), or P(Ia|SN) "
+                        "(the Ia axis alone, independent of the P(SN) level)")
     p.add_argument("--acknowledge-g2-unevaluable", action="store_true",
                    help="Continue past a G2_UNEVALUABLE verdict (stamps the report headline)")
     p.add_argument("--acknowledge-g7-not-evaluable", action="store_true",
@@ -430,6 +458,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                      help="v13b: weights of the cross-fitted head-1 calibrators. 'train' = head-1 "
                           "training weights (v13); 'object' = without the label-quality factor, "
                           "so calibrated P(SN) follows the object mix (context rows count fully)")
+    v13.add_argument("--head1-calibrator", action="append", default=[], metavar="SURVEY:KIND",
+                     help="v13g: head-1 calibrator family for SURVEY (beta | platt | isotonic; "
+                          "e.g. lsst:beta, a smooth monotone map without isotonic's tie plateaus). "
+                          "A survey not named keeps the isotonic / Platt rule on --survey-cal-min. "
+                          "Persisted in the follow-up metadata. Repeatable.")
     v13.add_argument("--stage-a-weak-policy",
                      choices=("all", "is_sn_only", "lsst_is_sn_only", "none"), default=None,
                      help="Passed to train_pooled_trust(weak_policy=...) when supported")
@@ -444,6 +477,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                           "the report and exit before any model fitting")
     v13.add_argument("--stage-a-q-prior-experts", choices=("all", "trained"), default=None,
                      help="Passed to train_pooled_trust(q_prior_experts=...) when supported")
+    v13.add_argument("--stage-a-call-trust", action="store_true",
+                     help="v13g: Stage A also fits an is_sn head for every non-SN-filter expert with a trust "
+                          "head (same rows / folds / features), saved under <trust-dir>/pooled/call_trust/; the "
+                          "snapshot gains q_sn__<expert> (out-of-fold on train rows) and the scorer emits "
+                          "call_trust__ / sn_call__. Head inputs and q__ are unchanged. Needs Stage A to run "
+                          "(or a reused trust dir that already has the heads).")
     v13d = p.add_argument_group("fusion v13d (defaults = v13c behaviour; docs/fusion_v13_plan.md, v13d)")
     v13d.add_argument("--head-drop-feature-prefix", action="append", default=[], metavar="PREFIX",
                       help="Keep columns with this prefix out of both heads (e.g. event_count__, "
@@ -457,6 +496,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                       help="α per cell: the 1-SE rule preferring the anchor, or the grid minimum")
     v13d.add_argument("--anchor-base-rate-unit", choices=anchor_blend.ALPHA_SE_UNITS, default="row",
                       help="Anchor P(Ia|SN) fallback estimated per row or per object")
+    v13d.add_argument("--alpha-fit-rows", action="append", default=[], metavar="SURVEY:original",
+                      help="v13h: fit SURVEY's α cells on real rows only (its availability-dropout "
+                           "copies left out of the α fit frame). Repeatable.")
+    v13d.add_argument("--alpha-weights", action="append", default=[], metavar="SURVEY:object",
+                      help="v13i: fit SURVEY's α cells with the head-1 calibrators' object weights (the "
+                           "row weights without the label-quality factor, as --head1-cal-weights object), "
+                           "so α is judged on the population P(SN) is calibrated to. Needs --cross-fit-folds. "
+                           "Repeatable.")
     v13d.add_argument("--anchor-call-weight-sn-filter", action="store_true",
                       help="Weight the experts whose trust head targets is_sn (read from the trust "
                            "dir) by the trust of their call in the anchor: q if they say SN, 1-q if not")
@@ -609,6 +656,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.skip_stage_a:
         if not output_snapshots.exists():
             raise SystemExit(f"--skip-stage-a but {output_snapshots} does not exist")
+        if args.stage_a_call_trust and not (
+                Path(args.trust_dir) / "pooled" / "call_trust" / "metadata.json").exists():
+            raise SystemExit("--stage-a-call-trust with --skip-stage-a needs call-trust heads in "
+                             f"{args.trust_dir}/pooled/call_trust (this Stage A was trained without them)")
         snap_trust = pd.read_parquet(output_snapshots)
         print(f"Stage A skipped — reusing q columns from {output_snapshots} "
               f"({len(snap_trust):,} rows)")
@@ -659,6 +710,11 @@ def main(argv: list[str] | None = None) -> int:
                     stage_a_passthrough[kw] = f"NOT PASSED (train_pooled_trust has no '{kw}')"
                     print(f"  [warn] --{flag.replace('_', '-')}={val} requested but "
                           f"train_pooled_trust has no '{kw}' kwarg — ignored")
+            if args.stage_a_call_trust:
+                if "call_trust" not in params:
+                    raise SystemExit("--stage-a-call-trust: train_pooled_trust has no 'call_trust' kwarg")
+                kwargs["call_trust"] = True
+                stage_a_passthrough["call_trust"] = True
         except (TypeError, ValueError):
             pass
         result = train_pooled_trust(
@@ -683,7 +739,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── P3: hierarchical heads (G7 inside fit) + per-head calibration ────────
     from debass_meta.models.hierarchical_followup import (
-        AvailabilityDropout, G8Error, HierarchicalFollowup,
+        AvailabilityDropout, G8Error, HierarchicalFollowup, parse_head1_calibrator_specs,
     )
 
     # v13 settings (recorded verbatim in the report)
@@ -694,6 +750,10 @@ def main(argv: list[str] | None = None) -> int:
         if not ex_:
             raise SystemExit(f"--head1-survey-mask expects SURVEY:EXPERT, got {spec_!r}")
         survey_masks[sv_.lower()] = tuple(list(survey_masks.get(sv_.lower(), ())) + [ex_])
+    try:
+        head1_calibrator = parse_head1_calibrator_specs(args.head1_calibrator)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
     dropout = None
     if args.head1_dropout:
         dropout = AvailabilityDropout(
@@ -715,6 +775,8 @@ def main(argv: list[str] | None = None) -> int:
         "stage_a_weak_policy": args.stage_a_weak_policy,
         "stage_a_q_prior_experts": args.stage_a_q_prior_experts,
         "drop_experts": drop_experts,
+        **({"head1_calibrator": head1_calibrator} if head1_calibrator else {}),
+        **({"stage_a_call_trust": True} if args.stage_a_call_trust else {}),
     }
 
     print("P3: fitting HierarchicalFollowup (heads + per-survey calibration)…")
@@ -736,6 +798,7 @@ def main(argv: list[str] | None = None) -> int:
         drop_experts=tuple(drop_experts),
         head1_cal_weights=str(args.head1_cal_weights),
         feature_drop_prefixes=tuple(args.head_drop_feature_prefix),
+        head1_calibrator=head1_calibrator,
     )
     try:
         head.fit(snap_trust, train_ids, cal_ids, test_ids)
@@ -826,6 +889,14 @@ def main(argv: list[str] | None = None) -> int:
         alpha_kwargs["alpha_rule"] = args.alpha_rule
     if args.anchor_base_rate_unit != "row":
         alpha_kwargs["base_rate_unit"] = args.anchor_base_rate_unit
+    bad_w = [s for s in args.alpha_weights if not s.lower().endswith(":object")]
+    if bad_w:
+        raise SystemExit(f"--alpha-weights takes SURVEY:object, got {bad_w}")
+    if args.alpha_fit_rows:
+        bad = [s for s in args.alpha_fit_rows if not s.lower().endswith(":original")]
+        if bad:
+            raise SystemExit(f"--alpha-fit-rows takes SURVEY:original, got {bad}")
+        alpha_kwargs["original_rows_surveys"] = tuple(s.split(":", 1)[0].lower() for s in args.alpha_fit_rows)
     if args.anchor_call_weight_sn_filter:
         alpha_kwargs["anchor_call_experts"] = tuple(is_sn_trust_experts(Path(args.trust_dir)))
         print(f"  anchor: call-trust weights for is_sn trust heads {list(alpha_kwargs['anchor_call_experts'])}")
@@ -845,12 +916,25 @@ def main(argv: list[str] | None = None) -> int:
             cal_mix[name] = p_cm[:, i]
         alpha_df = pd.concat([train_mix, cal_mix], ignore_index=True, sort=False)
         alpha_kwargs["weight_col"] = "sample_weight"
+        obj_w_surveys = sorted({s.split(":", 1)[0].lower() for s in args.alpha_weights})
+        if obj_w_surveys:
+            # v13i: the calibrators' weighting (head1_cal_weights=object) for these surveys' α rows
+            m_obj = alpha_df["survey"].astype(str).str.lower().isin(obj_w_surveys).to_numpy()
+            w_obj = pd.to_numeric(alpha_df["sample_weight"], errors="coerce").fillna(0.0).to_numpy(float)
+            w_obj[m_obj] = w_obj[m_obj] / head._quality_factor(alpha_df[m_obj])
+            alpha_df["sample_weight"] = w_obj
+            print(f"  α weights: object weights (no label-quality factor) on {obj_w_surveys} "
+                  f"({int(m_obj.sum()):,} rows)")
         print(f"P4: fitting anchored-blend α table on OOF-train ∪ cal "
               f"({len(train_mix):,} + {len(cal_mix):,} rows, weighted; honesty-filtered)…")
         report["alpha_fit_frame"] = {
             "mode": "oof_train_mixture+cal_mixture", "n_train_rows": int(len(train_mix)),
             "n_cal_rows": int(len(cal_mix)), **head.oof_coverage(train_mix)}
+        if obj_w_surveys:
+            report["alpha_fit_frame"]["object_weight_surveys"] = obj_w_surveys
     else:
+        if args.alpha_weights:
+            raise SystemExit("--alpha-weights needs the cross-fitted α frame (--cross-fit-folds)")
         alpha_df = cal_df
         print("P4: fitting anchored-blend α table on cal (honesty-filtered)…")
         report["alpha_fit_frame"] = {"mode": "cal", "n_cal_rows": int(len(cal_df))}
@@ -928,11 +1012,13 @@ def main(argv: list[str] | None = None) -> int:
         spec)
     g2 = evaluate_g2(scored, train_ids, cal_ids,
                      acknowledge_unevaluable=args.acknowledge_g2_unevaluable,
-                     test_ids=test_ids)
+                     test_ids=test_ids, metric=args.g2_metric)
     report["guards"]["G2"] = g2
     print(f"  G2: {g2['status']} "
           f"(n={g2.get('n_rows')}, median={g2.get('median_p_snia')}, "
-          f"max={g2.get('max_p_snia')})")
+          f"max={g2.get('max_p_snia')}"
+          + (f"; on P(Ia|SN) median={g2.get('median_p_ia_given_sn')}, max={g2.get('max_p_ia_given_sn')}"
+             if args.g2_metric != "p_snia" else "") + ")")
 
     # ── FDR ledger (deployed cal utilities; scorer refits at score time) ─────
     if args.fdr_gamma is not None:

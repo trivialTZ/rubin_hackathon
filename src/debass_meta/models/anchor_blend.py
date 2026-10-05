@@ -544,6 +544,7 @@ def fit_alpha(
     alpha_se: str = "row",
     base_rate_unit: str = "row",
     alpha_rule: str = "1se",
+    original_rows_surveys: tuple[str, ...] = (),
 ) -> BlendSpec:
     """Fit the per-cell α table on a calibration frame.
 
@@ -572,6 +573,12 @@ def fit_alpha(
     one vote per object instead of per row (objects with more epochs no longer
     dominate it); ``alpha_rule="best"`` takes the grid minimum instead of the
     1-SE rule.
+
+    fusion v13h: rows of the surveys in ``original_rows_surveys`` that are
+    availability-dropout copies (``is_aug`` > 0) are dropped before anything
+    is fitted, so those surveys' α, base rates and verification see real rows
+    only.  Serving rows are real rows; a missing input already moves a row to
+    another n_experts / lc_cov cell.  Recorded in ``spec.g3["fit_frame"]``.
     """
     if alpha_objective not in ALPHA_OBJECTIVES:
         raise ValueError(f"alpha_objective must be one of {ALPHA_OBJECTIVES}")
@@ -585,6 +592,17 @@ def fit_alpha(
     if not apply_honesty and exclude_qualities:
         hon &= ~_excluded_quality_rows(df, tuple(exclude_qualities))
     df = df[hon].reset_index(drop=True)
+    orig_sv = sorted({str(s).lower() for s in original_rows_surveys})
+    n_copies_dropped = 0
+    if orig_sv:
+        if "is_aug" not in df.columns:
+            raise KeyError("fit_alpha: original_rows_surveys needs an is_aug column")
+        sv_col = (df["survey"].astype(str).str.lower() if "survey" in df.columns
+                  else pd.Series("unknown", index=df.index))
+        copy = ((pd.to_numeric(df["is_aug"], errors="coerce").fillna(0.0) > 0)
+                & sv_col.isin(orig_sv)).to_numpy()
+        n_copies_dropped = int(copy.sum())
+        df = df[~copy].reset_index(drop=True)
     w_all: np.ndarray | None = None
     if weight_col is not None:
         if weight_col not in df.columns:
@@ -731,13 +749,16 @@ def fit_alpha(
         }
 
     spec.g3 = {"per_cell": g3_cells, "per_survey_verify": verify}
-    if exclude_qualities or weight_col is not None:
+    if exclude_qualities or weight_col is not None or orig_sv:
         spec.g3["fit_frame"] = {
             "exclude_qualities": list(exclude_qualities),
             "weight_col": weight_col,
             "n_rows_after_filters": int(len(df)),
             "n_usable": int(usable.sum()),
         }
+        if orig_sv:
+            spec.g3["fit_frame"]["original_rows_surveys"] = orig_sv
+            spec.g3["fit_frame"]["n_copies_dropped"] = n_copies_dropped
     if out_dir is not None:
         spec.save(out_dir)
     return spec

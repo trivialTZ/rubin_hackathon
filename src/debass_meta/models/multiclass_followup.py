@@ -124,6 +124,10 @@ _BLOCKED_PREFIXES = (
     "dp1_",
     "target_",
     "label_",
+    # fusion v13g call-trust diagnostics: never head inputs (call_trust.py)
+    "q_sn__",
+    "call_trust__",
+    "sn_call__",
 )
 
 

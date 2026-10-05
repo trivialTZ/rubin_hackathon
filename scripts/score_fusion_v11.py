@@ -6,6 +6,9 @@ never reimplemented) plus:
 
   * ``--blend-dir`` (default ``models/anchor_blend_v11``) — the fitted
     ``BlendSpec`` (``anchor_blend.py``).
+  * (v13g, when the trust dir has call-trust heads) ``call_trust__<expert>`` = P(the
+    expert's SN-vs-not call is correct), ``sn_call__<expert>`` (1/0) and ``q_sn__<expert>``;
+    see ``debass_meta/models/call_trust.py``.  Nothing else changes.
   * predictions carry ``p_{snia,nonia,other}_model`` (the hierarchical-head
     calibrated probs), ``p_{snia,nonia,other}_anchor`` (the trust-weighted
     ternary anchor), ``alpha`` and ``alpha_fallback_level``.  ``p_snia/p_nonia/
@@ -49,6 +52,7 @@ from scripts.score_fusion_v8 import (  # noqa: E402
 
 from debass_meta.features.availability import BROKER_EXPERTS, LOCAL_EXPERTS  # noqa: E402
 from debass_meta.models import anchor_blend  # noqa: E402
+from debass_meta.models.call_trust import CALL_TRUST_PREFIXES, attach_call_trust  # noqa: E402
 from debass_meta.projectors.base import sanitize_expert_key  # noqa: E402
 
 
@@ -161,6 +165,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # ── q / q_prior columns ──────────────────────────────────────────────────
     df = attach_trust_columns(df, Path(args.trust_dir))
+    # v13g: call_trust__ / sn_call__ / q_sn__ when the trust dir carries call-trust heads
+    # (opt-in at training: --stage-a-call-trust); a no-op for every earlier artifact.
+    df = attach_call_trust(df, Path(args.trust_dir))
 
     # ── Stage-B probabilities: raw + calibrated (the calibrated marginals are
     #    the model input to the blend) ─────────────────────────────────────────
@@ -251,6 +258,7 @@ def main(argv: list[str] | None = None) -> None:
         "traj_x__mean_slope",
     ) if c in df.columns]
     keep_cols += [c for c in df.columns if c.startswith(("q__", "q_prior__", "trust_source__"))]
+    keep_cols += [c for c in df.columns if c.startswith(CALL_TRUST_PREFIXES)]
     keep_cols += [c for c in LOCAL_PSNIA_COLS if c in df.columns]
     if args.dp1:
         keep_cols += [c for c in DP1_CATALOG_COLS if c in df.columns]

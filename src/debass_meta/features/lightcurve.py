@@ -284,6 +284,7 @@ def truncated_detection_windows(
     *,
     survey: str = "auto",
     max_n_det: int = 20,
+    lsst_all_negative_fallback: bool = False,
 ) -> list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
     """Canonical fusion_v11 truncation helper (B10 — single implementation).
 
@@ -302,7 +303,10 @@ def truncated_detection_windows(
         builder tripwire ``n_det == n_pos_det`` always holds (tie-safe).
 
     Survey gating (B3): the all-negative fallback is REMOVED for LSST — an LSST
-    object with 0 positive detections yields ``[]`` (0 epoch rows).
+    object with 0 positive detections yields ``[]`` (0 epoch rows).  Opt-in
+    ``lsst_all_negative_fallback=True`` (v13g) applies the ZTF fallback to LSST as
+    well: on Rubin the SN light of ~15% of the spectroscopic SNe sits in the
+    difference-imaging template, so every alert detection is negative.
 
     The base extractor, the gold builder and P5's ``sequence_dataset`` all route
     through this one helper (no lockstep copies).
@@ -313,9 +317,9 @@ def truncated_detection_windows(
 
     pos_dets = [d for d in ndets if d.get("is_positive", True)]
     if not pos_dets:
-        if resolved == "LSST":
+        if resolved == "LSST" and not lsst_all_negative_fallback:
             return []
-        pos_dets = ndets  # ZTF all-negative fallback (kept)
+        pos_dets = ndets  # all-negative fallback (ZTF; LSST only when opted in)
 
     pos_id_set = {id(d) for d in pos_dets}
     neg_dets = [d for d in ndets if id(d) not in pos_id_set]
@@ -396,16 +400,19 @@ def extract_features_at_each_epoch(
     max_n_det: int = 20,
     *,
     survey: str = "auto",
+    lsst_all_negative_fallback: bool = False,
 ) -> list[dict[str, Any]]:
     """Return a list of feature dicts, one per detection epoch 1..min(len, max_n_det).
 
     Each dict has ``n_det`` and ``alert_mjd`` plus all FEATURE_NAMES.
     The lightcurve is truncated to exactly n_det POSITIVE detections before
     computing features (via :func:`truncated_detection_windows`).  ``survey``
-    controls the all-negative fallback gate (kept for ZTF, removed for LSST).
+    controls the all-negative fallback gate (kept for ZTF, removed for LSST unless
+    ``lsst_all_negative_fallback``).
     """
     windows = truncated_detection_windows(
-        detections, survey=survey, max_n_det=max_n_det
+        detections, survey=survey, max_n_det=max_n_det,
+        lsst_all_negative_fallback=lsst_all_negative_fallback,
     )
     results = []
     for pos_prefix, _full_window in windows:

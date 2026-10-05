@@ -446,6 +446,7 @@ def assemble_stage_a_long(
     apply_honesty_filters: bool = True,
     weak_policy: str = "all",
     sn_filter_experts=None,
+    with_sn_target: bool = False,
 ) -> tuple[pd.DataFrame, list[str], dict[str, tuple[pd.DataFrame, str]]]:
     """Assemble the pooled Stage-A long table from a helpfulness table.
 
@@ -463,7 +464,10 @@ def assemble_stage_a_long(
     ledger ``{expert: {allowed_lsst, allowed_ztf, allowed, kept, dropped,
     kept_lsst, dropped_lsst}}`` is attached as ``long_df.attrs["weak_ledger"]``.
     ``sn_filter_experts`` fixes the SN-filter set (target selection AND the
-    ``is_sn_filter`` feature); ``None`` = module default.
+    ``is_sn_filter`` feature); ``None`` = module default.  ``with_sn_target``
+    (fusion v13g, opt-in) adds the column ``y_sn`` = ``is_sn`` on exactly the
+    rows kept for ``y`` (NaN where the helpfulness table has no ``is_sn``), the
+    call-trust heads' target (``call_trust.py``).
     """
     if weak_policy not in WEAK_POLICIES:
         raise ValueError(f"weak_policy must be one of {WEAK_POLICIES}, got {weak_policy!r}")
@@ -534,6 +538,9 @@ def assemble_stage_a_long(
         feats["n_det"] = pd.to_numeric(sub["n_det"], errors="coerce")
         feats["alert_jd"] = pd.to_numeric(sub["alert_jd"], errors="coerce")
         feats["y"] = pd.to_numeric(sub[target_col], errors="coerce")
+        if with_sn_target:
+            feats["y_sn"] = (pd.to_numeric(sub["is_sn"], errors="coerce")
+                             if "is_sn" in sub.columns else np.nan)
         feats["target_col"] = target_col
         feats["label_quality"] = sub["label_quality"] if "label_quality" in sub.columns else None
         long_parts.append(feats)
@@ -762,6 +769,7 @@ def _oof_pooled_fits(
     seed: int,
     n_jobs: int,
     n_splits: int = 5,
+    fixed_fold_of_group: dict[str, int] | None = None,
 ) -> tuple[np.ndarray, list[Any], dict[str, int]]:
     """GroupKFold(5) OOF on train rows — anti-stacking-leak, same as v6e2.
 
@@ -772,6 +780,10 @@ def _oof_pooled_fits(
     ``q_prior__`` is out-of-fold too (module doc §2).  When fewer than two
     object groups exist there are no folds: the in-sample fit is returned as
     ``oof`` and both fold structures are empty.
+
+    ``fixed_fold_of_group`` (fusion v13g, call-trust heads) reuses another fit's
+    held-out fold of every object instead of balancing the folds again (every
+    group must be in the map).
     """
     from debass_meta.models.folds import StableGroupKFold as GroupKFold  # CPU-independent folds (v13f)
 
@@ -780,7 +792,21 @@ def _oof_pooled_fits(
     fold_of_group: dict[str, int] = {}
     unique_groups = np.unique(groups)
     splits = min(int(n_splits), len(unique_groups))
-    if splits >= 2:
+    if fixed_fold_of_group:
+        row_fold = np.array([int(fixed_fold_of_group[str(g)]) for g in groups], dtype=int)
+        for fold in range(int(row_fold.max()) + 1):
+            pred_idx = np.flatnonzero(row_fold == fold)
+            fit_idx = np.flatnonzero(row_fold != fold)
+            bundle = _fit_pooled_classifier(
+                X.iloc[fit_idx], y[fit_idx], w[fit_idx],
+                params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs,
+            )
+            if len(pred_idx):
+                oof[pred_idx] = _predict_binary_classifier(bundle, X.iloc[pred_idx])
+            fold_bundles.append(bundle)
+            for group in np.unique(groups[pred_idx]):
+                fold_of_group[str(group)] = fold
+    elif splits >= 2:
         group_kfold = GroupKFold(n_splits=splits)
         for fold, (fit_idx, pred_idx) in enumerate(group_kfold.split(X, y, groups=groups)):
             bundle = _fit_pooled_classifier(
@@ -1070,6 +1096,7 @@ def train_pooled_trust(
     q_prior_oof: bool = True,
     emit_headless_q: bool = False,
     q_prior_experts: str = "all",
+    call_trust: bool = False,
 ) -> PooledTrustResult:
     """Train the pooled Stage-A trust model and emit q into the snapshots.
 
@@ -1090,6 +1117,11 @@ def train_pooled_trust(
       produces those columns, so the default False matches serving).
     - ``q_prior_experts``: "all" registered experts (legacy default) or only
       "trained" ones.
+    - ``call_trust`` (v13g, default False): also fit an ``is_sn`` head for every
+      non-SN-filter expert with a trust head, on the same rows / folds /
+      features (``call_trust.py``), saved under ``pooled/call_trust/`` and
+      emitted as ``q_sn__<san>``.  The main model, its q__ / q_prior__ columns
+      and its artifacts are unchanged.
 
     Emission rules:
     - ``q__<san>``: calibrated trust, float, NaN where ``avail__<san> == 0``;
@@ -1106,6 +1138,8 @@ def train_pooled_trust(
             f"q_prior_experts must be one of {Q_PRIOR_EXPERT_MODES}, got {q_prior_experts!r}"
         )
     sn_filter = _resolve_sn_filter_experts(sn_filter_experts)
+    if call_trust:
+        from .call_trust import emit_q_sn_columns, fit_call_trust, save_call_trust  # circular at module level
     train_ids = {str(object_id) for object_id in train_ids}
     cal_ids = {str(object_id) for object_id in cal_ids}
     test_ids = {str(object_id) for object_id in test_ids}
@@ -1134,6 +1168,7 @@ def train_pooled_trust(
         apply_honesty_filters=True,
         weak_policy=weak_policy,
         sn_filter_experts=sn_filter,
+        with_sn_target=bool(call_trust),
     )
     weak_ledger: dict[str, dict[str, Any]] = dict(long_df.attrs.get("weak_ledger", {}))
     for expert_key, entry in weak_ledger.items():
@@ -1214,6 +1249,7 @@ def train_pooled_trust(
         X_all[train_mask], y_all[train_mask], weights_train, groups_train,
         params=params, n_estimators=n_estimators, seed=seed, n_jobs=n_jobs,
     )
+    main_fold_of_object = dict(prior_fold_of_object)
     if not q_prior_oof:
         prior_fold_bundles, prior_fold_of_object = [], {}
     pooled_bundle = _fit_pooled_classifier(
@@ -1341,6 +1377,15 @@ def train_pooled_trust(
             "target_col": target_col,
         }
 
+    ct_fit = None
+    if call_trust:
+        print("  pooled_trust: call-trust is_sn heads (same rows / folds / features)…", flush=True)
+        ct_fit = fit_call_trust(
+            long_df, feature_cols=feature_cols, expert_levels=expert_levels,
+            params=params, n_estimators=n_estimators,
+            main_fold_of_object=main_fold_of_object, head_experts=list(expert_state),
+            sn_filter=sn_filter, seed=seed, n_jobs=n_jobs)
+
     overall_test_metrics = _binary_metrics(
         y_all[test_mask].astype(float), q_raw_refit[test_mask]
     )
@@ -1361,6 +1406,7 @@ def train_pooled_trust(
         "q_prior_n_folds": len(prior_fold_bundles),
         "emit_headless_q": bool(emit_headless_q),
         "q_prior_experts": q_prior_experts,
+        **({"call_trust": ct_fit.summary} if ct_fit is not None else {}),
     }
 
     # --- Persist artifacts: pooled/ + per-expert dirs ---
@@ -1400,6 +1446,8 @@ def train_pooled_trust(
     }
     with open(pooled_dir / "metadata.json", "w") as fh:
         json.dump(pooled_metadata, fh, indent=2)
+    if ct_fit is not None:
+        save_call_trust(ct_fit, pooled_dir, seed=seed)
 
     for expert_key, state in expert_state.items():
         san = sanitize_expert_key(expert_key)
@@ -1448,6 +1496,10 @@ def train_pooled_trust(
         ledger=emission_ledger,
     )
     metrics["_pooled"]["emission"] = emission_ledger
+    if ct_fit is not None:
+        output_snapshots = emit_q_sn_columns(output_snapshots, ct_fit, pooled_metadata, train_ids)
+        emission_ledger["q_sn_experts"] = sorted(
+            ct_fit.experts) + list(ct_fit.reused_sn_filter_experts)
     print(
         f"  pooled_trust: emitted q__ for {len(emission_ledger.get('q_experts', []))} experts, "
         f"q_prior__ for {len(emission_ledger.get('q_prior_experts', []))}; "

@@ -36,7 +36,10 @@ Dirichlet rung, out of P3 scope, may follow composition downstream).
 per-survey binary calibrators — isotonic when the survey cal frame has
 ``n >= survey_cal_min`` (constructor param, default 40), else ``PlattCalibrator``
 (``pooled_trust.PlattCalibrator``) — **not** temperature: temperature cannot
-shift the intercept, and intercept bias was the v10 failure mode.  Head-2's
+shift the intercept, and intercept bias was the v10 failure mode.  Opt-in
+(``head1_calibrator={"lsst": "beta"}``, v13g): a per-survey family override;
+``beta`` is a smooth monotone map (``calibrate.BetaCalibrator``) without the
+tie plateaus of isotonic.  Head-2's
 calibrator is fit on true-SN spec rows and applied everywhere (covariate shift
 accepted, documented here per spec §2.1).
 
@@ -84,7 +87,7 @@ import numpy as np
 import pandas as pd
 
 # Read-only imports of the shared ladder / helpers (spec §3, P3 line 220-221).
-from .calibrate import IsotonicCalibrator
+from .calibrate import BetaCalibrator, IsotonicCalibrator
 from .multiclass_followup import (
     CLASSES,
     _ALERCE_FAMILY,
@@ -371,8 +374,26 @@ class _WeightedPlattCalibrator(PlattCalibrator):
         return self
 
 
+HEAD1_CALIBRATOR_KINDS = ("beta", "platt", "isotonic")
+
+
+def parse_head1_calibrator_specs(specs: Sequence[str]) -> dict[str, str]:
+    """``["lsst:beta", ...]`` -> ``{"lsst": "beta"}`` (the ``--head1-calibrator``
+    syntax; the survey key is lower-cased as for the survey masks)."""
+    out: dict[str, str] = {}
+    for spec in specs:
+        sv, _, kind = str(spec).partition(":")
+        sv, kind = sv.strip().lower(), kind.strip().lower()
+        if not sv or kind not in HEAD1_CALIBRATOR_KINDS:
+            raise ValueError(
+                f"--head1-calibrator expects SURVEY:KIND with KIND in {HEAD1_CALIBRATOR_KINDS}, got {spec!r}")
+        out[sv] = kind
+    return out
+
+
 def _fit_binary_calibrator(
-    p: np.ndarray, y: np.ndarray, *, n_min: int, sample_weight: np.ndarray | None = None
+    p: np.ndarray, y: np.ndarray, *, n_min: int, sample_weight: np.ndarray | None = None,
+    kind: str | None = None,
 ):
     """Isotonic when ``n >= n_min`` else Platt (spec §2.1); identity when a
     class is absent or the frame is empty.  Platt (not temperature) is the
@@ -380,7 +401,11 @@ def _fit_binary_calibrator(
     killed v10 (spec deviation #21).
 
     ``sample_weight`` (fusion v13, optional) fits the weighted variants; with
-    ``None`` the original unweighted classes are used."""
+    ``None`` the original unweighted classes are used.  ``kind`` (opt-in, one
+    of ``HEAD1_CALIBRATOR_KINDS``) overrides the ``n_min`` rule: ``beta`` is the
+    smooth beta calibration, ``platt`` / ``isotonic`` force that family."""
+    if kind is not None and kind not in HEAD1_CALIBRATOR_KINDS:
+        raise ValueError(f"unknown calibrator kind {kind!r}; expected one of {HEAD1_CALIBRATOR_KINDS}")
     p = np.asarray(p, dtype=float)
     y = np.asarray(y, dtype=int)
     ok = np.isfinite(p)
@@ -391,11 +416,12 @@ def _fit_binary_calibrator(
     p, y = p[ok], y[ok]
     if len(y) < 2 or len(np.unique(y)) < 2:
         return _IdentityBinaryCalibrator()
+    if kind == "beta":
+        return BetaCalibrator().fit(p, y, sample_weight=w)
+    isotonic = (len(y) >= int(n_min)) if kind is None else kind == "isotonic"
     if w is None:
-        if len(y) >= int(n_min):
-            return IsotonicCalibrator().fit(p, y)
-        return PlattCalibrator().fit(p, y)
-    if len(y) >= int(n_min):
+        return IsotonicCalibrator().fit(p, y) if isotonic else PlattCalibrator().fit(p, y)
+    if isotonic:
         return _WeightedIsotonicCalibrator().fit(p, y, sample_weight=w)
     return _WeightedPlattCalibrator().fit(p, y, sample_weight=w)
 
@@ -742,6 +768,10 @@ class HierarchicalFollowup:
     # untimed local-expert rows put event_count__alerce_lc at ~160 on LSST
     # training rows against 8 at serving (docs/fusion_v13_plan.md, v13d).
     feature_drop_prefixes: tuple[str, ...] = ()
+    # v13g: per-survey head-1 calibrator family override ({"lsst": "beta"}; kinds
+    # in HEAD1_CALIBRATOR_KINDS).  A survey not named keeps the isotonic /
+    # Platt rule on ``survey_cal_min``; the global calibrator is never overridden.
+    head1_calibrator: dict[str, str] = field(default_factory=dict)
 
     # --- fitted state (populated by fit / load) ---
     head1_feature_cols: list[str] = field(default_factory=list)
@@ -801,6 +831,9 @@ class HierarchicalFollowup:
         report: dict[str, Any] = {"gate_verdicts": []}
         if self.context_mask_scope not in ("rows", "survey"):
             raise ValueError("context_mask_scope must be 'rows' or 'survey'")
+        bad = {k: v for k, v in self.head1_calibrator.items() if v not in HEAD1_CALIBRATOR_KINDS}
+        if bad:
+            raise ValueError(f"head1_calibrator kinds must be in {HEAD1_CALIBRATOR_KINDS}, got {bad}")
         report["v13"] = self._v13_settings()
 
         self._fit_head1(train_df, cal_df, report)
@@ -827,6 +860,7 @@ class HierarchicalFollowup:
             "head1_cal_weights": self.head1_cal_weights,
             **({"feature_drop_prefixes": list(self.feature_drop_prefixes)}
                if self.feature_drop_prefixes else {}),
+            **({"head1_calibrator": dict(self.head1_calibrator)} if self.head1_calibrator else {}),
         }
 
     def _drop_prefixed(self, cols: list[str]) -> list[str]:
@@ -1228,7 +1262,8 @@ class HierarchicalFollowup:
                 continue
             m = sv == survey
             cal = _fit_binary_calibrator(
-                p_raw[m], y[m], n_min=self.survey_cal_min
+                p_raw[m], y[m], n_min=self.survey_cal_min,
+                kind=self.head1_calibrator.get(survey)
             )
             self.head1_calibrators[survey] = cal
             self.head1_calibrator_kinds[survey] = getattr(cal, "name", "identity")
@@ -1303,7 +1338,8 @@ class HierarchicalFollowup:
             m = (rows["survey"] == survey).to_numpy()
             cal = _fit_binary_calibrator(
                 rows.loc[m, "p"].to_numpy(), rows.loc[m, "y"].to_numpy(),
-                n_min=self.survey_cal_min, sample_weight=rows.loc[m, "w"].to_numpy())
+                n_min=self.survey_cal_min, sample_weight=rows.loc[m, "w"].to_numpy(),
+                kind=self.head1_calibrator.get(survey))
             self.head1_calibrators[survey] = cal
             self.head1_calibrator_kinds[survey] = getattr(cal, "name", "identity")
             ledger["per_survey"][survey] = {
@@ -1797,6 +1833,7 @@ class HierarchicalFollowup:
             drop_experts=tuple(v13.get("drop_experts", ())),
             head1_cal_weights=str(v13.get("head1_cal_weights", "train")),
             feature_drop_prefixes=tuple(v13.get("feature_drop_prefixes", ())),
+            head1_calibrator={str(k): str(v) for k, v in (v13.get("head1_calibrator") or {}).items()},
         )
         obj.head1_serving_masks = {
             str(k): tuple(v) for k, v in (v13.get("head1_serving_masks") or {}).items()}

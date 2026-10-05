@@ -268,6 +268,7 @@ def _extract_object_rows(
     *,
     lc_dir_str: str,
     max_n_det: int,
+    lsst_all_negative_fallback: bool = False,
 ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
     """Worker: load one lightcurve and compute base-51 + EXT + NEG features per epoch.
 
@@ -277,6 +278,8 @@ def _extract_object_rows(
     ``lightcurve_source["all_negative_fallback"]`` records whether the ZTF
     all-negative fallback fired (feeds the SCC negativity census); it equals the
     per-row flag value (fallback is an object-level property).
+    ``lsst_all_negative_fallback`` (v13g, default off) keeps LSST objects whose alert
+    lightcurve has no positive detection too (rows flagged like the ZTF fallback).
     """
     lc_dir = Path(lc_dir_str)
     lc_path, lc_source = _resolve_lightcurve_path(
@@ -291,15 +294,18 @@ def _extract_object_rows(
         return object_id, lc_source, []
 
     # Object survey drives the all-negative fallback gate (kept for ZTF, removed
-    # for LSST) — key off the object identifier, not per-detection heuristics.
+    # for LSST unless lsst_all_negative_fallback) — key off the object identifier,
+    # not per-detection heuristics.
     id_kind = infer_identifier_kind(object_id)
     survey = "LSST" if id_kind == "lsst_dia_object_id" else "ZTF"
 
     epoch_feats = extract_features_at_each_epoch(
-        detections, max_n_det=max_n_det, survey=survey
+        detections, max_n_det=max_n_det, survey=survey,
+        lsst_all_negative_fallback=lsst_all_negative_fallback,
     )
     windows = truncated_detection_windows(
-        detections, survey=survey, max_n_det=max_n_det
+        detections, survey=survey, max_n_det=max_n_det,
+        lsst_all_negative_fallback=lsst_all_negative_fallback,
     )
     if len(epoch_feats) != len(windows):
         raise RuntimeError(
@@ -309,8 +315,8 @@ def _extract_object_rows(
 
     # SCC negativity census + per-row fallback flag: the ZTF all-negative
     # fallback fired iff epoch rows were produced from a lightcurve with 0
-    # positive-flagged detections (only possible for ZTF — LSST returns [] and
-    # produces no rows).  ``is_positive`` is honestly read (no silent True).
+    # positive-flagged detections (ZTF; LSST returns [] and produces no rows unless
+    # lsst_all_negative_fallback).  ``is_positive`` is honestly read (no silent True).
     ndets_norm = [_ensure_normalized(d) for d in detections]
     n_pos_obj = sum(1 for d in ndets_norm if bool(d.get("is_positive")))
     is_fallback = bool(windows) and n_pos_obj == 0
@@ -880,6 +886,7 @@ def build_fusion_snapshots(
     limit: int | None = None,
     skip_traj: bool = False,
     skip_experts: bool = False,
+    lsst_all_negative_fallback: bool = False,
 ) -> Path:
     t0 = time.time()
     seq_train_ids: set[str] | None = None
@@ -975,7 +982,8 @@ def build_fusion_snapshots(
     print(f"  catalog-'other' harvest (context/weak tiers): {n_catalog_other:,} objects", flush=True)
 
     # ---- Pass 1: base-51 + EXT features (multiprocessing Pool) ----
-    worker = partial(_extract_object_rows, lc_dir_str=str(lc_dir), max_n_det=max_n_det)
+    worker = partial(_extract_object_rows, lc_dir_str=str(lc_dir), max_n_det=max_n_det,
+                     lsst_all_negative_fallback=lsst_all_negative_fallback)
     results: dict[str, tuple[dict[str, Any], list[dict[str, Any]]]] = {}
     t1 = time.time()
     if n_jobs > 1 and n_total > 1:
@@ -1106,13 +1114,13 @@ def build_fusion_snapshots(
             f"(e.g. {nonfb[['object_id', 'n_det', 'n_pos_det']].head(3).to_dict('records')})"
         )
         fb = df[flag == 1.0]
-        bad_fb = fb[
-            (fb["n_pos_det"].astype(float) != 0.0)
-            | (fb["survey"].astype(str).str.upper() != "ZTF")
-        ]
+        survey_ok = fb["survey"].astype(str).str.upper().isin(
+            ["ZTF", "LSST"] if lsst_all_negative_fallback else ["ZTF"])
+        bad_fb = fb[(fb["n_pos_det"].astype(float) != 0.0) | ~survey_ok]
         assert bad_fb.empty, (
             f"v11 tripwire FAILED: {len(bad_fb):,} fallback rows violate "
-            f"n_pos_det == 0 and survey == ZTF "
+            f"n_pos_det == 0 and survey == "
+            f"{'ZTF or LSST (--lsst-all-negative-fallback)' if lsst_all_negative_fallback else 'ZTF'} "
             f"(e.g. {bad_fb[['object_id', 'survey', 'n_pos_det']].head(3).to_dict('records')})"
         )
 
@@ -1134,6 +1142,10 @@ def build_fusion_snapshots(
             for o in _md_census.get(key, [])
         }
     n_locked_fallback = len(fallback_ids & locked_ids)
+    if lsst_all_negative_fallback:
+        n_lsst_fb = sum(1 for oid in fallback_ids if infer_identifier_kind(oid) == "lsst_dia_object_id")
+        print(f"  --lsst-all-negative-fallback: {n_lsst_fb:,} LSST objects kept with "
+              f"lc_fallback_all_negative=1 rows (no positive alert detection)", flush=True)
     print(
         f"  SCC negativity census: {len(fallback_ids):,} objects fallback-dependent "
         f"(all-negative, ZTF fallback fired) of which {n_locked_fallback:,} are "
@@ -1340,6 +1352,12 @@ def main() -> None:
                         help="Skip trajectory features (columns NaN if names known)")
     parser.add_argument("--skip-experts", action="store_true",
                         help="Skip expert blocks (avail__*=0.0 for schema stability)")
+    parser.add_argument("--lsst-all-negative-fallback", action="store_true",
+                        help="Keep LSST objects whose alert lightcurve has no positive detection "
+                             "(SN light in the difference-imaging template; ~15%% of Rubin spectroscopic "
+                             "SNe), exactly as ZTF objects already are: rows flagged "
+                             "lc_fallback_all_negative=1, n_pos_det=0. Default off (those objects "
+                             "build no rows, as before).")
     parser.add_argument("--dp1", action="store_true",
                         help="Also build the DP1 fusion table after the main build")
     parser.add_argument("--dp1-only", action="store_true",
@@ -1378,6 +1396,7 @@ def main() -> None:
             limit=args.limit,
             skip_traj=args.skip_traj,
             skip_experts=args.skip_experts,
+            lsst_all_negative_fallback=args.lsst_all_negative_fallback,
         )
 
     if args.dp1 or args.dp1_only:
