@@ -12,6 +12,12 @@ LGBMClassifier) + metadata.json.
 Usage:
     python3 scripts/train_lc_features_head.py
     python3 scripts/train_lc_features_head.py --max-objects 500  # smoke test
+    python3 scripts/train_lc_features_head.py --train-split data/gold/split_fusion_v13g.json \
+        --output-dir artifacts/local_experts/lc_features_v13k
+
+--train-split keeps only that split manifest's ``train_ids`` (fusion v13k): the expert's outputs feed the fusion
+heads, so an object in the fusion cal or test split must not be in its training set. Until v13k the head was trained
+on every labelled object, every fusion test object included.
 """
 from __future__ import annotations
 
@@ -36,11 +42,24 @@ def main() -> None:
     parser.add_argument("--output-dir", default="artifacts/local_experts/lc_features")
     parser.add_argument("--max-objects", type=int, default=None)
     parser.add_argument("--n-estimators", type=int, default=300)
+    parser.add_argument("--train-split", default=None,
+                        help="split manifest JSON; train only on its train_ids (no cal / test objects)")
     args = parser.parse_args()
 
     truth = pd.read_parquet(args.truth)
     # Drop rows without a ternary label
     truth = truth[truth["final_class_ternary"].notna()].copy()
+    split_info: dict = {}
+    if args.train_split:
+        manifest = json.loads(Path(args.train_split).read_text())
+        train_ids = {str(o) for o in manifest["train_ids"]}
+        held = {str(o) for k in ("cal_ids", "test_ids", "quarantined_ids") for o in manifest.get(k, [])}
+        assert not train_ids & held, "split manifest: train_ids overlap cal/test/quarantined ids"
+        n_before = len(truth)
+        truth = truth[truth["object_id"].astype(str).isin(train_ids)].copy()
+        split_info = {"train_split": str(args.train_split), "n_labelled_before_split": int(n_before),
+                      "n_labelled_train_split": int(len(truth))}
+        print(f"--train-split: {len(truth)} of {n_before} labelled objects are in train_ids")
     if args.max_objects:
         truth = truth.head(args.max_objects)
     print(f"Training on {len(truth)} labelled objects")
@@ -130,6 +149,8 @@ def main() -> None:
         "n_train_rows": int(len(X)),
         "n_skipped": int(skipped),
         "n_estimators": args.n_estimators,
+        "truth": str(args.truth),
+        **split_info,
     }
     (out_dir / "metadata.json").write_text(json.dumps(meta, indent=2))
     print(f"Wrote {out_dir}/model.pkl and metadata.json")

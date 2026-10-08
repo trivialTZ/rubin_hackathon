@@ -84,6 +84,7 @@ from debass_meta.ingest.gold import (
     _load_truth_lookup,
     _resolve_lightcurve_path,
     _to_jd,
+    future_selections,
 )
 from debass_meta.models.splitters import (
     _association_clusters,
@@ -1186,6 +1187,10 @@ def build_fusion_snapshots(
     # Loud failure: Stage-A/B inputs must never be present at build time.
     forbidden = [c for c in df.columns if c.startswith("q__") or c.startswith("trust_source__")]
     assert not forbidden, f"label-stage columns leaked into the snapshot: {forbidden}"
+    # Loud failure: no row may carry an expert output dated after its own alert (static context excepted).
+    late = future_selections(df)
+    assert not late, f"future-dated expert outputs selected (rows per expert): {late}"
+    print("  as-of audit: no future-dated expert outputs", flush=True)
 
     # ---- Split manifest ----
     manifest = build_split_manifest(

@@ -229,7 +229,10 @@ class LcFeaturesExpert(LocalExpert):
                 continue
             truncated.append(det)
 
+        # An epoch without class probabilities is "unavailable": a silver row marked available with empty
+        # probabilities used to look like an output at every early epoch.
         if len(truncated) < 4:
+            out.available = False
             out.raw_output["reason"] = f"only {len(truncated)} detections"
             return out
 
@@ -244,6 +247,7 @@ class LcFeaturesExpert(LocalExpert):
             f, ferr = flux_pair
             by_band.setdefault(band, []).append((mjd, f, ferr, band))
         if not by_band:
+            out.available = False
             out.raw_output["reason"] = "no usable bands"
             return out
         best_band = max(by_band, key=lambda k: len(by_band[k]))
@@ -252,6 +256,7 @@ class LcFeaturesExpert(LocalExpert):
         try:
             probs = self._head.predict_proba(X)[0]
         except Exception as exc:
+            out.available = False
             out.raw_output["reason"] = f"head predict failed: {exc}"
             return out
 

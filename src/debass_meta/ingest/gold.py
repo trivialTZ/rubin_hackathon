@@ -241,8 +241,13 @@ def select_events_asof(
     if len(static_safe) > 0:
         return static_safe.to_dict(orient="records")
 
-    # 3. Local expert re-runs at exact epoch (without timed JD)
-    rerun_exact = event_rows[event_rows["temporal_exactness"] == "rerun_exact"]
+    # 3. Local expert re-runs without a timed JD (legacy silvers). Timed re-runs never reach this step: when none is at
+    #    or before alert_jd, they are all later epochs. Until 2026-10-08 this step returned every rerun_exact event, so an
+    #    epoch before an expert's first output (lc_features_bv below 4 detections, SALT3 / SNGuess / SuperNNova fits
+    #    that failed early) got the expert's outputs from later epochs.
+    rerun_exact = event_rows[
+        (event_rows["temporal_exactness"] == "rerun_exact") & event_rows["event_time_jd"].isna()
+    ]
     if len(rerun_exact) > 0:
         return rerun_exact.to_dict(orient="records")
 
@@ -254,6 +259,35 @@ def select_events_asof(
             return unsafe.to_dict(orient="records")
 
     return []
+
+
+FUTURE_OK_EXACTNESS = frozenset({"static_safe", "latest_object_unsafe"})
+
+
+def future_selections(df: Any, *, tol_days: float = 1e-6) -> dict[str, int]:
+    """Rows of a gold table whose selected event for an expert is dated after the row's alert, per expert.
+
+    Static context (``static_safe``: its event time is the query time) and opt-in latest snapshots
+    (``latest_object_unsafe``, marked by ``exact__`` = 0) are expected to postdate the alert and are not counted.
+    Every other selected event must be at or before ``alert_jd``; a non-empty result means a future-epoch leak.
+    """
+    import pandas as pd
+
+    out: dict[str, int] = {}
+    if "alert_jd" not in df.columns:
+        return out
+    alert = pd.to_numeric(df["alert_jd"], errors="coerce")
+    for col in df.columns:
+        if not col.startswith("source_event_time_jd__"):
+            continue
+        san = col[len("source_event_time_jd__"):]
+        exact_col = f"temporal_exactness__{san}"
+        exactness = df[exact_col].astype(object) if exact_col in df.columns else pd.Series(None, index=df.index)
+        late = (pd.to_numeric(df[col], errors="coerce") > alert + tol_days) & ~exactness.isin(FUTURE_OK_EXACTNESS)
+        n = int(late.sum())
+        if n:
+            out[san] = n
+    return out
 
 
 def _attach_expert_projection(

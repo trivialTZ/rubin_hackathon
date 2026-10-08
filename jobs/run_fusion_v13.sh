@@ -43,6 +43,10 @@
 #   (--alpha-weights lsst:object). v13h showed the copies were not the cause: under the label-quality weights the α frame
 #   is 21% SN while the LSST calibrator's object mix is 3.8%, so α was correcting P(SN)'s level. Stage A from v13g.
 # FUSION_V13_ARM=v13j: v13i with G2 on P(Ia|SN) (--g2-metric p_ia_given_sn); same models and outputs as v13i.
+# FUSION_V13_ARM=v13ka: v13k's settings on the v13ka golds (the as-of fix only, original lc_features_bv outputs).
+# FUSION_V13_ARM=v13k: v13j's settings on the v13k golds (jobs/run_fusion_v13k_gold.sh; docs/fusion_v13k_plan.md): no
+#   future-dated local-expert outputs at early epochs, lc_features_bv retrained on the train split only. Stage A refitted
+#   (its inputs changed). v13j is scored on the same v13k test golds for the paired acceptance table.
 # FUSION_V13_HEAD1_CALIBRATOR="lsst:beta" (space-separated SURVEY:KIND, KIND = beta | platt | isotonic): per-survey head-1
 #   calibrator family (smooth beta calibration instead of the LSST isotonic plateaus); default empty = unchanged.
 # FUSION_V13_CALL_TRUST=1: Stage A also fits the is_sn "call trust" heads (--stage-a-call-trust) and the scorer emits
@@ -115,6 +119,16 @@ if [[ "${ARM}" == "v13i" || "${ARM}" == "v13j" ]]; then
               --head1-calibrator lsst:beta --alpha-weights lsst:object)
     if [[ "${ARM}" == "v13j" ]]; then ARM_ARGS+=(--g2-metric p_ia_given_sn); fi
 fi
+if [[ "${ARM}" == "v13k" || "${ARM}" == "v13ka" ]]; then
+    SFX="${ARM}"; BASE="${ARM}"; GOLD_TAG="${ARM}"; DP2_TAG="${ARM}loc"; ABL_MODELS=(v13j)
+    if [[ "${ARM}" == "v13ka" ]]; then ABL_MODELS=(v13j v13k); fi
+    ARM_ARGS=(--head1-cal-weights object --head1-survey-mask lsst:supernnova
+              --head-drop-feature-prefix event_count__ --head-drop-feature-prefix exact__
+              --alpha-objective sn_binary --alpha-se object --anchor-base-rate-unit object
+              --anchor-call-weight-sn-filter --alpha-rule best
+              --head1-calibrator lsst:beta --alpha-weights lsst:object --g2-metric p_ia_given_sn
+              --stage-a-call-trust)
+fi
 for spec in ${FUSION_V13_HEAD1_CALIBRATOR:-}; do ARM_ARGS+=(--head1-calibrator "${spec}"); done
 if [[ "${FUSION_V13_CALL_TRUST:-0}" == "1" ]]; then
     ARM_ARGS+=(--stage-a-call-trust); STAGE_A_FROM=""; FUSION_V13_REUSE_STAGE_A=0
@@ -133,7 +147,7 @@ DP1_SNAP="data/gold/dp1_snapshots_fusion_${BASE}.parquet"
 TRUTH_V11="data/truth/object_truth_v11.parquet"
 LOCKED="data/gold/lsst_live_locked_test.json"
 # v13g: the build-time quarantine union (frozen benchmark + hard-negative test, jobs/run_fusion_v13g_gold.sh)
-if [[ "${BASE}" == "v13g" ]]; then LOCKED="data/gold/lsst_locked_union_v13g.json"; fi
+if [[ "${BASE}" == "v13g" || "${BASE}" == "v13k" || "${BASE}" == "v13ka" ]]; then LOCKED="data/gold/lsst_locked_union_v13g.json"; fi
 SNAP_TRUST="data/gold/object_epoch_snapshots_fusion_${SFX}_trust.parquet"
 TRUST="models/trust_fusion_${SFX}"; FOLLOW="models/followup_fusion_${SFX}"
 BLEND="models/anchor_blend_${SFX}"; CONF="models/conformal_fusion_${SFX}"
@@ -201,6 +215,13 @@ if [[ -f "${HN}/gold/test_${GOLD_TAG}.parquet" ]]; then
         --truth "${HN}/test_truth.parquet" --manifest data/gold/lsst_hardneg_test_20261004.json \
         "${ABL_ARGS[@]}" --out-dir "${HN}/ablate_${SFX}"
 fi
+# 3c. v13k: fresh-A (data/gold/lsst_hardneg_fresh_A_20261005.json) on its rebuilt gold
+FR=data/hardneg_fresh_20261005
+if [[ -f "${FR}/gold/fresh_A_${GOLD_TAG}.parquet" && "${GOLD_TAG}" != "v13g" ]]; then
+    python3 -u scripts/eval_input_ablation.py --gold "${FR}/gold/fresh_A_${GOLD_TAG}.parquet" \
+        --truth "${FR}/fresh_A_truth.parquet" --manifest data/gold/lsst_hardneg_fresh_A_20261005.json \
+        "${ABL_ARGS[@]}" --variant full --out-dir "${FR}/ablate_${SFX}"
+fi
 
 # 4. DP2 typed objects: lightcurve + local experts, no brokers
 python3 -u scripts/score_fusion_v11.py --tag "dp2_${SFX}" --snapshots "${DP2_GOLD}" \
@@ -210,6 +231,15 @@ python3 -u scripts/score_fusion_v11.py --tag "dp2_${SFX}" --snapshots "${DP2_GOL
 # 5. the TNS×EDP2 explorer cohort (golds built by jobs/run_tnsx_v12_score.sh; lightcurve + brokers + local experts)
 TNSX="data/tnsx_eval_20260924"
 for sv in lsst ztf; do
+    # v13k+: the comparison models on the same explorer golds (tag tnsx_<sv>_<model>_on_<gold>), for a paired criterion
+    if [[ "${GOLD_TAG}" == v13k* && -f "${TNSX}/gold/snapshots_${sv}_${GOLD_TAG}.parquet" ]]; then
+        for m in ${ABL_MODELS[@]+"${ABL_MODELS[@]}"}; do
+            python3 -u scripts/score_fusion_v11.py --tag "tnsx_${sv}_${m}_on_${GOLD_TAG}" \
+                --snapshots "${TNSX}/gold/snapshots_${sv}_${GOLD_TAG}.parquet" --trust-dir "models/trust_fusion_${m}" \
+                --followup-dir "models/followup_fusion_${m}" --blend-dir "models/anchor_blend_${m}" \
+                --conformal "models/conformal_fusion_${m}/mondrian_aps.pkl" --scores-dir "${TNSX}/scores" --no-priority
+        done
+    fi
     if [[ -f "${TNSX}/gold/snapshots_${sv}_${GOLD_TAG}.parquet" ]]; then
         python3 -u scripts/score_fusion_v11.py --tag "tnsx_${sv}_${SFX}" --snapshots "${TNSX}/gold/snapshots_${sv}_${GOLD_TAG}.parquet" \
             --trust-dir "${TRUST}" --followup-dir "${FOLLOW}" --blend-dir "${BLEND}" --conformal "${CONF}/mondrian_aps.pkl" \
